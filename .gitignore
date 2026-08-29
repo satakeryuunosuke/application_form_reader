@@ -1,0 +1,48 @@
+# ====================================================================
+# 受講確認票処理システム - .gitignore
+# ====================================================================
+
+# 出力・生成物ディレクトリ（個人情報保護 & バイナリ成果物）
+output/
+output/*
+
+# 印刷プレビュー用ローカル生成HTML
+受講確認票_印刷プレビュー.html
+
+# ローカル設定・エディタ設定
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS生成ファイル
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Python生成物・仮想環境
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.env
+
+# ログ・一時ファイル
+*.log
+*.tmp
+*.temp
+*.bak
+*.old

@@ -1,0 +1,98 @@
+/* ==========================================================================
+   Design Tokens & Variables
+   ========================================================================== */
+:root {
+  /* Color Palette - Modern Indigo / Slate Blue Theme */
+  --primary-50: #EEF2FF;
+  --primary-100: #E0E7FF;
+  --primary-200: #C7D2FE;
+  --primary-300: #A5B4FC;
+  --primary-400: #818CF8;
+  --primary-500: #6366F1;
+  --primary-600: #4F46E5;
+  --primary-700: #4338CA;
+  --primary-800: #3730A3;
+  --primary-900: #312E81;
+  --primary: #4F46E5;
+  --primary-hover: #4338CA;
+
+  /* Secondary & Accents */
+  --secondary: #0EA5E9;
+  --secondary-hover: #0284C7;
+  
+  /* Status Colors */
+  --success-bg: #ECFDF5;
+  --success-text: #065F46;
+  --success-border: #A7F3D0;
+  --success-solid: #10B981;
+
+  --warning-bg: #FFFBEB;
+  --warning-text: #92400E;
+  --warning-border: #FDE68A;
+  --warning-solid: #F59E0B;
+
+  --danger-bg: #FEF2F2;
+  --danger-text: #991B1B;
+  --danger-border: #FECACA;
+  --danger-solid: #EF4444;
+
+  --info-bg: #EFF6FF;
+  --info-text: #1E40AF;
+  --info-border: #BFDBFE;
+  --info-solid: #3B82F6;
+
+  --purple-bg: #F5F3FF;
+  --purple-text: #5B21B6;
+  --purple-border: #DDD6FE;
+  --purple-solid: #8B5CF6;
+
+  /* Neutrals */
+  --gray-50: #F8FAFC;
+  --gray-100: #F1F5F9;
+  --gray-200: #E2E8F0;
+  --gray-300: #CBD5E1;
+  --gray-400: #94A3B8;
+  --gray-500: #64748B;
+  --gray-600: #475569;
+  --gray-700: #334155;
+  --gray-800: #1E293B;
+  --gray-900: #0F172A;
+
+  /* Backgrounds & Surfaces */
+  --bg-app: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-glass: rgba(255, 255, 255, 0.85);
+  --bg-sidebar: #0F172A;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+}
