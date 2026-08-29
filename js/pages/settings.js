@@ -7,6 +7,7 @@ import { UI } from '../utils/ui.js';
 import { CsvUtil } from '../utils/csv.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
+import { APP_VERSION, SYSTEM_INFO } from '../version.js';
 
 export const SettingsPage = {
   container: null,
@@ -126,7 +127,7 @@ export const SettingsPage = {
         </div>
 
         <!-- 4. バックアップ & 復元 -->
-        <div class="card">
+        <div class="card" style="margin-bottom: var(--spacing-lg);">
           <div class="card-header">
             <h2 class="card-title">💾 データのバックアップと復元</h2>
             <span class="badge badge-info">完全ローカル安全出力</span>
@@ -144,6 +145,38 @@ export const SettingsPage = {
               📤 JSONバックアップから復元
             </button>
             <input type="file" id="inp-import-file" accept=".json,application/json" style="display: none;">
+          </div>
+        </div>
+
+        <!-- 5. システム情報 & バージョン -->
+        <div class="card" style="background: var(--gray-50); border: 1px solid var(--gray-200);">
+          <div class="card-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h2 class="card-title" style="font-size: 1.05rem;">ℹ️ システム情報</h2>
+            </div>
+            <span class="badge badge-info" style="font-family: var(--font-mono); font-weight: 700;">${APP_VERSION}</span>
+          </div>
+          <div style="font-size: 0.88rem; color: var(--gray-700); display: grid; gap: 8px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">システム名称:</span>
+              <span class="font-bold">${SYSTEM_INFO.name}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">バージョン / ビルド:</span>
+              <span class="text-mono">${APP_VERSION} (${SYSTEM_INFO.buildDate})</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">セキュリティ・通信方針:</span>
+              <span style="color: var(--success-text); font-weight: 600;">完全ローカル動作 (外部通信ゼロ)</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">データ保存先:</span>
+              <span>${SYSTEM_INFO.storageType}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">データ保管期限:</span>
+              <span>${SYSTEM_INFO.retentionPeriod}</span>
+            </div>
           </div>
         </div>
       </div>

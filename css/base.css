@@ -71,6 +71,40 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
+.brand-version {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0;
+  -webkit-text-fill-color: initial;
+}
+
+.home-system-footer {
+  margin-top: auto;
+  padding: var(--spacing-xl) 0 var(--spacing-md) 0;
+  border-top: 1px solid var(--gray-200);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  color: var(--gray-500);
+  font-size: 0.82rem;
+}
+
+.home-system-footer-left,
+.home-system-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .header-nav {
   display: flex;
   align-items: center;

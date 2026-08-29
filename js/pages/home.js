@@ -8,6 +8,7 @@ import { UI } from '../utils/ui.js';
 import { ScannerEngine } from '../scanner.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
+import { APP_VERSION, SYSTEM_INFO } from '../version.js';
 
 export const HomePage = {
   container: null,
@@ -26,8 +27,11 @@ export const HomePage = {
       <div class="view-container">
         <div class="home-hero">
           <div class="home-hero-text">
-            <h1>受講確認票 プロジェクト管理</h1>
-            <p>生徒の受講確認票・申込書のスキャン集計および提出管理を行います</p>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <h1>受講確認票 プロジェクト管理</h1>
+              <span class="badge badge-info" style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; padding: 3px 8px;" title="システムバージョン">${APP_VERSION}</span>
+            </div>
+            <p>生徒の受講確認票・申込書のスキャン集計および提出管理を行います（完全ローカル動作・外部通信なし）</p>
           </div>
           <button id="btn-new-project" class="btn btn-primary btn-lg">
             <span>➕</span> 新規プロジェクト作成
@@ -139,6 +143,25 @@ export const HomePage = {
         }
       }
     }
+
+    // システム情報・バージョンフッター
+    html += `
+      <footer class="home-system-footer">
+        <div class="home-system-footer-left">
+          <span class="font-bold" style="color: var(--gray-800);">受講確認票 処理システム</span>
+          <span class="badge badge-info" style="font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700;">${APP_VERSION}</span>
+          <span style="color: var(--gray-400);">•</span>
+          <span style="color: var(--success-text); font-weight: 600;">🔒 完全ローカル動作（外部通信ゼロ）</span>
+          <span style="color: var(--gray-400);">•</span>
+          <span>データ保持: 3年間</span>
+        </div>
+        <div class="home-system-footer-right">
+          <button id="btn-show-version-info" class="btn btn-ghost btn-sm" style="font-size: 0.8rem; color: var(--primary-600); padding: 2px 8px;">
+            <span>ℹ️</span> システム情報・バージョン詳細
+          </button>
+        </div>
+      </footer>
+    `;
 
     html += `</div>`;
     this.container.innerHTML = html;
@@ -270,6 +293,87 @@ export const HomePage = {
         }
       });
     });
+
+    // システム情報・バージョン詳細モーダル
+    const versionBtn = this.container.querySelector('#btn-show-version-info');
+    if (versionBtn) {
+      versionBtn.addEventListener('click', () => this.openSystemInfoModal());
+    }
+  },
+
+  /**
+   * システム情報・バージョン詳細モーダル
+   */
+  openSystemInfoModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal" style="max-width: 620px;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.25rem;">📑</span>
+            <h3 class="modal-title">システム情報・バージョン詳細</h3>
+          </div>
+          <button class="modal-close" id="btn-close-system-info">✕</button>
+        </div>
+        <div class="modal-body" style="padding: var(--spacing-lg);">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: var(--spacing-md); border-bottom: 1px solid var(--gray-200); margin-bottom: var(--spacing-md);">
+            <div>
+              <div style="font-size: 1.2rem; font-weight: 800; color: var(--gray-900);">${SYSTEM_INFO.name}</div>
+              <div style="color: var(--gray-500); font-size: 0.85rem; margin-top: 2px;">ビルド日付: ${SYSTEM_INFO.buildDate}</div>
+            </div>
+            <span class="badge badge-info" style="font-family: var(--font-mono); font-size: 1rem; font-weight: 700; padding: 4px 12px;">${SYSTEM_INFO.version}</span>
+          </div>
+
+          <div style="display: grid; gap: 12px; margin-bottom: var(--spacing-lg);">
+            <div style="display: flex; justify-content: space-between; font-size: 0.88rem; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius-sm);">
+              <span style="color: var(--gray-600); font-weight: 600;">🔒 セキュリティ・通信方針</span>
+              <span style="color: var(--success-text); font-weight: 700;">完全ローカル動作（外部通信ゼロ）</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.88rem; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius-sm);">
+              <span style="color: var(--gray-600); font-weight: 600;">💾 データ保存先</span>
+              <span style="color: var(--gray-800);">${SYSTEM_INFO.storageType}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.88rem; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius-sm);">
+              <span style="color: var(--gray-600); font-weight: 600;">⏱️ 保管期間ポリシー</span>
+              <span style="color: var(--gray-800);">${SYSTEM_INFO.retentionPeriod}</span>
+            </div>
+          </div>
+
+          <div style="margin-bottom: var(--spacing-lg);">
+            <div style="font-weight: 700; font-size: 0.92rem; color: var(--gray-800); margin-bottom: 8px;">✨ 主要機能・仕様</div>
+            <ul style="padding-left: 20px; font-size: 0.85rem; color: var(--gray-600); line-height: 1.7;">
+              ${SYSTEM_INFO.features.map(f => `<li>${f}</li>`).join('')}
+            </ul>
+          </div>
+
+          <div>
+            <div style="font-weight: 700; font-size: 0.92rem; color: var(--gray-800); margin-bottom: 8px;">📚 組み込みライブラリ（完全オフライン配置）</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.82rem;">
+              <span class="badge badge-gray">Dexie.js (IndexedDBラッパー)</span>
+              <span class="badge badge-gray">SheetJS xlsx (Excel/CSV)</span>
+              <span class="badge badge-gray">PDF.js (スキャンPDF描画)</span>
+              <span class="badge badge-gray">ZXing (CODE 39 バーコード読取)</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end;">
+          <button id="btn-ok-system-info" class="btn btn-primary">閉じる</button>
+        </div>
+      </div>
+    `;
+
+    const close = () => {
+      modal.remove();
+    };
+
+    modal.querySelector('#btn-close-system-info').onclick = close;
+    modal.querySelector('#btn-ok-system-info').onclick = close;
+    modal.onclick = (e) => {
+      if (e.target === modal) close();
+    };
+
+    document.body.appendChild(modal);
   },
 
   /**
