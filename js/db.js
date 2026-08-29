@@ -259,6 +259,173 @@ export const DB = {
   },
 
   /**
+   * 生徒を1名プロジェクトに追加（初期未提出レコードも自動作成）
+   */
+  async addStudentToProject(projectId, { nichinokenId, name, nameKana = '', className }) {
+    const project = await db.projects.get(projectId);
+    if (!project) throw new Error('プロジェクトが見つかりません');
+    if (project.status === '完了') {
+      throw new Error('このプロジェクトは「完了」しているため生徒を追加できません。「進行中に戻す」を行ってから操作してください。');
+    }
+
+    const cleanId = (nichinokenId || '').trim().toUpperCase();
+    const cleanName = (name || '').trim();
+    const cleanKana = (nameKana || '').trim();
+    const cleanClass = (className || '').trim();
+
+    if (!cleanId) throw new Error('日能研番号を入力してください');
+    if (!cleanName) throw new Error('氏名を入力してください');
+    if (!cleanClass) throw new Error('クラス名を入力してください');
+
+    const existing = await this.findStudentByNichinokenId(projectId, cleanId);
+    if (existing) {
+      throw new Error(`日能研番号「${cleanId}」の生徒はすでにこのプロジェクトに登録されています（${existing.name}）`);
+    }
+
+    const studentId = 'stu_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    const submissionId = 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+    const studentRecord = {
+      id: studentId,
+      projectId,
+      nichinokenId: cleanId,
+      name: cleanName,
+      nameKana: cleanKana,
+      className: cleanClass
+    };
+
+    const submissionRecord = {
+      id: submissionId,
+      projectId,
+      studentId,
+      status: '未提出',
+      hasChange: false,
+      enrollmentClass: '',
+      inputMethod: '',
+      approvedBy: '',
+      remarks: '',
+      history: [],
+      submittedAt: null,
+      approvedAt: null
+    };
+
+    await db.transaction('rw', db.students, db.submissions, async () => {
+      await db.students.add(studentRecord);
+      await db.submissions.add(submissionRecord);
+    });
+
+    return studentRecord;
+  },
+
+  /**
+   * 複数生徒をまとめてプロジェクトに追加（CSV追加インポート用）
+   */
+  async addStudentsBulkToProject(projectId, studentsArray) {
+    const project = await db.projects.get(projectId);
+    if (!project) throw new Error('プロジェクトが見つかりません');
+    if (project.status === '完了') {
+      throw new Error('このプロジェクトは「完了」しているため生徒を追加できません。「進行中に戻す」を行ってから操作してください。');
+    }
+
+    const existingStudents = await db.students.where('projectId').equals(projectId).toArray();
+    const existingIdSet = new Set(existingStudents.map(s => s.nichinokenId.toUpperCase()));
+
+    const toAddStudents = [];
+    const toAddSubmissions = [];
+    const addedList = [];
+    const skippedList = [];
+
+    const seenInBatch = new Set();
+
+    for (const s of studentsArray) {
+      const cleanId = (s.nichinokenId || '').trim().toUpperCase();
+      const cleanName = (s.name || '').trim();
+      const cleanKana = (s.nameKana || '').trim();
+      const cleanClass = (s.className || '').trim();
+
+      if (!cleanId || !cleanName || !cleanClass) {
+        skippedList.push({ id: cleanId || '(不明)', name: cleanName, reason: '必須項目不足' });
+        continue;
+      }
+
+      if (existingIdSet.has(cleanId) || seenInBatch.has(cleanId)) {
+        skippedList.push({ id: cleanId, name: cleanName, reason: '番号が既存登録またはファイル内で重複' });
+        continue;
+      }
+
+      seenInBatch.add(cleanId);
+
+      const studentId = 'stu_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      const submissionId = 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+      const stuRec = {
+        id: studentId,
+        projectId,
+        nichinokenId: cleanId,
+        name: cleanName,
+        nameKana: cleanKana,
+        className: cleanClass
+      };
+
+      const subRec = {
+        id: submissionId,
+        projectId,
+        studentId,
+        status: '未提出',
+        hasChange: false,
+        enrollmentClass: '',
+        inputMethod: '',
+        approvedBy: '',
+        remarks: '',
+        history: [],
+        submittedAt: null,
+        approvedAt: null
+      };
+
+      toAddStudents.push(stuRec);
+      toAddSubmissions.push(subRec);
+      addedList.push(stuRec);
+    }
+
+    if (toAddStudents.length > 0) {
+      await db.transaction('rw', db.students, db.submissions, async () => {
+        await db.students.bulkAdd(toAddStudents);
+        await db.submissions.bulkAdd(toAddSubmissions);
+      });
+    }
+
+    return {
+      addedCount: toAddStudents.length,
+      skippedCount: skippedList.length,
+      addedList,
+      skippedList
+    };
+  },
+
+  /**
+   * 生徒をプロジェクトから削除（紐づく提出データ・スキャン画像・変更履歴も完全削除）
+   */
+  async deleteStudentFromProject(projectId, studentId) {
+    const project = await db.projects.get(projectId);
+    if (!project) throw new Error('プロジェクトが見つかりません');
+    if (project.status === '完了') {
+      throw new Error('このプロジェクトは「完了」しているため生徒を削除できません。「進行中に戻す」を行ってから操作してください。');
+    }
+
+    const student = await db.students.get(studentId);
+    if (!student || student.projectId !== projectId) {
+      throw new Error('対象の生徒データが見つかりません');
+    }
+
+    await db.transaction('rw', db.students, db.submissions, async () => {
+      await db.submissions.where('studentId').equals(studentId).delete();
+      await db.students.delete(studentId);
+    });
+
+    return student;
+  },
+
+  /**
    * プロジェクト内のクラス名一覧を取得
    */
   async getProjectClasses(projectId) {
