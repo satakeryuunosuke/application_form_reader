@@ -7,6 +7,7 @@ import time
 import urllib.request
 import websockets
 import sys
+import base64
 import http.server
 import socketserver
 import threading
@@ -271,6 +272,13 @@ async def main():
             """)
             print(f"ListPage table rendered rows: {rowCount}")
             assert rowCount == 5
+
+            # リスト画面のUIスクリーンショットを保存
+            os.makedirs('output', exist_ok=True)
+            shot_res = await send('Page.captureScreenshot', {'format': 'png'})
+            with open('output/list_ui_smart.png', 'wb') as f:
+                f.write(base64.b64decode(shot_res['data']))
+            print("Captured output/list_ui_smart.png successfully")
 
             # 前科目フィルタ (2科) で絞り込み
             await eval_js("""

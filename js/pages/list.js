@@ -17,6 +17,8 @@ export const ListPage = {
   currentPostClassFilter: 'all',
   currentPrevCourseFilter: 'all',
   currentPostCourseFilter: 'all',
+  currentSortKey: 'id',
+  currentSortOrder: 'asc',
   searchQuery: '',
 
   async render(container, project) {
@@ -89,58 +91,99 @@ export const ListPage = {
           </div>
         </div>
 
-        <!-- フィルタバー & エクスポート -->
-        <div class="list-filter-bar">
-          <div class="filter-group-left">
-            <div class="search-input-wrap">
-              <input type="text" id="inp-search" class="form-control" placeholder="🔍 氏名・カナ・日能研番号で検索..." value="${this.searchQuery}">
+        <!-- フィルタ & ソート & エクスポート コントロールカード -->
+        <div class="list-filter-container">
+          <!-- 上段: 検索・ソート・エクスポート -->
+          <div class="filter-main-row">
+            <div class="filter-left-tools">
+              <div class="search-input-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="inp-search" class="form-control filter-search-input" placeholder="氏名・カナ・日能研番号で検索..." value="${this.searchQuery}">
+                <button type="button" id="btn-search-clear" class="btn-search-clear ${this.searchQuery ? '' : 'hidden'}" title="検索をクリア">✕</button>
+              </div>
+
+              <div class="sort-select-wrap ${this.currentSortKey !== 'id' || this.currentSortOrder !== 'asc' ? 'is-active' : ''}" title="一覧の並び順">
+                <span class="sort-label-icon">⇅ 並び順:</span>
+                <select id="sel-sort-order" class="filter-sort-select">
+                  <option value="id-asc" ${this.currentSortKey === 'id' && this.currentSortOrder === 'asc' ? 'selected' : ''}>日能研番号 (昇順)</option>
+                  <option value="id-desc" ${this.currentSortKey === 'id' && this.currentSortOrder === 'desc' ? 'selected' : ''}>日能研番号 (降順)</option>
+                  <option value="name-asc" ${this.currentSortKey === 'name' && this.currentSortOrder === 'asc' ? 'selected' : ''}>氏名 (五十音順)</option>
+                  <option value="name-desc" ${this.currentSortKey === 'name' && this.currentSortOrder === 'desc' ? 'selected' : ''}>氏名 (逆順)</option>
+                  <option value="prevClass-asc" ${this.currentSortKey === 'prevClass' && this.currentSortOrder === 'asc' ? 'selected' : ''}>前クラス順</option>
+                  <option value="date-desc" ${this.currentSortKey === 'date' && this.currentSortOrder === 'desc' ? 'selected' : ''}>日時 (新しい順)</option>
+                  <option value="date-asc" ${this.currentSortKey === 'date' && this.currentSortOrder === 'asc' ? 'selected' : ''}>日時 (古い順)</option>
+                </select>
+              </div>
             </div>
 
-            <select id="sel-filter-status" class="form-control" style="width: 145px;">
-              <option value="all" ${this.currentStatusFilter === 'all' ? 'selected' : ''}>ステータス: すべて</option>
-              <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済のみ</option>
-              <option value="no-change" ${this.currentStatusFilter === 'no-change' ? 'selected' : ''}>変更なし</option>
-              <option value="has-change" ${this.currentStatusFilter === 'has-change' ? 'selected' : ''}>変更あり</option>
-              <option value="not-enrolled" ${this.currentStatusFilter === 'not-enrolled' ? 'selected' : ''}>非受講</option>
-              <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
-            </select>
-
-            <select id="sel-filter-prev-class" class="form-control" style="width: 135px; ${this.currentPrevClassFilter !== 'all' ? 'border-color: var(--primary-600); font-weight: bold; background: var(--primary-50);' : ''}" title="変更前の所属クラスで絞り込み">
-              <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>前クラス: すべて</option>
-              ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c} (前)</option>`).join('')}
-            </select>
-
-            <select id="sel-filter-prev-course" class="form-control" style="width: 120px; ${this.currentPrevCourseFilter !== 'all' ? 'border-color: var(--primary-600); font-weight: bold; background: var(--primary-50);' : ''}" title="変更前の所属科目（4科/2科）で絞り込み">
-              <option value="all" ${this.currentPrevCourseFilter === 'all' ? 'selected' : ''}>前科目: すべて</option>
-              <option value="4科" ${this.currentPrevCourseFilter === '4科' ? 'selected' : ''}>4科 (前)</option>
-              <option value="2科" ${this.currentPrevCourseFilter === '2科' ? 'selected' : ''}>2科 (前)</option>
-            </select>
-
-            <select id="sel-filter-post-class" class="form-control" style="width: 140px; ${this.currentPostClassFilter !== 'all' ? 'border-color: var(--primary-600); font-weight: bold; background: var(--primary-50);' : ''}" title="変更後の確定受講クラスで絞り込み">
-              <option value="all" ${this.currentPostClassFilter === 'all' ? 'selected' : ''}>後クラス: すべて</option>
-              ${postClasses.map(c => `<option value="${c}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${c} (後)</option>`).join('')}
-              <option value="非受講" ${this.currentPostClassFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
-              <option value="unsubmitted" ${this.currentPostClassFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定（未提出）</option>
-            </select>
-
-            <select id="sel-filter-post-course" class="form-control" style="width: 125px; ${this.currentPostCourseFilter !== 'all' ? 'border-color: var(--primary-600); font-weight: bold; background: var(--primary-50);' : ''}" title="変更後の確定受講科目（4科/2科/非受講）で絞り込み">
-              <option value="all" ${this.currentPostCourseFilter === 'all' ? 'selected' : ''}>後科目: すべて</option>
-              <option value="4科" ${this.currentPostCourseFilter === '4科' ? 'selected' : ''}>4科 (後)</option>
-              <option value="2科" ${this.currentPostCourseFilter === '2科' ? 'selected' : ''}>2科 (後)</option>
-              <option value="非受講" ${this.currentPostCourseFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
-              <option value="unsubmitted" ${this.currentPostCourseFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定（未提出）</option>
-            </select>
-
-            <button id="btn-reset-filters" class="btn btn-ghost btn-sm" title="フィルタをリセット">リセット</button>
+            <div class="filter-export-actions">
+              <button id="btn-export-csv" class="btn btn-secondary btn-sm" title="現在の表示一覧をCSVダウンロード">
+                📄 CSV出力
+              </button>
+              <button id="btn-export-excel" class="btn btn-primary btn-sm" title="現在の表示一覧をExcelダウンロード">
+                📊 Excel出力 (.xlsx)
+              </button>
+            </div>
           </div>
 
-          <div style="display: flex; gap: 8px;">
-            <button id="btn-export-csv" class="btn btn-secondary btn-sm">
-              📄 CSV出力
-            </button>
-            <button id="btn-export-excel" class="btn btn-primary btn-sm">
-              📊 Excel出力 (.xlsx)
-            </button>
+          <!-- 下段: 絞り込みバー -->
+          <div class="filter-sub-row">
+            <div class="filter-conditions-group">
+              <span class="filter-row-label">⚡ 絞り込み:</span>
+
+              <!-- ステータス -->
+              <div class="filter-single-select-wrap">
+                <select id="sel-filter-status" class="filter-single-select ${this.currentStatusFilter !== 'all' ? 'is-active' : ''}" title="提出ステータスで絞り込み">
+                  <option value="all" ${this.currentStatusFilter === 'all' ? 'selected' : ''}>状況: すべて</option>
+                  <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済のみ</option>
+                  <option value="no-change" ${this.currentStatusFilter === 'no-change' ? 'selected' : ''}>変更なし</option>
+                  <option value="has-change" ${this.currentStatusFilter === 'has-change' ? 'selected' : ''}>変更あり</option>
+                  <option value="not-enrolled" ${this.currentStatusFilter === 'not-enrolled' ? 'selected' : ''}>非受講</option>
+                  <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
+                </select>
+              </div>
+
+              <!-- 変更前 所属グループ -->
+              <div class="filter-pill-cluster ${this.currentPrevClassFilter !== 'all' || this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前の所属情報">
+                <span class="cluster-tag prev">変更前</span>
+                <select id="sel-filter-prev-class" class="cluster-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="変更前クラス">
+                  <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
+                  ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                </select>
+                <span class="cluster-divider">/</span>
+                <select id="sel-filter-prev-course" class="cluster-select ${this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前科目">
+                  <option value="all" ${this.currentPrevCourseFilter === 'all' ? 'selected' : ''}>科目: すべて</option>
+                  <option value="4科" ${this.currentPrevCourseFilter === '4科' ? 'selected' : ''}>4科</option>
+                  <option value="2科" ${this.currentPrevCourseFilter === '2科' ? 'selected' : ''}>2科</option>
+                </select>
+              </div>
+
+              <!-- 確定後 受講グループ -->
+              <div class="filter-pill-cluster ${this.currentPostClassFilter !== 'all' || this.currentPostCourseFilter !== 'all' ? 'is-active' : ''}" title="確定後の受講情報">
+                <span class="cluster-tag post">確定後</span>
+                <select id="sel-filter-post-class" class="cluster-select ${this.currentPostClassFilter !== 'all' ? 'is-active' : ''}" title="確定後クラス">
+                  <option value="all" ${this.currentPostClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
+                  ${postClasses.map(c => `<option value="${c}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                  <option value="非受講" ${this.currentPostClassFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
+                  <option value="unsubmitted" ${this.currentPostClassFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
+                </select>
+                <span class="cluster-divider">/</span>
+                <select id="sel-filter-post-course" class="cluster-select ${this.currentPostCourseFilter !== 'all' ? 'is-active' : ''}" title="確定後科目">
+                  <option value="all" ${this.currentPostCourseFilter === 'all' ? 'selected' : ''}>科目: すべて</option>
+                  <option value="4科" ${this.currentPostCourseFilter === '4科' ? 'selected' : ''}>4科</option>
+                  <option value="2科" ${this.currentPostCourseFilter === '2科' ? 'selected' : ''}>2科</option>
+                  <option value="非受講" ${this.currentPostCourseFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
+                  <option value="unsubmitted" ${this.currentPostCourseFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="filter-actions-right">
+              <span id="active-filter-badge" class="active-filter-badge hidden"></span>
+              <button id="btn-reset-filters" class="btn-filter-reset" title="絞り込みとソートを初期状態にリセット">
+                <span>↺</span> リセット
+              </button>
+            </div>
           </div>
         </div>
 
@@ -150,20 +193,43 @@ export const ListPage = {
     `;
 
     this.bindEvents();
+    this.updateClassFilterStyles();
     this.applyFiltersAndRenderTable();
   },
 
   bindEvents() {
     const searchInput = this.container.querySelector('#inp-search');
+    const searchClearBtn = this.container.querySelector('#btn-search-clear');
+
     searchInput.oninput = () => {
       this.searchQuery = searchInput.value.trim().toLowerCase();
+      if (searchClearBtn) {
+        if (searchInput.value.length > 0) {
+          searchClearBtn.classList.remove('hidden');
+        } else {
+          searchClearBtn.classList.add('hidden');
+        }
+      }
+      this.updateClassFilterStyles();
       this.applyFiltersAndRenderTable();
     };
+
+    if (searchClearBtn) {
+      searchClearBtn.onclick = () => {
+        searchInput.value = '';
+        this.searchQuery = '';
+        searchClearBtn.classList.add('hidden');
+        searchInput.focus();
+        this.updateClassFilterStyles();
+        this.applyFiltersAndRenderTable();
+      };
+    }
 
     const statusSelect = this.container.querySelector('#sel-filter-status');
     statusSelect.onchange = () => {
       this.currentStatusFilter = statusSelect.value;
       this.updateSummaryCardActive();
+      this.updateClassFilterStyles();
       this.applyFiltersAndRenderTable();
     };
 
@@ -199,6 +265,17 @@ export const ListPage = {
       };
     }
 
+    const sortSelect = this.container.querySelector('#sel-sort-order');
+    if (sortSelect) {
+      sortSelect.onchange = () => {
+        const [key, order] = sortSelect.value.split('-');
+        this.currentSortKey = key;
+        this.currentSortOrder = order;
+        this.updateClassFilterStyles();
+        this.applyFiltersAndRenderTable();
+      };
+    }
+
     const resetBtn = this.container.querySelector('#btn-reset-filters');
     resetBtn.onclick = () => {
       this.searchQuery = '';
@@ -207,12 +284,16 @@ export const ListPage = {
       this.currentPostClassFilter = 'all';
       this.currentPrevCourseFilter = 'all';
       this.currentPostCourseFilter = 'all';
+      this.currentSortKey = 'id';
+      this.currentSortOrder = 'asc';
       searchInput.value = '';
+      if (searchClearBtn) searchClearBtn.classList.add('hidden');
       statusSelect.value = 'all';
       prevClassSelect.value = 'all';
       postClassSelect.value = 'all';
       if (prevCourseSelect) prevCourseSelect.value = 'all';
       if (postCourseSelect) postCourseSelect.value = 'all';
+      if (sortSelect) sortSelect.value = 'id-asc';
       this.updateSummaryCardActive();
       this.updateClassFilterStyles();
       this.applyFiltersAndRenderTable();
@@ -226,6 +307,7 @@ export const ListPage = {
         this.currentStatusFilter = filter;
         statusSelect.value = filter;
         this.updateSummaryCardActive();
+        this.updateClassFilterStyles();
         this.applyFiltersAndRenderTable();
       };
     });
@@ -245,56 +327,62 @@ export const ListPage = {
   },
 
   updateClassFilterStyles() {
-    const prevClassSelect = this.container?.querySelector('#sel-filter-prev-class');
-    if (prevClassSelect) {
-      if (this.currentPrevClassFilter !== 'all') {
-        prevClassSelect.style.borderColor = 'var(--primary-600)';
-        prevClassSelect.style.fontWeight = 'bold';
-        prevClassSelect.style.background = 'var(--primary-50)';
+    if (!this.container) return;
+
+    // ソートラッパーのアクティブ状態
+    const sortWrap = this.container.querySelector('.sort-select-wrap');
+    const isCustomSort = this.currentSortKey !== 'id' || this.currentSortOrder !== 'asc';
+    if (sortWrap) {
+      sortWrap.classList.toggle('is-active', isCustomSort);
+    }
+
+    // ステータスセレクトのアクティブ状態
+    const statusSelect = this.container.querySelector('#sel-filter-status');
+    if (statusSelect) {
+      statusSelect.classList.toggle('is-active', this.currentStatusFilter !== 'all');
+    }
+
+    // 前クラスタのアクティブ状態
+    const prevCluster = this.container.querySelector('.filter-pill-cluster:nth-of-type(1)');
+    const prevClassSelect = this.container.querySelector('#sel-filter-prev-class');
+    const prevCourseSelect = this.container.querySelector('#sel-filter-prev-course');
+    const isPrevActive = this.currentPrevClassFilter !== 'all' || this.currentPrevCourseFilter !== 'all';
+    if (prevCluster) prevCluster.classList.toggle('is-active', isPrevActive);
+    if (prevClassSelect) prevClassSelect.classList.toggle('is-active', this.currentPrevClassFilter !== 'all');
+    if (prevCourseSelect) prevCourseSelect.classList.toggle('is-active', this.currentPrevCourseFilter !== 'all');
+
+    // 後クラスタのアクティブ状態
+    const postCluster = this.container.querySelector('.filter-pill-cluster:nth-of-type(2)');
+    const postClassSelect = this.container.querySelector('#sel-filter-post-class');
+    const postCourseSelect = this.container.querySelector('#sel-filter-post-course');
+    const isPostActive = this.currentPostClassFilter !== 'all' || this.currentPostCourseFilter !== 'all';
+    if (postCluster) postCluster.classList.toggle('is-active', isPostActive);
+    if (postClassSelect) postClassSelect.classList.toggle('is-active', this.currentPostClassFilter !== 'all');
+    if (postCourseSelect) postCourseSelect.classList.toggle('is-active', this.currentPostCourseFilter !== 'all');
+
+    // アクティブな絞り込み件数の計算
+    let activeFilterCount = 0;
+    if (this.searchQuery) activeFilterCount++;
+    if (this.currentStatusFilter !== 'all') activeFilterCount++;
+    if (this.currentPrevClassFilter !== 'all') activeFilterCount++;
+    if (this.currentPrevCourseFilter !== 'all') activeFilterCount++;
+    if (this.currentPostClassFilter !== 'all') activeFilterCount++;
+    if (this.currentPostCourseFilter !== 'all') activeFilterCount++;
+
+    const badge = this.container.querySelector('#active-filter-badge');
+    if (badge) {
+      if (activeFilterCount > 0) {
+        badge.textContent = `${activeFilterCount}件 絞り込み中`;
+        badge.classList.remove('hidden');
       } else {
-        prevClassSelect.style.borderColor = '';
-        prevClassSelect.style.fontWeight = '';
-        prevClassSelect.style.background = '';
+        badge.classList.add('hidden');
       }
     }
 
-    const postClassSelect = this.container?.querySelector('#sel-filter-post-class');
-    if (postClassSelect) {
-      if (this.currentPostClassFilter !== 'all') {
-        postClassSelect.style.borderColor = 'var(--primary-600)';
-        postClassSelect.style.fontWeight = 'bold';
-        postClassSelect.style.background = 'var(--primary-50)';
-      } else {
-        postClassSelect.style.borderColor = '';
-        postClassSelect.style.fontWeight = '';
-        postClassSelect.style.background = '';
-      }
-    }
-
-    const prevCourseSelect = this.container?.querySelector('#sel-filter-prev-course');
-    if (prevCourseSelect) {
-      if (this.currentPrevCourseFilter !== 'all') {
-        prevCourseSelect.style.borderColor = 'var(--primary-600)';
-        prevCourseSelect.style.fontWeight = 'bold';
-        prevCourseSelect.style.background = 'var(--primary-50)';
-      } else {
-        prevCourseSelect.style.borderColor = '';
-        prevCourseSelect.style.fontWeight = '';
-        prevCourseSelect.style.background = '';
-      }
-    }
-
-    const postCourseSelect = this.container?.querySelector('#sel-filter-post-course');
-    if (postCourseSelect) {
-      if (this.currentPostCourseFilter !== 'all') {
-        postCourseSelect.style.borderColor = 'var(--primary-600)';
-        postCourseSelect.style.fontWeight = 'bold';
-        postCourseSelect.style.background = 'var(--primary-50)';
-      } else {
-        postCourseSelect.style.borderColor = '';
-        postCourseSelect.style.fontWeight = '';
-        postCourseSelect.style.background = '';
-      }
+    const resetBtn = this.container.querySelector('#btn-reset-filters');
+    if (resetBtn) {
+      const hasAnyNonDefault = activeFilterCount > 0 || isCustomSort;
+      resetBtn.classList.toggle('is-highlighted', hasAnyNonDefault);
     }
   },
 
@@ -307,6 +395,21 @@ export const ListPage = {
         card.classList.remove('active-filter');
       }
     });
+  },
+
+  getSortHeaderHtml(label, sortKey, colClass, subLabel = '') {
+    const isSorted = this.currentSortKey === sortKey;
+    const orderClass = isSorted ? (this.currentSortOrder === 'asc' ? 'sorted-asc' : 'sorted-desc') : '';
+    const icon = isSorted ? (this.currentSortOrder === 'asc' ? '▲' : '▼') : '↕';
+    return `
+      <th class="${colClass} sortable-th ${orderClass}" data-sort="${sortKey}" title="${label}で並び替え">
+        <span style="display: inline-flex; align-items: center; gap: 2px;">
+          ${label}
+          <span class="sort-icon">${icon}</span>
+        </span>
+        ${subLabel ? `<span class="th-sub">${subLabel}</span>` : ''}
+      </th>
+    `;
   },
 
   applyFiltersAndRenderTable() {
@@ -378,6 +481,55 @@ export const ListPage = {
       return true;
     });
 
+    // 5. ソート処理（デフォルト：日能研番号昇順）
+    this.filteredList.sort((a, b) => {
+      let cmp = 0;
+      switch (this.currentSortKey) {
+        case 'id':
+          cmp = (a.nichinokenId || '').localeCompare(b.nichinokenId || '', undefined, { numeric: true, sensitivity: 'base' });
+          break;
+        case 'name': {
+          const nameA = a.nameKana || a.name || '';
+          const nameB = b.nameKana || b.name || '';
+          cmp = nameA.localeCompare(nameB, 'ja');
+          if (cmp === 0) {
+            cmp = (a.name || '').localeCompare(b.name || '', 'ja');
+          }
+          break;
+        }
+        case 'prevClass':
+          cmp = (a.className || '').localeCompare(b.className || '', undefined, { numeric: true });
+          break;
+        case 'prevCourse':
+          cmp = (a.course || '4科').localeCompare(b.course || '4科', 'ja');
+          break;
+        case 'status':
+          cmp = (a.status || '').localeCompare(b.status || '', 'ja');
+          break;
+        case 'postClass':
+          cmp = (a.enrollmentClass || '').localeCompare(b.enrollmentClass || '', undefined, { numeric: true });
+          break;
+        case 'postCourse':
+          cmp = (a.enrollmentCourse || '').localeCompare(b.enrollmentCourse || '', 'ja');
+          break;
+        case 'date': {
+          const timeA = new Date(a.approvedAt || a.submittedAt || 0).getTime();
+          const timeB = new Date(b.approvedAt || b.submittedAt || 0).getTime();
+          cmp = timeA - timeB;
+          break;
+        }
+        default:
+          cmp = (a.nichinokenId || '').localeCompare(b.nichinokenId || '', undefined, { numeric: true });
+      }
+
+      // タイブレーク：日能研番号自然昇順
+      if (cmp === 0) {
+        cmp = (a.nichinokenId || '').localeCompare(b.nichinokenId || '', undefined, { numeric: true });
+      }
+
+      return this.currentSortOrder === 'desc' ? -cmp : cmp;
+    });
+
     const tableArea = this.container.querySelector('#table-render-area');
     if (this.filteredList.length === 0) {
       tableArea.innerHTML = `
@@ -398,17 +550,17 @@ export const ListPage = {
         <table class="table submission-list-table">
           <thead>
             <tr>
-              <th class="col-id">日能研番号</th>
-              <th class="col-name">氏名</th>
-              <th class="col-kana">氏名カナ</th>
-              <th class="col-compact-class">前クラス<span class="th-sub">(所属)</span></th>
-              <th class="col-compact-course">前科目<span class="th-sub">(所属)</span></th>
-              <th class="col-status">提出状況</th>
-              <th class="col-compact-class">確定クラス<span class="th-sub">(後)</span></th>
-              <th class="col-compact-course">確定科目<span class="th-sub">(後)</span></th>
+              ${this.getSortHeaderHtml('日能研番号', 'id', 'col-id')}
+              ${this.getSortHeaderHtml('氏名', 'name', 'col-name')}
+              ${this.getSortHeaderHtml('氏名カナ', 'name', 'col-kana')}
+              ${this.getSortHeaderHtml('前クラス', 'prevClass', 'col-compact-class', '(所属)')}
+              ${this.getSortHeaderHtml('前科目', 'prevCourse', 'col-compact-course', '(所属)')}
+              ${this.getSortHeaderHtml('提出状況', 'status', 'col-status')}
+              ${this.getSortHeaderHtml('確定クラス', 'postClass', 'col-compact-class', '(後)')}
+              ${this.getSortHeaderHtml('確定科目', 'postCourse', 'col-compact-course', '(後)')}
               <th class="col-method">受付方法</th>
               <th class="col-approver">承認者</th>
-              <th class="col-date">日時</th>
+              ${this.getSortHeaderHtml('日時', 'date', 'col-date')}
               <th class="col-remarks">特記事項</th>
               <th class="col-history" style="text-align: center;">変更履歴</th>
             </tr>
@@ -474,6 +626,29 @@ export const ListPage = {
     `;
 
     tableArea.innerHTML = html;
+
+    // テーブルヘッダークリックでのソート連動
+    tableArea.querySelectorAll('th.sortable-th').forEach(th => {
+      th.onclick = () => {
+        const sortKey = th.dataset.sort;
+        if (this.currentSortKey === sortKey) {
+          this.currentSortOrder = this.currentSortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.currentSortKey = sortKey;
+          this.currentSortOrder = sortKey === 'date' ? 'desc' : 'asc';
+        }
+
+        const sortSelect = this.container.querySelector('#sel-sort-order');
+        if (sortSelect) {
+          const val = `${this.currentSortKey}-${this.currentSortOrder}`;
+          if (sortSelect.querySelector(`option[value="${val}"]`)) {
+            sortSelect.value = val;
+          }
+        }
+        this.updateClassFilterStyles();
+        this.applyFiltersAndRenderTable();
+      };
+    });
 
     // 履歴ボタンのイベントバインド
     tableArea.querySelectorAll('.btn-view-history').forEach(btn => {
