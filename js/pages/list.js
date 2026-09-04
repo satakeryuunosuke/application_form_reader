@@ -6,6 +6,8 @@ import { DB } from '../db.js';
 import { CsvUtil } from '../utils/csv.js';
 import { UI } from '../utils/ui.js';
 import { ProjectPage } from './project.js';
+import { FolderConnector } from '../sync/folder-connector.js';
+import { SyncManager } from '../sync/sync-manager.js';
 
 export const ListPage = {
   container: null,
@@ -33,6 +35,8 @@ export const ListPage = {
     this.allStudentsWithSubmissions = await DB.getProjectStudentsWithSubmissions(project.id);
     const classes = await DB.getProjectClasses(project.id);
     const stats = await DB.getProjectStats(project.id);
+    const isFolderConnected = FolderConnector.isConnected();
+    const lastSync = SyncManager.getLastSyncTime(project.id);
 
     // 変更前クラス一覧
     const prevClasses = classes;
@@ -117,6 +121,11 @@ export const ListPage = {
             </div>
 
             <div class="filter-export-actions">
+              ${isFolderConnected ? `
+                <button id="btn-list-sync" class="btn btn-secondary btn-sm" title="共有フォルダから最新の差分イベントを取り込んで一覧を更新">
+                  🔄 最新に更新 ${lastSync ? `<span style="font-size: 0.72rem; color: var(--gray-500);">(${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>` : ''}
+                </button>
+              ` : ''}
               <button id="btn-export-csv" class="btn btn-secondary btn-sm" title="現在の表示一覧をCSVダウンロード">
                 📄 CSV出力
               </button>
@@ -311,6 +320,24 @@ export const ListPage = {
         this.applyFiltersAndRenderTable();
       };
     });
+
+    // 共有フォルダ同期ボタン
+    const syncBtn = this.container.querySelector('#btn-list-sync');
+    if (syncBtn) {
+      syncBtn.onclick = async () => {
+        syncBtn.disabled = true;
+        syncBtn.textContent = '🔄 更新中...';
+        try {
+          const res = await SyncManager.syncFromSharedFolder(this.project.id);
+          UI.showToast(`最新データを取得しました（新規イベント: ${res.newEventsCount}件）`, 'success');
+          await this.render(this.container, this.project);
+        } catch (e) {
+          UI.showToast(`同期エラー: ${e.message}`, 'error');
+          syncBtn.disabled = false;
+          syncBtn.textContent = '🔄 最新に更新';
+        }
+      };
+    }
 
     // 出力
     this.container.querySelector('#btn-export-csv').onclick = () => {

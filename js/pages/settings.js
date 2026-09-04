@@ -1,5 +1,5 @@
 /**
- * 設定画面コントローラー（職員マスタ・共通既定書式設定・JSONバックアップ・3年アーカイブ管理）
+ * 設定画面コントローラー（職員マスタ・共通既定書式設定・共有フォルダ連携・JSONバックアップ・3年アーカイブ管理）
  */
 
 import { DB } from '../db.js';
@@ -8,6 +8,9 @@ import { CsvUtil } from '../utils/csv.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
 import { APP_VERSION, SYSTEM_INFO } from '../version.js';
+import { FolderConnector } from '../sync/folder-connector.js';
+import { SyncManager } from '../sync/sync-manager.js';
+import { PendingQueue } from '../sync/pending-queue.js';
 
 export const SettingsPage = {
   container: null,
@@ -16,8 +19,19 @@ export const SettingsPage = {
 
   async render(container) {
     this.container = container;
+
+    // 共有フォルダ接続中なら最新の共有設定を読み込み
+    if (FolderConnector.isConnected()) {
+      await SyncManager.readSharedSettings();
+    }
+
     const settings = await DB.getSettings();
     const expiredProjects = await DB.getExpiredProjects(3);
+    const clientId = await SyncManager.getClientId();
+    const isSupported = FolderConnector.isSupported();
+    const isConnected = FolderConnector.isConnected();
+    const folderName = FolderConnector.getFolderName();
+    const pendingCount = await PendingQueue.getPendingCount();
 
     const staffList = settings.staffNames || [];
     const systemDefaultTemplate = CheckboxEngine.getDefaultTemplate();
@@ -29,17 +43,95 @@ export const SettingsPage = {
       <div class="view-container" style="max-width: 980px; margin: 0 auto;">
         <div style="margin-bottom: var(--spacing-xl);">
           <h1 style="font-size: 1.85rem; font-weight: 800; color: var(--gray-900);">⚙️ システム設定</h1>
-          <p style="color: var(--gray-500); margin-top: 4px;">職員マスタ、交換票（受講確認票）の共通既定書式、バックアップおよびデータ整理を行います</p>
+          <p style="color: var(--gray-500); margin-top: 4px;">共有フォルダ連携、職員マスタ、交換票（受講確認票）の共通既定書式、バックアップおよびデータ整理を行います</p>
+        </div>
+
+        <!-- 0. 共有フォルダ連携（複数PC共有） -->
+        <div class="card" style="margin-bottom: var(--spacing-lg); border-left: 4px solid var(--primary-600);">
+          <div class="card-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h2 class="card-title">📁 共有フォルダ連携（サーバーレス複数PC共有）</h2>
+              <span class="badge ${isConnected ? 'badge-success' : 'badge-gray'}">
+                ${isConnected ? '🟢 接続中' : '⚪ 未接続 (ローカル専用)'}
+              </span>
+            </div>
+            ${isConnected ? `<button id="btn-sync-settings-now" class="btn btn-secondary btn-sm" title="共有フォルダから最新の職員名・共通書式を再取得">🔄 共有設定を同期</button>` : ''}
+          </div>
+          <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
+            社内LANのファイルサーバーや共有フォルダを指定することで、外部サーバーを介さずに複数台のPC間で受講確認状況の閲覧・手動登録・職員名・共通書式を共有できます（File System Access API）。
+          </p>
+
+          ${!isSupported ? `
+            <div class="card" style="background: var(--warning-bg); border: 1px solid var(--warning-border); padding: 12px 16px; margin-bottom: var(--spacing-md);">
+              <div style="color: var(--warning-text); font-size: 0.88rem;">
+                ⚠️ <strong>ご利用中のブラウザは共有フォルダ接続に対応していません。</strong><br>
+                複数PC共有機能をご利用になるには、PC版 Google Chrome または Microsoft Edge をご利用ください。
+              </div>
+            </div>
+          ` : `
+            <div style="display: grid; gap: 14px; margin-bottom: var(--spacing-md);">
+              <!-- 接続状態とボタン -->
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--gray-50); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--gray-200);">
+                <div>
+                  <div style="font-size: 0.78rem; color: var(--gray-500);">接続先フォルダ</div>
+                  <div style="font-size: 0.95rem; font-weight: 700; color: var(--gray-800); word-break: break-all;">
+                    ${isConnected ? `📂 ${folderName}` : '未接続（ローカル IndexedDB のみで動作中）'}
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  ${isConnected ? `
+                    <button id="btn-disconnect-folder" class="btn btn-secondary btn-sm">🔌 接続解除</button>
+                  ` : `
+                    <button id="btn-connect-folder" class="btn btn-primary btn-sm">📁 共有フォルダを接続</button>
+                  `}
+                </div>
+              </div>
+
+              <!-- 端末識別子 (clientId) と 未送信キュー -->
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                <!-- 端末識別子 -->
+                <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--gray-200);">
+                  <div style="font-size: 0.78rem; color: var(--gray-500); margin-bottom: 4px;">このPCの識別名 (端末ID)</div>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="text" id="inp-client-id" class="form-control text-mono font-bold" value="${clientId}" style="font-size: 0.88rem; padding: 4px 8px;">
+                    <button id="btn-save-client-id" class="btn btn-secondary btn-sm" style="white-space: nowrap;">変更</button>
+                  </div>
+                  <div style="font-size: 0.72rem; color: var(--gray-400); margin-top: 3px;">イベントログの差分記録元として記録されます</div>
+                </div>
+
+                <!-- 未送信キュー -->
+                <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--gray-200); display: flex; flex-direction: column; justify-content: space-between;">
+                  <div>
+                    <div style="font-size: 0.78rem; color: var(--gray-500); margin-bottom: 4px;">未送信イベント（オフライン保留）</div>
+                    <div style="font-size: 0.95rem; font-weight: 700; color: ${pendingCount > 0 ? 'var(--warning-text)' : 'var(--success-text)'};">
+                      ${pendingCount > 0 ? `⚠️ ${pendingCount} 件 保留中` : '✅ 保留なし (すべて同期済)'}
+                    </div>
+                  </div>
+                  <div style="margin-top: 6px;">
+                    <button id="btn-flush-queue" class="btn btn-secondary btn-sm" style="width: 100%;" ${pendingCount === 0 || !isConnected ? 'disabled' : ''}>
+                      📤 保留データを今すぐ送信
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `}
         </div>
 
         <!-- 1. 職員マスタ管理 -->
         <div class="card" style="margin-bottom: var(--spacing-lg);">
           <div class="card-header">
-            <h2 class="card-title">👥 職員マスタ設定</h2>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h2 class="card-title">👥 職員マスタ設定</h2>
+              <span class="badge ${isConnected ? 'badge-info' : 'badge-gray'}" style="font-size: 0.75rem;">
+                ${isConnected ? '全PC共有' : 'ローカル'}
+              </span>
+            </div>
             <span class="badge badge-gray">${staffList.length} 名登録</span>
           </div>
           <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
             確認票の承認作業者・手動受付者としてプルダウンに表示される職員名を設定します。
+            ${isConnected ? '共有フォルダ接続中は自動的に全PC間で共有・同期されます。' : ''}
           </p>
 
           <div style="display: flex; gap: 8px; margin-bottom: var(--spacing-md);">
@@ -62,12 +154,16 @@ export const SettingsPage = {
           <div class="card-header">
             <div style="display: flex; align-items: center; gap: 8px;">
               <h2 class="card-title">📐 交換票（受講確認票）の共通既定書式設定</h2>
+              <span class="badge ${isConnected ? 'badge-info' : 'badge-gray'}" style="font-size: 0.75rem;">
+                ${isConnected ? '全PC共有' : 'ローカル'}
+              </span>
             </div>
             <span class="badge badge-info">新規プロジェクト適用</span>
           </div>
           <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
             新しく作成するプロジェクトの初期書式として適用される、受講確認票（交換票）の共通既定書式（バーコードからのチェックボックス相対位置・サイズ・判定閾値）を設定します。<br>
             ※ サンプル帳票やお手元のPDF/画像を読み込んで位置を合わせ、右下の「<strong>💾 共通既定書式を保存</strong>」を押してください。
+            ${isConnected ? '（共有フォルダ接続中は全PCに共有されます）' : ''}
           </p>
 
           <div id="settings-calib-mount" style="margin-bottom: var(--spacing-md);"></div>
@@ -167,7 +263,11 @@ export const SettingsPage = {
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span class="text-muted">セキュリティ・通信方針:</span>
-              <span style="color: var(--success-text); font-weight: 600;">完全ローカル動作 (外部通信ゼロ)</span>
+              <span style="color: var(--success-text); font-weight: 600;">完全ローカル動作 (外部サーバー通信ゼロ)</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">複数PC共有方式:</span>
+              <span style="font-weight: 600;">File System Access API (LAN共有フォルダ差分ログ同期)</span>
             </div>
             <div style="display: flex; justify-content: space-between;">
               <span class="text-muted">データ保存先:</span>
@@ -203,6 +303,92 @@ export const SettingsPage = {
   },
 
   bindEvents(settings, staffList, systemDefaultTemplate) {
+    // 共有フォルダ接続
+    const connectFolderBtn = this.container.querySelector('#btn-connect-folder');
+    if (connectFolderBtn) {
+      connectFolderBtn.onclick = async () => {
+        try {
+          await FolderConnector.connect();
+          UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
+          // 接続直後に共有設定を同期
+          await SyncManager.readSharedSettings();
+          await this.render(this.container);
+        } catch (err) {
+          UI.showToast(err.message, 'warning');
+        }
+      };
+    }
+
+    // 共有フォルダ切断
+    const disconnectFolderBtn = this.container.querySelector('#btn-disconnect-folder');
+    if (disconnectFolderBtn) {
+      disconnectFolderBtn.onclick = async () => {
+        const ok = await UI.confirm(
+          '共有フォルダの接続解除',
+          '共有フォルダの接続を解除しますか？\n（解除後はローカル専用モードで動作し、いつでも再接続できます）',
+          '接続を解除',
+          'warning'
+        );
+        if (ok) {
+          await FolderConnector.disconnect();
+          UI.showToast('共有フォルダの接続を解除しました', 'info');
+          await this.render(this.container);
+        }
+      };
+    }
+
+    // 共有設定の手動同期
+    const syncSettingsBtn = this.container.querySelector('#btn-sync-settings-now');
+    if (syncSettingsBtn) {
+      syncSettingsBtn.onclick = async () => {
+        try {
+          const res = await SyncManager.readSharedSettings();
+          if (res) {
+            UI.showToast('共有フォルダから職員名・共通書式を最新化しました', 'success');
+          } else {
+            UI.showToast('共有設定が見つからないか、最新の状態です', 'info');
+          }
+          await this.render(this.container);
+        } catch (err) {
+          UI.showToast(`設定同期エラー: ${err.message}`, 'error');
+        }
+      };
+    }
+
+    // 端末ID (clientId) の変更
+    const saveClientIdBtn = this.container.querySelector('#btn-save-client-id');
+    const clientIdInput = this.container.querySelector('#inp-client-id');
+    if (saveClientIdBtn && clientIdInput) {
+      saveClientIdBtn.onclick = async () => {
+        const val = clientIdInput.value.trim();
+        if (!val) {
+          UI.showToast('端末IDを入力してください', 'warning');
+          return;
+        }
+        await SyncManager.setClientId(val);
+        UI.showToast(`端末識別子を「${val}」に変更しました`, 'success');
+      };
+    }
+
+    // 未送信キューのフラッシュ
+    const flushQueueBtn = this.container.querySelector('#btn-flush-queue');
+    if (flushQueueBtn) {
+      flushQueueBtn.onclick = async () => {
+        flushQueueBtn.disabled = true;
+        flushQueueBtn.textContent = '送信中...';
+        try {
+          const res = await PendingQueue.flush(async (pId, ev) => {
+            return await SyncManager.writeEventDirectly(pId, ev);
+          });
+          UI.showToast(`未送信イベントを送信しました（成功: ${res.flushed}件, 失敗: ${res.failed}件）`, res.failed > 0 ? 'warning' : 'success');
+          await this.render(this.container);
+        } catch (err) {
+          UI.showToast(`キュー送信エラー: ${err.message}`, 'error');
+          flushQueueBtn.disabled = false;
+        }
+      };
+    }
+
     // 職員追加
     const staffInput = this.container.querySelector('#inp-new-staff');
     const addStaffBtn = this.container.querySelector('#btn-add-staff');
@@ -216,7 +402,7 @@ export const SettingsPage = {
       }
       staffList.push(name);
       await DB.saveSettings({ ...settings, staffNames: staffList });
-      UI.showToast(`「${name}」を追加しました`, 'success');
+      UI.showToast(`「${name}」を追加しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'success');
       this.render(this.container);
     };
 
@@ -232,7 +418,7 @@ export const SettingsPage = {
         const delName = staffList[idx];
         staffList.splice(idx, 1);
         await DB.saveSettings({ ...settings, staffNames: staffList });
-        UI.showToast(`「${delName}」を削除しました`, 'info');
+        UI.showToast(`「${delName}」を削除しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'info');
         this.render(this.container);
       };
     });
@@ -254,7 +440,7 @@ export const SettingsPage = {
             checkThreshold: templateToSave.threshold !== undefined ? templateToSave.threshold : 0.25
           };
           await DB.saveSettings(updatedSettings);
-          UI.showToast('交換票（受講確認票）の共通既定書式を保存しました', 'success');
+          UI.showToast(`交換票（受講確認票）の共通既定書式を保存しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'success');
         } catch (err) {
           UI.showToast(`保存エラー: ${err.message}`, 'error');
         }

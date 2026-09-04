@@ -6,6 +6,7 @@ import { DB } from './db.js';
 import { HomePage } from './pages/home.js';
 import { ProjectPage } from './pages/project.js';
 import { SettingsPage } from './pages/settings.js';
+import { FolderConnector } from './sync/folder-connector.js';
 
 class App {
   constructor() {
@@ -13,9 +14,28 @@ class App {
     this.navLinks = document.querySelectorAll('.nav-link');
   }
 
+  updateSyncIndicator() {
+    const indicator = document.getElementById('header-sync-indicator');
+    if (!indicator) return;
+    if (FolderConnector.isConnected()) {
+      indicator.textContent = `🟢 共有中: ${FolderConnector.getFolderName()}`;
+      indicator.className = 'badge badge-success';
+      indicator.title = `共有フォルダ「${FolderConnector.getFolderName()}」に接続中（クリックで設定へ）`;
+    } else {
+      indicator.textContent = '⚪ ローカル';
+      indicator.className = 'badge badge-gray';
+      indicator.title = '共有フォルダ未接続（クリックで設定へ）';
+    }
+    indicator.onclick = (e) => {
+      e.preventDefault();
+      window.location.hash = '#settings';
+    };
+  }
+
   async init() {
     try {
       await DB.init();
+      this.updateSyncIndicator();
       window.addEventListener('hashchange', () => this.handleRoute());
       this.handleRoute();
     } catch (err) {
@@ -32,6 +52,7 @@ class App {
   }
 
   async handleRoute() {
+    this.updateSyncIndicator();
     const hash = window.location.hash || '#home';
     const parts = hash.replace(/^#/, '').split('/');
     const route = parts[0] || 'home';

@@ -312,7 +312,8 @@ textarea.form-control {
   animation: modalFadeIn 0.2s ease-out;
 }
 
-.modal-content {
+.modal-content,
+.modal {
   background: #fff;
   border-radius: var(--radius-xl);
   max-width: 600px;
@@ -325,21 +326,25 @@ textarea.form-control {
   animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.modal-content.modal-lg {
+.modal-content.modal-lg,
+.modal.modal-lg {
   max-width: 800px;
 }
 
-.modal-content.modal-xl {
+.modal-content.modal-xl,
+.modal.modal-xl {
   max-width: 1020px;
 }
 
-.modal-content.modal-2xl {
+.modal-content.modal-2xl,
+.modal.modal-2xl {
   max-width: 95vw;
   width: 1450px;
   max-height: 94vh;
 }
 
-.modal-content.modal-fullscreen {
+.modal-content.modal-fullscreen,
+.modal.modal-fullscreen {
   max-width: 99vw !important;
   width: 99vw !important;
   max-height: 98vh !important;
@@ -395,6 +400,106 @@ textarea.form-control {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-sm);
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  color: var(--gray-400);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+/* Wizard Stepper */
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--gray-200);
+  gap: 8px;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.wizard-step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--gray-300);
+  color: var(--gray-500);
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+}
+
+.wizard-step-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.wizard-step.active .wizard-step-circle {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+
+.wizard-step.active .wizard-step-label {
+  color: var(--primary-700);
+  font-weight: 700;
+}
+
+.wizard-step.completed .wizard-step-circle {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+  color: #fff;
+}
+
+.wizard-step.completed .wizard-step-label {
+  color: var(--gray-700);
+  font-weight: 600;
+}
+
+.wizard-step-line {
+  flex: 1;
+  height: 2px;
+  background: var(--gray-200);
+  min-width: 20px;
+  margin: 0 4px;
+  transition: background var(--transition-fast);
+}
+
+.wizard-step-line.active {
+  background: var(--primary-600);
 }
 
 @keyframes modalFadeIn {
@@ -1119,5 +1224,39 @@ textarea.form-control {
   pointer-events: none;
   backdrop-filter: blur(4px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ==========================================================================
+   Sync & Review Components
+   ========================================================================== */
+.review-split-container {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.25fr) minmax(340px, 1fr);
+  gap: var(--spacing-md);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .review-split-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-sync-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#header-sync-indicator {
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+#header-sync-indicator:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
 }
 

@@ -1,5 +1,5 @@
 /**
- * ホーム画面コントローラー（プロジェクト一覧 & 新規作成ウィザード）
+ * ホーム画面コントローラー（プロジェクト一覧 & 新規作成ウィザード & 共有フォルダ取り込み）
  */
 
 import { DB } from '../db.js';
@@ -9,16 +9,28 @@ import { ScannerEngine } from '../scanner.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
 import { APP_VERSION, SYSTEM_INFO } from '../version.js';
+import { FolderConnector } from '../sync/folder-connector.js';
+import { SyncManager } from '../sync/sync-manager.js';
 
 export const HomePage = {
   container: null,
   currentFilter: 'all', // 'all' | 'active' | 'completed'
+  sharedProjectsList: [],
 
   async render(container) {
     this.container = container;
     const currentYear = new Date().getFullYear();
     const projects = await DB.getProjects();
     const expiredProjects = await DB.getExpiredProjects(3);
+
+    const isFolderConnected = FolderConnector.isConnected();
+    const isSupported = FolderConnector.isSupported();
+    const folderName = FolderConnector.getFolderName();
+
+    this.sharedProjectsList = isFolderConnected ? await DB.getSharedProjects() : [];
+    const unimportedShared = isFolderConnected
+      ? this.sharedProjectsList.filter(sp => !projects.some(lp => lp.id === sp.meta.id))
+      : [];
 
     const activeProjects = projects.filter(p => p.status !== '完了');
     const completedProjects = projects.filter(p => p.status === '完了');
@@ -32,6 +44,21 @@ export const HomePage = {
               <span class="badge badge-info" style="font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; padding: 3px 8px;" title="システムバージョン">${APP_VERSION}</span>
             </div>
             <p>生徒の受講確認票・申込書のスキャン集計および提出管理を行います（完全ローカル動作・外部通信なし）</p>
+
+            <!-- 共有フォルダ状態バー -->
+            <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              ${isFolderConnected ? `
+                <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-full); padding: 4px 12px; font-size: 0.82rem;">
+                  <span style="color: var(--success-solid); font-weight: 700;">🟢 共有フォルダ同期中:</span>
+                  <span class="font-bold text-mono" style="color: var(--gray-800);">${folderName}</span>
+                  <button id="btn-home-refresh-shared" class="btn btn-ghost btn-sm" style="padding: 1px 6px; font-size: 0.76rem; color: var(--primary-600);" title="最新のプロジェクト・イベントを再確認">🔄 更新</button>
+                </div>
+              ` : (isSupported ? `
+                <button id="btn-home-connect-folder" class="btn btn-secondary btn-sm" style="font-size: 0.82rem; padding: 5px 12px;" title="社内LANのファイル共有フォルダを接続して複数PC間で連携">
+                  📁 共有フォルダを接続（複数PC連携）
+                </button>
+              ` : '')}
+            </div>
           </div>
           <button id="btn-new-project" class="btn btn-primary btn-lg">
             <span>➕</span> 新規プロジェクト作成
@@ -56,7 +83,50 @@ export const HomePage = {
       `;
     }
 
-    if (projects.length === 0) {
+    // 共有フォルダ上の未取込プロジェクト案内セクション
+    if (unimportedShared.length > 0) {
+      html += `
+        <section class="home-section" style="border: 2px dashed var(--primary-400); background: #f0f7ff; border-radius: var(--radius-lg); padding: var(--spacing-lg); margin-bottom: var(--spacing-xl);">
+          <div class="home-section-header" style="margin-bottom: 8px;">
+            <div class="home-section-title" style="color: var(--primary-800);">
+              <span>📥 共有フォルダから取り込めるプロジェクト</span>
+              <span class="badge badge-info" style="font-size: 0.82rem;">${unimportedShared.length} 件</span>
+            </div>
+          </div>
+          <p style="font-size: 0.86rem; color: var(--gray-700); margin-bottom: var(--spacing-md); line-height: 1.5;">
+            他のPC（メインPC等）によって共有フォルダに作成されたプロジェクトが見つかりました。<br>
+            「<strong>このPCに取り込む</strong>」を押すと、最新の生徒リストと提出状況を取得し、このPCからも提出状況の閲覧や手動登録を行えるようになります。
+          </p>
+          <div class="project-grid">
+            ${unimportedShared.map(sp => `
+              <div class="project-card" style="border: 1px solid var(--primary-300); background: #ffffff;">
+                <div>
+                  <div class="project-card-top">
+                    <div class="project-meta-badges">
+                      <span class="badge badge-info">${sp.meta.year}年度</span>
+                      <span class="badge badge-purple">${sp.meta.grade}年生</span>
+                      <span class="badge badge-success">${sp.meta.sessionName}講習</span>
+                      <span class="badge badge-gray" style="font-size: 0.72rem;">未取り込み</span>
+                    </div>
+                  </div>
+                  <h3 class="project-title">${sp.meta.title}</h3>
+                  <div style="font-size: 0.8rem; color: var(--gray-500); margin-top: 4px;">
+                    作成日: ${UI.formatDate(sp.meta.createdAt)}
+                  </div>
+                </div>
+                <div style="margin-top: 14px;">
+                  <button class="btn btn-primary btn-import-shared-project" data-id="${sp.meta.id}" style="width: 100%;">
+                    📥 このPCに取り込む (同期開始)
+                  </button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    if (projects.length === 0 && unimportedShared.length === 0) {
       html += `
         <div class="empty-state">
           <div class="empty-state-icon">📋</div>
@@ -67,7 +137,7 @@ export const HomePage = {
           </button>
         </div>
       `;
-    } else {
+    } else if (projects.length > 0) {
       // フィルターバー
       html += `
         <div class="home-filter-bar">
@@ -85,7 +155,7 @@ export const HomePage = {
         </div>
       `;
 
-      // 1. 進行中プロジェクトセクション（上部にまとめて表示）
+      // 1. 進行中プロジェクトセクション
       if (this.currentFilter === 'all' || this.currentFilter === 'active') {
         html += `
           <section class="home-section">
@@ -100,47 +170,45 @@ export const HomePage = {
         if (activeProjects.length === 0) {
           html += `
             <div style="background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); padding: var(--spacing-lg); text-align: center; color: var(--gray-500); margin-top: var(--spacing-sm);">
-              現在進行中のプロジェクトはありません。「新規プロジェクト作成」から開始できます。
+              現在進行中のプロジェクトはありません。
             </div>
           `;
         } else {
           html += `<div class="project-grid">`;
           for (const p of activeProjects) {
-            html += await this.renderProjectCardHtml(p);
+            html += await this.renderProjectCardHtml(p, isFolderConnected);
           }
           html += `</div>`;
         }
         html += `</section>`;
       }
 
-      // 2. 完了・終了したプロジェクトセクション（下部にまとめて表示）
+      // 2. 完了・終了プロジェクトセクション
       if (this.currentFilter === 'all' || this.currentFilter === 'completed') {
-        if (completedProjects.length > 0 || this.currentFilter === 'completed') {
-          html += `
-            <section class="home-section">
-              <div class="home-section-header">
-                <div class="home-section-title">
-                  <span>✅ 完了・終了したプロジェクト</span>
-                  <span class="badge badge-gray" style="font-size: 0.85rem;">${completedProjects.length} 件</span>
-                </div>
+        html += `
+          <section class="home-section">
+            <div class="home-section-header">
+              <div class="home-section-title">
+                <span>✅ 完了・終了したプロジェクト</span>
+                <span class="badge badge-gray" style="font-size: 0.85rem;">${completedProjects.length} 件</span>
               </div>
-          `;
+            </div>
+        `;
 
-          if (completedProjects.length === 0) {
-            html += `
-              <div style="background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); padding: var(--spacing-lg); text-align: center; color: var(--gray-500); margin-top: var(--spacing-sm);">
-                完了・終了したプロジェクトはまだありません。
-              </div>
-            `;
-          } else {
-            html += `<div class="project-grid">`;
-            for (const p of completedProjects) {
-              html += await this.renderProjectCardHtml(p);
-            }
-            html += `</div>`;
+        if (completedProjects.length === 0) {
+          html += `
+            <div style="background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); padding: var(--spacing-lg); text-align: center; color: var(--gray-500); margin-top: var(--spacing-sm);">
+              完了・終了したプロジェクトはまだありません。
+            </div>
+          `;
+        } else {
+          html += `<div class="project-grid">`;
+          for (const p of completedProjects) {
+            html += await this.renderProjectCardHtml(p, isFolderConnected);
           }
-          html += `</section>`;
+          html += `</div>`;
         }
+        html += `</section>`;
       }
     }
 
@@ -172,11 +240,12 @@ export const HomePage = {
   /**
    * プロジェクトカードのHTMLを生成
    */
-  async renderProjectCardHtml(p) {
+  async renderProjectCardHtml(p, isFolderConnected) {
     const stats = await DB.getProjectStats(p.id);
     const percent = stats.total > 0 ? Math.round((stats.submitted / stats.total) * 100) : 0;
     const isExpired = (new Date() - new Date(p.createdAt)) / (1000 * 60 * 60 * 24 * 365.25) >= 3;
     const isCompleted = p.status === '完了';
+    const isShared = isFolderConnected && this.sharedProjectsList.some(sp => sp.meta.id === p.id);
 
     return `
       <div class="project-card ${isCompleted ? 'is-completed' : ''}" data-project-id="${p.id}">
@@ -190,6 +259,7 @@ export const HomePage = {
                 ? '<span class="badge badge-gray" style="font-weight: 700;">🏁 完了</span>'
                 : '<span class="badge badge-success" style="font-weight: 700; background: #e8f5e9; color: #2e7d32;">🟢 進行中</span>'
               }
+              ${isShared ? '<span class="badge badge-info" style="font-size: 0.72rem; padding: 2px 6px;">📁 共有同期</span>' : ''}
               ${isExpired ? '<span class="badge badge-warning">3年経過</span>' : ''}
             </div>
             <div>
@@ -245,6 +315,49 @@ export const HomePage = {
       });
     }
 
+    // 共有フォルダ接続ボタン
+    const connectFolderBtn = this.container.querySelector('#btn-home-connect-folder');
+    if (connectFolderBtn) {
+      connectFolderBtn.onclick = async () => {
+        try {
+          await FolderConnector.connect();
+          UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
+          await SyncManager.readSharedSettings();
+          await this.render(this.container);
+        } catch (e) {
+          if (e.name !== 'AbortError') UI.showToast(e.message, 'warning');
+        }
+      };
+    }
+
+    // 共有フォルダ更新ボタン
+    const refreshSharedBtn = this.container.querySelector('#btn-home-refresh-shared');
+    if (refreshSharedBtn) {
+      refreshSharedBtn.onclick = async () => {
+        await this.render(this.container);
+        UI.showToast('共有フォルダのプロジェクト一覧を更新しました', 'info');
+      };
+    }
+
+    // 共有プロジェクト取り込みボタン
+    this.container.querySelectorAll('.btn-import-shared-project').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        btn.disabled = true;
+        btn.textContent = '取り込み中...';
+        try {
+          await DB.importProjectFromShared(id);
+          UI.showToast('共有プロジェクトを取り込みました', 'success');
+          await this.render(this.container);
+        } catch (err) {
+          UI.showToast(`取込エラー: ${err.message}`, 'error');
+          btn.disabled = false;
+          btn.textContent = '📥 このPCに取り込む (同期開始)';
+        }
+      };
+    });
+
     // フィルタータブ切り替え
     const filterTabs = this.container.querySelectorAll('.home-filter-tab');
     filterTabs.forEach(tab => {
@@ -258,7 +371,7 @@ export const HomePage = {
     const statusBtns = this.container.querySelectorAll('.project-status-toggle-btn');
     statusBtns.forEach(btn => {
       btn.addEventListener('click', async (e) => {
-        e.stopPropagation(); // カードクリックのページ遷移を防止
+        e.stopPropagation();
         const projectId = btn.dataset.id;
         const action = btn.dataset.action;
         const newStatus = action === 'complete' ? '完了' : '進行中';
@@ -331,6 +444,10 @@ export const HomePage = {
               <span style="color: var(--success-text); font-weight: 700;">完全ローカル動作（外部通信ゼロ）</span>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.88rem; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius-sm);">
+              <span style="color: var(--gray-600); font-weight: 600;">📁 複数PC連携</span>
+              <span style="color: var(--primary-700); font-weight: 700;">LAN共有フォルダ差分同期 (File System Access API)</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.88rem; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius-sm);">
               <span style="color: var(--gray-600); font-weight: 600;">💾 データ保存先</span>
               <span style="color: var(--gray-800);">${SYSTEM_INFO.storageType}</span>
             </div>
@@ -391,7 +508,7 @@ export const HomePage = {
     let customTemplate = JSON.parse(JSON.stringify(defaultTemplate));
 
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-overlay modal-backdrop';
 
     const renderStep = () => {
       let bodyContent = '';
@@ -448,49 +565,46 @@ export const HomePage = {
 
           <div id="csv-dropzone" class="dropzone">
             <div class="dropzone-icon">📄</div>
-            <div class="dropzone-text">CSVファイルをドラッグ＆ドロップ</div>
-            <div class="dropzone-subtext">またはここをクリックしてファイルを選択</div>
+            <div style="font-weight: 600; margin-bottom: 4px;">CSVファイルをドラッグ＆ドロップ</div>
+            <div class="text-muted" style="font-size: 0.82rem;">またはクリックしてファイルを選択</div>
             <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display: none;">
           </div>
 
-          <div id="csv-preview-container" style="margin-top: var(--spacing-md); max-height: 200px; overflow-y: auto; ${parsedStudents.length === 0 ? 'display:none;' : ''}">
-            <div class="font-bold" style="font-size: 0.88rem; margin-bottom: 6px; color: var(--success-text);">
-              ✅ ${parsedStudents.length} 名の生徒データを読み込みました
+          <div id="csv-preview-area" style="margin-top: var(--spacing-md); ${parsedStudents.length > 0 ? '' : 'display: none;'}">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span class="font-bold" style="font-size: 0.9rem;">取込プレビュー (${parsedStudents.length}名)</span>
+              <span class="badge badge-success">正常に解析完了</span>
             </div>
-            <table class="table" style="font-size: 0.82rem;">
-              <thead>
-                <tr>
-                  <th>日能研番号</th>
-                  <th>氏名</th>
-                  <th>氏名カナ</th>
-                  <th>クラス</th>
-                  <th>科目</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${parsedStudents.slice(0, 5).map(s => `
-                  <tr>
-                    <td class="text-mono font-bold">${s.nichinokenId}</td>
-                    <td>${s.name}</td>
-                    <td class="text-muted">${s.nameKana}</td>
-                    <td><span class="badge badge-info">${s.className}</span></td>
-                    <td><span class="badge badge-purple">${s.course || '4科'}</span></td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            ${parsedStudents.length > 5 ? `<div style="text-align: center; font-size: 0.78rem; color: var(--gray-500); padding: 4px;">他 ${parsedStudents.length - 5} 名...</div>` : ''}
+            <div class="table-container" style="max-height: 180px;">
+              <table class="table" style="font-size: 0.8rem;">
+                <thead>
+                  <tr><th>日能研番号</th><th>氏名</th><th>カナ</th><th>クラス</th><th>科目</th></tr>
+                </thead>
+                <tbody>
+                  ${parsedStudents.slice(0, 5).map(s => `
+                    <tr>
+                      <td class="text-mono font-bold">${s.nichinokenId}</td>
+                      <td>${s.name}</td>
+                      <td>${s.nameKana}</td>
+                      <td><span class="badge badge-info">${s.className}</span></td>
+                      <td><span class="badge badge-purple">${s.course || '4科'}</span></td>
+                    </tr>
+                  `).join('')}
+                  ${parsedStudents.length > 5 ? `<tr><td colspan="5" class="text-center text-muted">...他 ${parsedStudents.length - 5} 名</td></tr>` : ''}
+                </tbody>
+              </table>
+            </div>
           </div>
         `;
       } else if (wizardStep === 3) {
         bodyContent = `
-          <div class="template-setup-container">
+          <div style="margin-bottom: var(--spacing-sm);">
             <div style="display: flex; align-items: center; justify-content: space-between; background: var(--primary-50); border: 1px solid var(--primary-200); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;">
               <div>
                 <span class="badge badge-info">${selectedYear}年度</span>
                 <span class="badge badge-purple">${selectedGrade}年生</span>
                 <span class="badge badge-success">${selectedSession}講習</span>
-                <span style="font-size: 0.95rem; font-weight: 800; color: var(--primary-900); margin-left: 6px;">
+                <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
                   受講確認票の書式・スキャン読取位置設定
                 </span>
               </div>
@@ -498,62 +612,68 @@ export const HomePage = {
                 登録生徒: <span class="text-mono font-bold">${parsedStudents.length}</span> 名
               </div>
             </div>
-
-            <div id="wizard-calib-container"></div>
+            <p style="font-size: 0.88rem; color: var(--gray-700); margin-bottom: 8px;">
+              受講確認票のチェックボックス位置と判定閾値の調整を行います。<br>
+              通常は共通既定書式が自動適用されるため、必要に応じて微調整してください。
+            </p>
           </div>
+          <div id="wizard-calib-mount" style="min-height: 380px;"></div>
         `;
       }
 
       modal.innerHTML = `
-        <div class="modal-content ${wizardStep === 3 ? 'modal-2xl' : ''}">
+        <div class="modal-content modal ${wizardStep === 3 ? 'modal-2xl' : 'modal-lg'}">
           <div class="modal-header">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="brand-icon" style="width: 28px; height: 28px; font-size: 14px;">➕</span>
-              <h3 class="modal-title font-bold">新規プロジェクト作成 (Step ${wizardStep} / 3: ${wizardStep === 1 ? '基本情報' : wizardStep === 2 ? '生徒リスト' : '受講票書式設定'})</h3>
+              <span class="brand-icon" style="width: 28px; height: 28px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; background: var(--primary-50); color: var(--primary-600); border-radius: var(--radius-md);">➕</span>
+              <h3 class="modal-title font-bold">新規プロジェクト作成ウィザード</h3>
             </div>
             <div class="modal-header-actions">
               ${wizardStep === 3 ? `
                 <button class="btn-modal-maximize" id="btn-wiz-maximize" title="全画面最大化 / 元に戻す">⛶</button>
               ` : ''}
-              <button class="btn-ghost btn-sm btn-close-modal" title="閉じる">✕</button>
+              <button class="modal-close btn-close-modal" id="btn-wizard-close" title="閉じる">✕</button>
             </div>
           </div>
-          <div class="modal-body" style="${wizardStep === 3 ? 'padding: 10px var(--spacing-lg); max-height: 86vh;' : ''}">
+
+          <div class="wizard-steps">
+            <div class="wizard-step ${wizardStep >= 1 ? (wizardStep === 1 ? 'active' : 'completed') : ''}">
+              <div class="wizard-step-circle">${wizardStep > 1 ? '✓' : '1'}</div>
+              <div class="wizard-step-label">講習・学年情報</div>
+            </div>
+            <div class="wizard-step-line ${wizardStep >= 2 ? 'active' : ''}"></div>
+            <div class="wizard-step ${wizardStep >= 2 ? (wizardStep === 2 ? 'active' : 'completed') : ''}">
+              <div class="wizard-step-circle">${wizardStep > 2 ? '✓' : '2'}</div>
+              <div class="wizard-step-label">生徒リスト取込</div>
+            </div>
+            <div class="wizard-step-line ${wizardStep >= 3 ? 'active' : ''}"></div>
+            <div class="wizard-step ${wizardStep >= 3 ? 'active' : ''}">
+              <div class="wizard-step-circle">3</div>
+              <div class="wizard-step-label">受講票書式設定</div>
+            </div>
+          </div>
+
+          <div class="modal-body" style="padding: var(--spacing-lg);">
             ${bodyContent}
           </div>
-          <div class="modal-footer">
-            ${wizardStep > 1 ? '<button id="btn-wiz-prev" class="btn btn-secondary">戻る</button>' : ''}
-            <button id="btn-wiz-cancel" class="btn btn-secondary">キャンセル</button>
-            <button id="btn-wiz-next" class="btn btn-primary">${wizardStep === 3 ? 'この書式設定でプロジェクト作成' : '次へ進む'}</button>
+
+          <div class="modal-footer" style="display: flex; justify-content: space-between;">
+            <button type="button" id="btn-wiz-prev" class="btn btn-secondary" ${wizardStep === 1 ? 'disabled style="visibility: hidden;"' : ''}>
+              ← 戻る
+            </button>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btn-wiz-cancel" class="btn btn-ghost">キャンセル</button>
+              <button type="button" id="btn-wiz-next" class="btn btn-primary">
+                ${wizardStep === 3 ? '🎉 プロジェクトを作成' : '次へ →'}
+              </button>
+            </div>
           </div>
         </div>
       `;
 
-      // モーダル内イベントバインド
-      modal.querySelector('.btn-close-modal').onclick = () => modal.remove();
-      modal.querySelector('#btn-wiz-cancel').onclick = () => modal.remove();
-
-      // 最大化トグル
-      const maxBtn = modal.querySelector('#btn-wiz-maximize');
-      if (maxBtn) {
-        maxBtn.onclick = () => {
-          const content = modal.querySelector('.modal-content');
-          if (content.classList.contains('modal-fullscreen')) {
-            content.classList.remove('modal-fullscreen');
-            maxBtn.textContent = '⛶';
-            maxBtn.title = '全画面最大化';
-          } else {
-            content.classList.add('modal-fullscreen');
-            maxBtn.textContent = '🗗';
-            maxBtn.title = '元に戻す';
-          }
-        };
-      }
-
-      // Step 3 のキャリブレーター初期化
       let calibratorInstance = null;
       if (wizardStep === 3) {
-        const mount = modal.querySelector('#wizard-calib-container');
+        const mount = modal.querySelector('#wizard-calib-mount');
         if (mount) {
           calibratorInstance = new TemplateCalibrator(
             mount,
@@ -570,63 +690,89 @@ export const HomePage = {
         }
       }
 
-      const prevBtn = modal.querySelector('#btn-wiz-prev');
+      // イベントバインド
+      const closeBtn = modal.querySelector('#btn-wizard-close, #btn-wiz-close, .modal-close, .btn-close-modal');
+      if (closeBtn) closeBtn.onclick = () => modal.remove();
+      const cancelBtn = modal.querySelector('#btn-wizard-cancel, #btn-wiz-cancel');
+      if (cancelBtn) cancelBtn.onclick = () => modal.remove();
+
+      // 最大化トグル
+      const maxBtn = modal.querySelector('#btn-wiz-maximize');
+      if (maxBtn) {
+        maxBtn.onclick = () => {
+          const content = modal.querySelector('.modal-content, .modal');
+          if (content.classList.contains('modal-fullscreen')) {
+            content.classList.remove('modal-fullscreen');
+            maxBtn.textContent = '⛶';
+            maxBtn.title = '全画面最大化';
+          } else {
+            content.classList.add('modal-fullscreen');
+            maxBtn.textContent = '🗗';
+            maxBtn.title = '元に戻す';
+          }
+        };
+      }
+
+      const prevBtn = modal.querySelector('#btn-wizard-prev, #btn-wiz-prev');
       if (prevBtn) {
         prevBtn.onclick = () => {
           if (calibratorInstance) {
             customTemplate = calibratorInstance.getTemplate();
           }
-          wizardStep--;
-          renderStep();
+          if (wizardStep > 1) {
+            wizardStep--;
+            renderStep();
+          }
         };
       }
 
-      const nextBtn = modal.querySelector('#btn-wiz-next');
-      nextBtn.onclick = async () => {
-        if (wizardStep === 1) {
-          const yearEl = modal.querySelector('#wiz-year');
-          const gradeEl = modal.querySelector('#wiz-grade');
-          const sessionEl = modal.querySelector('#wiz-session');
-          if (yearEl) selectedYear = parseInt(yearEl.value, 10);
-          if (gradeEl) selectedGrade = gradeEl.value;
-          if (sessionEl) selectedSession = sessionEl.value;
-
-          wizardStep = 2;
-          renderStep();
-        } else if (wizardStep === 2) {
-          if (parsedStudents.length === 0) {
-            UI.showToast('生徒CSVファイルを読み込んでください', 'warning');
-            return;
-          }
-          wizardStep = 3;
-          renderStep();
-        } else if (wizardStep === 3) {
-          if (calibratorInstance) {
-            // バーコードが読み取れているかチェック
-            if (!calibratorInstance.isBarcodeDetected()) {
-              UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
+      const nextBtn = modal.querySelector('#btn-wizard-next, #btn-wiz-next');
+      if (nextBtn) {
+        nextBtn.onclick = async () => {
+          if (wizardStep === 1) {
+            const yearEl = modal.querySelector('#wiz-year');
+            const gradeEl = modal.querySelector('#wiz-grade');
+            const sessionEl = modal.querySelector('#wiz-session');
+            if (yearEl) selectedYear = parseInt(yearEl.value, 10);
+            if (gradeEl) selectedGrade = gradeEl.value;
+            if (sessionEl) selectedSession = sessionEl.value;
+            wizardStep = 2;
+            renderStep();
+          } else if (wizardStep === 2) {
+            if (parsedStudents.length === 0) {
+              UI.showToast('生徒CSVファイルをアップロードしてください', 'warning');
               return;
             }
-            customTemplate = calibratorInstance.getTemplate();
-          }
-          // 作成実行
-          try {
-            const project = await DB.createProject({
-              year: selectedYear,
-              grade: selectedGrade,
-              sessionName: selectedSession,
-              students: parsedStudents,
-              scanTemplate: customTemplate
-            });
+            wizardStep = 3;
+            renderStep();
+          } else if (wizardStep === 3) {
+            if (calibratorInstance) {
+              if (!calibratorInstance.isBarcodeDetected()) {
+                UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
+                return;
+              }
+              customTemplate = calibratorInstance.getTemplate();
+            }
+            // 作成実行
+            try {
+              const project = await DB.createProject({
+                year: selectedYear,
+                grade: selectedGrade,
+                sessionName: selectedSession,
+                students: parsedStudents,
+                scanTemplate: customTemplate
+              });
 
-            UI.showToast(`「${project.title}」を作成しました`, 'success');
-            modal.remove();
-            window.location.hash = `#project/${project.id}`;
-          } catch (err) {
-            UI.showToast(`プロジェクト作成に失敗しました: ${err.message}`, 'error');
+              const syncMsg = FolderConnector.isConnected() ? '（共有フォルダへ書き出しました）' : '';
+              UI.showToast(`「${project.title}」を作成しました${syncMsg}`, 'success');
+              modal.remove();
+              window.location.hash = `#project/${project.id}`;
+            } catch (err) {
+              UI.showToast(`プロジェクト作成に失敗しました: ${err.message}`, 'error');
+            }
           }
-        }
-      };
+        };
+      }
 
       // Step 2 のイベント
       if (wizardStep === 2) {

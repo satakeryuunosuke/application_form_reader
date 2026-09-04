@@ -10,7 +10,10 @@ import { CheckboxEngine } from '../checkbox.js';
 import { ScanPage } from './scan.js';
 import { ListPage } from './list.js';
 import { ManualPage } from './manual.js';
+import { ReviewPage } from './review.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
+import { FolderConnector } from '../sync/folder-connector.js';
+import { SyncManager } from '../sync/sync-manager.js';
 
 export const ProjectPage = {
   container: null,
@@ -30,7 +33,9 @@ export const ProjectPage = {
     this.currentProject = project;
 
     const stats = await DB.getProjectStats(projectId);
+    const reviewStats = await DB.getReviewStats(projectId);
     const isCompleted = project.status === '完了';
+    const isFolderConnected = FolderConnector.isConnected();
 
     this.container.innerHTML = `
       <div class="view-container">
@@ -45,6 +50,9 @@ export const ProjectPage = {
                 <span id="header-status-badge" class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}" style="${isCompleted ? 'font-weight: 700;' : 'font-weight: 700; background: #e8f5e9; color: #2e7d32;'}">
                   ${isCompleted ? '🏁 完了' : '🟢 進行中'}
                 </span>
+                <span class="badge ${isFolderConnected ? 'badge-success' : 'badge-gray'}" style="font-size: 0.75rem;">
+                  ${isFolderConnected ? '🟢 共有同期中' : '⚪ ローカル'}
+                </span>
                 <h1 style="font-size: 1.45rem; font-weight: 800; color: var(--gray-900); display: inline; margin-left: 4px;">${project.title}</h1>
               </div>
               <div style="font-size: 0.82rem; color: var(--gray-500);">
@@ -56,6 +64,9 @@ export const ProjectPage = {
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button id="btn-sync-project" class="btn btn-secondary btn-sm" title="共有フォルダの最新差分イベントを取り込んで更新">
+              🔄 最新に更新
+            </button>
             <button id="btn-toggle-project-status" class="btn ${isCompleted ? 'btn-primary' : 'btn-secondary'} btn-sm" title="${isCompleted ? 'このプロジェクトを進行中に戻す' : 'このプロジェクトを完了にする'}">
               ${isCompleted ? '🔄 進行中に戻す' : '🏁 完了にする'}
             </button>
@@ -91,6 +102,10 @@ export const ProjectPage = {
           <button class="tab-btn ${this.currentTab === 'manual' ? 'active' : ''}" data-tab="manual">
             ✏️ 手動登録・変更
           </button>
+          <button class="tab-btn ${this.currentTab === 'review' ? 'active' : ''}" data-tab="review">
+            🔍 スキャン照合
+            <span id="tab-badge-review" class="tab-badge ${reviewStats.unreviewed > 0 ? 'badge-warning' : 'badge-success'}">${reviewStats.unreviewed > 0 ? '未確認 ' + reviewStats.unreviewed : '完了'}</span>
+          </button>
         </div>
 
         <div id="project-tab-content"></div>
@@ -108,15 +123,21 @@ export const ProjectPage = {
     if (!this.currentProject || !this.container) return;
     try {
       const stats = await DB.getProjectStats(this.currentProject.id);
+      const reviewStats = await DB.getReviewStats(this.currentProject.id);
       const totalEl = this.container.querySelector('#header-stat-total');
       const submittedEl = this.container.querySelector('#header-stat-submitted');
       const unsubmittedEl = this.container.querySelector('#header-stat-unsubmitted');
       const badgeEl = this.container.querySelector('#tab-badge-list');
+      const revBadgeEl = this.container.querySelector('#tab-badge-review');
 
       if (totalEl) totalEl.textContent = stats.total;
       if (submittedEl) submittedEl.textContent = stats.submitted;
       if (unsubmittedEl) unsubmittedEl.textContent = stats.unsubmitted;
       if (badgeEl) badgeEl.textContent = `${stats.submitted}/${stats.total}`;
+      if (revBadgeEl) {
+        revBadgeEl.textContent = reviewStats.unreviewed > 0 ? `未確認 ${reviewStats.unreviewed}` : '完了';
+        revBadgeEl.className = `tab-badge ${reviewStats.unreviewed > 0 ? 'badge-warning' : 'badge-success'}`;
+      }
     } catch (e) {
       console.error('Failed to update header stats:', e);
     }
@@ -125,6 +146,28 @@ export const ProjectPage = {
   bindEvents(projectId) {
     const backBtn = this.container.querySelector('#btn-back-home');
     backBtn.onclick = () => { window.location.hash = '#home'; };
+
+    // 共有フォルダ手動同期ボタン
+    const syncBtn = this.container.querySelector('#btn-sync-project');
+    if (syncBtn) {
+      syncBtn.onclick = async () => {
+        if (!FolderConnector.isConnected()) {
+          UI.showToast('共有フォルダが未接続です。設定画面またはホームから接続してください。', 'info');
+          return;
+        }
+        syncBtn.disabled = true;
+        syncBtn.textContent = '🔄 同期中...';
+        try {
+          const res = await SyncManager.syncFromSharedFolder(projectId);
+          UI.showToast(`共有フォルダと同期しました（新規イベント: ${res.newEventsCount}件）`, 'success');
+          await this.render(this.container, projectId, this.currentTab);
+        } catch (err) {
+          UI.showToast(`同期エラー: ${err.message}`, 'error');
+          syncBtn.disabled = false;
+          syncBtn.textContent = '🔄 最新に更新';
+        }
+      };
+    }
 
     // ステータス切り替え（完了／進行中）
     const toggleStatusBtn = this.container.querySelector('#btn-toggle-project-status');
@@ -218,6 +261,8 @@ export const ProjectPage = {
       await ListPage.render(content, this.currentProject);
     } else if (this.currentTab === 'manual') {
       await ManualPage.render(content, this.currentProject);
+    } else if (this.currentTab === 'review') {
+      await ReviewPage.render(content, this.currentProject);
     }
   },
 

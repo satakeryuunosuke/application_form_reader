@@ -1,8 +1,11 @@
 /**
  * IndexedDB (Dexie.js) データアクセス層
+ * 共有フォルダ（File System Access API）同期およびレビュー管理対応
  */
 
 import { CheckboxEngine } from './checkbox.js';
+import { FolderConnector } from './sync/folder-connector.js';
+import { SyncManager } from './sync/sync-manager.js';
 
 // グローバル Dexie インスタンスの取得
 const Dexie = window.Dexie;
@@ -17,6 +20,25 @@ class AppDatabase extends Dexie {
       submissions: 'id, projectId, studentId, status, enrollmentClass',
       settings: 'key'
     });
+
+    this.version(2).stores({
+      projects: 'id, year, grade, sessionName, createdAt',
+      students: 'id, projectId, nichinokenId, className',
+      submissions: 'id, projectId, studentId, status, enrollmentClass, reviewStatus',
+      settings: 'key',
+      syncEvents: 'eventId, projectId, studentId, timestamp',
+      pendingEvents: '++id, projectId, eventId, timestamp',
+      appState: 'key'
+    }).upgrade(tx => {
+      return tx.table('submissions').toCollection().modify(sub => {
+        if (!sub.reviewStatus) {
+          sub.reviewStatus = 'unreviewed';
+          sub.reviewedAt = null;
+          sub.reviewedBy = '';
+          sub.reviewNote = '';
+        }
+      });
+    });
   }
 }
 
@@ -24,7 +46,7 @@ export const db = new AppDatabase();
 
 export const DB = {
   /**
-   * DB初期化およびデフォルト設定の投入
+   * DB初期化およびデフォルト設定の投入・共有フォルダ復元
    */
   async init() {
     const settings = await db.settings.get('app_settings');
@@ -44,6 +66,17 @@ export const DB = {
         updatedAt: new Date().toISOString()
       });
     }
+
+    // 共有フォルダ接続ハンドルの復元試行
+    try {
+      const restored = await FolderConnector.restore();
+      if (restored) {
+        // 接続復帰時は共有設定を同期
+        await SyncManager.readSharedSettings();
+      }
+    } catch (e) {
+      console.warn('起動時の共有フォルダ復元スキップ:', e);
+    }
   },
 
   /**
@@ -59,7 +92,7 @@ export const DB = {
   },
 
   /**
-   * 設定を保存
+   * 設定を保存（共有フォルダ接続時は settings.json にも反映）
    */
   async saveSettings(settingsData) {
     await db.settings.put({
@@ -67,6 +100,14 @@ export const DB = {
       ...settingsData,
       updatedAt: new Date().toISOString()
     });
+
+    if (FolderConnector.isConnected()) {
+      try {
+        await SyncManager.writeSharedSettings(settingsData);
+      } catch (err) {
+        console.warn('共有フォルダへの settings.json 書き出し失敗:', err);
+      }
+    }
   },
 
   /* ================= プロジェクト操作 ================= */
@@ -83,6 +124,20 @@ export const DB = {
   },
 
   /**
+   * 共有フォルダ上のプロジェクト一覧をスキャン取得
+   */
+  async getSharedProjects() {
+    return await SyncManager.scanSharedProjects();
+  },
+
+  /**
+   * 共有フォルダからプロジェクトをローカルに取り込み
+   */
+  async importProjectFromShared(projectId) {
+    return await SyncManager.importProjectFromShared(projectId);
+  },
+
+  /**
    * プロジェクト詳細を取得
    */
   async getProject(projectId) {
@@ -94,7 +149,7 @@ export const DB = {
   },
 
   /**
-   * プロジェクトを新規作成
+   * プロジェクトを新規作成（メインPC操作）
    */
   async createProject({ year, grade, sessionName, students, scanTemplate }) {
     const projectId = 'proj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -113,12 +168,13 @@ export const DB = {
       updatedAt: new Date().toISOString()
     };
 
+    let studentRecords = [];
     await db.transaction('rw', db.projects, db.students, db.submissions, async () => {
       // 1. プロジェクト保存
       await db.projects.add(project);
 
       // 2. 生徒リスト保存
-      const studentRecords = students.map(s => ({
+      studentRecords = students.map(s => ({
         id: 'stu_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
         projectId,
         nichinokenId: s.nichinokenId,
@@ -142,10 +198,25 @@ export const DB = {
         approvedBy: '',
         remarks: '',
         submittedAt: null,
-        approvedAt: null
+        approvedAt: null,
+        history: [],
+        reviewStatus: 'unreviewed',
+        reviewedAt: null,
+        reviewedBy: '',
+        reviewNote: ''
       }));
       await db.submissions.bulkAdd(initialSubmissions);
     });
+
+    // 共有フォルダ接続時は meta.json, students.json を書き出し
+    if (FolderConnector.isConnected()) {
+      try {
+        await SyncManager.writeProjectMeta(project);
+        await SyncManager.writeStudentList(projectId, studentRecords);
+      } catch (syncErr) {
+        console.warn('新規プロジェクトの共有フォルダ書き出し失敗:', syncErr);
+      }
+    }
 
     return project;
   },
@@ -160,6 +231,20 @@ export const DB = {
       completedAt: isCompleted ? new Date().toISOString() : null,
       updatedAt: new Date().toISOString()
     });
+
+    // 共有フォルダへの反映
+    if (FolderConnector.isConnected()) {
+      try {
+        const updated = await db.projects.get(projectId);
+        await SyncManager.writeProjectMeta(updated);
+        await SyncManager.recordEvent(projectId, {
+          action: 'STATUS_CHANGE',
+          data: { status, completedAt: updated.completedAt }
+        });
+      } catch (syncErr) {
+        console.warn('ステータス変更の共有反映失敗:', syncErr);
+      }
+    }
   },
 
   /**
@@ -170,15 +255,25 @@ export const DB = {
       ...updates,
       updatedAt: new Date().toISOString()
     });
+
+    if (FolderConnector.isConnected()) {
+      try {
+        const updated = await db.projects.get(projectId);
+        await SyncManager.writeProjectMeta(updated);
+      } catch (syncErr) {
+        console.warn('プロジェクト更新の共有反映失敗:', syncErr);
+      }
+    }
   },
 
   /**
    * プロジェクトを削除（関連生徒・提出データも完全削除）
    */
   async deleteProject(projectId) {
-    await db.transaction('rw', db.projects, db.students, db.submissions, async () => {
+    await db.transaction('rw', db.projects, db.students, db.submissions, db.syncEvents, async () => {
       await db.submissions.where('projectId').equals(projectId).delete();
       await db.students.where('projectId').equals(projectId).delete();
+      await db.syncEvents.where('projectId').equals(projectId).delete();
       await db.projects.delete(projectId);
     });
   },
@@ -187,12 +282,22 @@ export const DB = {
 
   /**
    * プロジェクトに紐づく全生徒と提出状況を結合して取得
+   * @param {string} projectId
+   * @param {boolean} syncFirst 呼び出し前に共有フォルダと同期を行うか
    */
-  async getProjectStudentsWithSubmissions(projectId) {
+  async getProjectStudentsWithSubmissions(projectId, syncFirst = false) {
+    if (syncFirst && FolderConnector.isConnected()) {
+      try {
+        await SyncManager.syncFromSharedFolder(projectId);
+      } catch (syncErr) {
+        console.warn('共有フォルダ同期スキップ:', syncErr);
+      }
+    }
+
     const students = await db.students.where('projectId').equals(projectId).toArray();
     const submissions = await db.submissions.where('projectId').equals(projectId).toArray();
 
-    // テンプレート生徒の漢字修復マッピング（過去の取込バグ等でnameがカタカナ化して保存された既存データの自動修復）
+    // テンプレート生徒の漢字修復マッピング
     const KNOWN_TEMPLATE_STUDENTS = {
       'TDN60013': { name: '日能研太郎', nameKana: 'ニチノウケンタロウ' },
       'TDN60026': { name: '日能研花子', nameKana: 'ニチノウケンハナコ' },
@@ -209,7 +314,6 @@ export const DB = {
         if (!s.nameKana || s.nameKana === s.name) s.nameKana = known.nameKana;
         db.students.update(s.id, { name: known.name, nameKana: s.nameKana }).catch(() => {});
       } else if (!hasKanji && s.nameKana && /[\u4e00-\u9faf]/.test(s.nameKana)) {
-        // カナ側に漢字がある場合の自己補正スワップ
         const tmp = s.name;
         s.name = s.nameKana;
         s.nameKana = tmp;
@@ -234,11 +338,14 @@ export const DB = {
         remarks: '',
         history: [],
         submittedAt: null,
-        approvedAt: null
+        approvedAt: null,
+        reviewStatus: 'unreviewed',
+        reviewedAt: null,
+        reviewedBy: '',
+        reviewNote: ''
       };
 
       let history = Array.isArray(sub.history) ? [...sub.history] : [];
-      // 既存レコードでhistoryが未生成かつ承認済の場合のフォールバック
       if (history.length === 0 && sub.status === '承認済') {
         history.push({
           id: 'hist_init_' + (sub.id || s.id),
@@ -255,7 +362,6 @@ export const DB = {
         });
       }
 
-      // 受講科目の確定値算出
       let enrollmentCourse = sub.enrollmentCourse;
       if (!enrollmentCourse) {
         if (sub.status === '承認済') {
@@ -285,7 +391,11 @@ export const DB = {
         scanImageBlob: sub.scanImageBlob,
         history,
         submittedAt: sub.submittedAt,
-        approvedAt: sub.approvedAt
+        approvedAt: sub.approvedAt,
+        reviewStatus: sub.reviewStatus || 'unreviewed',
+        reviewedAt: sub.reviewedAt || null,
+        reviewedBy: sub.reviewedBy || '',
+        reviewNote: sub.reviewNote || ''
       };
     });
   },
@@ -376,13 +486,26 @@ export const DB = {
       remarks: '',
       history: [],
       submittedAt: null,
-      approvedAt: null
+      approvedAt: null,
+      reviewStatus: 'unreviewed',
+      reviewedAt: null,
+      reviewedBy: '',
+      reviewNote: ''
     };
 
     await db.transaction('rw', db.students, db.submissions, async () => {
       await db.students.add(studentRecord);
       await db.submissions.add(submissionRecord);
     });
+
+    if (FolderConnector.isConnected()) {
+      try {
+        const allStudents = await db.students.where('projectId').equals(projectId).toArray();
+        await SyncManager.writeStudentList(projectId, allStudents);
+      } catch (syncErr) {
+        console.warn('生徒追加後の共有フォルダ反映失敗:', syncErr);
+      }
+    }
 
     return studentRecord;
   },
@@ -427,7 +550,6 @@ export const DB = {
       }
       seenInBatch.add(cleanId);
 
-      // 既存生徒が存在する場合は、氏名・カナ・クラス・科目を最新情報で上書き更新
       if (existingStudentMap.has(cleanId)) {
         const existing = existingStudentMap.get(cleanId);
         toUpdateStudents.push({
@@ -467,7 +589,11 @@ export const DB = {
         remarks: '',
         history: [],
         submittedAt: null,
-        approvedAt: null
+        approvedAt: null,
+        reviewStatus: 'unreviewed',
+        reviewedAt: null,
+        reviewedBy: '',
+        reviewNote: ''
       };
 
       toAddStudents.push(stuRec);
@@ -489,6 +615,15 @@ export const DB = {
         });
       }
     });
+
+    if (FolderConnector.isConnected()) {
+      try {
+        const allStudents = await db.students.where('projectId').equals(projectId).toArray();
+        await SyncManager.writeStudentList(projectId, allStudents);
+      } catch (syncErr) {
+        console.warn('一括生徒追加後の共有フォルダ反映失敗:', syncErr);
+      }
+    }
 
     return {
       addedCount: toAddStudents.length,
@@ -514,6 +649,16 @@ export const DB = {
     if (course !== undefined) updates.course = course.trim();
 
     await db.students.update(studentId, updates);
+
+    if (FolderConnector.isConnected()) {
+      try {
+        const allStudents = await db.students.where('projectId').equals(student.projectId).toArray();
+        await SyncManager.writeStudentList(student.projectId, allStudents);
+      } catch (syncErr) {
+        console.warn('生徒更新後の共有フォルダ反映失敗:', syncErr);
+      }
+    }
+
     return await db.students.get(studentId);
   },
 
@@ -537,6 +682,15 @@ export const DB = {
       await db.students.delete(studentId);
     });
 
+    if (FolderConnector.isConnected()) {
+      try {
+        const allStudents = await db.students.where('projectId').equals(projectId).toArray();
+        await SyncManager.writeStudentList(projectId, allStudents);
+      } catch (syncErr) {
+        console.warn('生徒削除後の共有フォルダ反映失敗:', syncErr);
+      }
+    }
+
     return student;
   },
 
@@ -550,7 +704,7 @@ export const DB = {
   },
 
   /**
-   * 提出結果の保存・承認更新（変更履歴も自動記録）
+   * 提出結果の保存・承認更新（変更履歴も自動記録、共有イベント自動記録）
    */
   async saveSubmission(submissionId, submissionData) {
     const existing = await db.submissions.get(submissionId);
@@ -600,18 +754,144 @@ export const DB = {
 
     currentHistory.push(newHistoryItem);
 
-    // スキャン画像は、新しい指定があればそれ、指定がなければ既存のものを保持
+    // スキャン画像は指定があれば更新、なければ既存を維持
     const scanImageToSave = submissionData.scanImageBlob !== undefined 
       ? submissionData.scanImageBlob 
       : (existing.scanImageBlob || null);
 
-    await db.submissions.update(submissionId, {
+    // レビュー情報の保持・更新
+    const reviewStatus = submissionData.reviewStatus !== undefined
+      ? submissionData.reviewStatus
+      : (existing.reviewStatus || 'unreviewed');
+    const reviewedAt = submissionData.reviewedAt !== undefined
+      ? submissionData.reviewedAt
+      : (existing.reviewedAt || null);
+    const reviewedBy = submissionData.reviewedBy !== undefined
+      ? submissionData.reviewedBy
+      : (existing.reviewedBy || '');
+    const reviewNote = submissionData.reviewNote !== undefined
+      ? submissionData.reviewNote
+      : (existing.reviewNote || '');
+
+    const finalSubmission = {
       ...submissionData,
       scanImageBlob: scanImageToSave,
       history: currentHistory,
       status: submissionData.status || '承認済',
-      approvedAt: submissionData.approvedAt || nowIso
-    });
+      approvedAt: submissionData.approvedAt || nowIso,
+      reviewStatus,
+      reviewedAt,
+      reviewedBy,
+      reviewNote
+    };
+
+    await db.submissions.update(submissionId, finalSubmission);
+
+    // 共有フォルダ同期イベントの記録（差分ログ追記方式）
+    try {
+      const student = await db.students.get(existing.studentId);
+      const isScan = (submissionData.inputMethod || existing.inputMethod) === 'スキャン';
+      const action = isScan ? 'APPROVE' : (existing.status === '承認済' ? 'UPDATE' : 'APPROVE');
+
+      await SyncManager.recordEvent(existing.projectId, {
+        action,
+        studentId: existing.studentId,
+        nichinokenId: student?.nichinokenId || '',
+        data: {
+          status: finalSubmission.status,
+          hasChange: finalSubmission.hasChange,
+          enrollmentClass: finalSubmission.enrollmentClass,
+          enrollmentCourse: finalSubmission.enrollmentCourse,
+          inputMethod: finalSubmission.inputMethod,
+          approvedBy: finalSubmission.approvedBy,
+          remarks: finalSubmission.remarks,
+          submittedAt: finalSubmission.submittedAt,
+          approvedAt: finalSubmission.approvedAt,
+          reviewStatus,
+          reviewedAt,
+          reviewedBy,
+          reviewNote
+        },
+        recordedBy: finalSubmission.approvedBy || ''
+      });
+    } catch (syncErr) {
+      console.warn('共有イベント記録の警告:', syncErr);
+    }
+  },
+
+  /* ================= スキャン照合レビュー機能 ================= */
+
+  /**
+   * 照合レビュー結果の保存
+   */
+  async updateReviewStatus(submissionId, { reviewStatus, reviewedBy, reviewNote }) {
+    const existing = await db.submissions.get(submissionId);
+    if (!existing) {
+      throw new Error(`提出レコードが見つかりません: ${submissionId}`);
+    }
+
+    const nowIso = new Date().toISOString();
+    const updates = {
+      reviewStatus: reviewStatus || 'unreviewed',
+      reviewedAt: reviewStatus !== 'unreviewed' ? nowIso : null,
+      reviewedBy: reviewedBy || '',
+      reviewNote: reviewNote !== undefined ? reviewNote : (existing.reviewNote || '')
+    };
+
+    await db.submissions.update(submissionId, updates);
+
+    // 共有イベントも更新（他のPCへレビュー結果を同期）
+    try {
+      const student = await db.students.get(existing.studentId);
+      await SyncManager.recordEvent(existing.projectId, {
+        action: 'UPDATE',
+        studentId: existing.studentId,
+        nichinokenId: student?.nichinokenId || '',
+        data: {
+          status: existing.status,
+          hasChange: existing.hasChange,
+          enrollmentClass: existing.enrollmentClass,
+          enrollmentCourse: existing.enrollmentCourse,
+          inputMethod: existing.inputMethod,
+          approvedBy: existing.approvedBy,
+          remarks: existing.remarks,
+          ...updates
+        },
+        recordedBy: reviewedBy || ''
+      });
+    } catch (e) {
+      console.warn('レビュー更新イベント記録例外:', e);
+    }
+  },
+
+  /**
+   * スキャン照合レビューの進捗統計を取得
+   */
+  async getReviewStats(projectId) {
+    const list = await this.getProjectStudentsWithSubmissions(projectId);
+    // スキャン登録されたものまたは画像が存在するもの
+    const scanItems = list.filter(item => item.status === '承認済' && (item.inputMethod === 'スキャン' || item.scanImageBlob));
+
+    let unreviewed = 0;
+    let confirmed = 0;
+    let mismatch = 0;
+
+    for (const item of scanItems) {
+      if (item.reviewStatus === 'confirmed') {
+        confirmed++;
+      } else if (item.reviewStatus === 'mismatch') {
+        mismatch++;
+      } else {
+        unreviewed++;
+      }
+    }
+
+    return {
+      total: scanItems.length,
+      unreviewed,
+      confirmed,
+      mismatch
+    };
   },
 
   /* ================= 統計サマリー ================= */
@@ -669,15 +949,21 @@ export const DB = {
     const students = await db.students.toArray();
     const submissions = await db.submissions.toArray();
     const settings = await db.settings.toArray();
+    const syncEvents = await db.syncEvents.toArray();
+    const pendingEvents = await db.pendingEvents.toArray();
+    const appState = await db.appState.toArray();
 
     return {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       data: {
         projects,
         students,
         submissions,
-        settings
+        settings,
+        syncEvents,
+        pendingEvents,
+        appState
       }
     };
   },
@@ -690,18 +976,24 @@ export const DB = {
       throw new Error('無効なバックアップファイルです');
     }
 
-    const { projects, students, submissions, settings } = backupJson.data;
+    const { projects, students, submissions, settings, syncEvents, pendingEvents, appState } = backupJson.data;
 
-    await db.transaction('rw', db.projects, db.students, db.submissions, db.settings, async () => {
+    await db.transaction('rw', db.projects, db.students, db.submissions, db.settings, db.syncEvents, db.pendingEvents, db.appState, async () => {
       await db.projects.clear();
       await db.students.clear();
       await db.submissions.clear();
       await db.settings.clear();
+      await db.syncEvents.clear();
+      await db.pendingEvents.clear();
+      await db.appState.clear();
 
       if (projects?.length) await db.projects.bulkAdd(projects);
       if (students?.length) await db.students.bulkAdd(students);
       if (submissions?.length) await db.submissions.bulkAdd(submissions);
       if (settings?.length) await db.settings.bulkAdd(settings);
+      if (syncEvents?.length) await db.syncEvents.bulkAdd(syncEvents);
+      if (pendingEvents?.length) await db.pendingEvents.bulkAdd(pendingEvents);
+      if (appState?.length) await db.appState.bulkAdd(appState);
     });
   }
 };

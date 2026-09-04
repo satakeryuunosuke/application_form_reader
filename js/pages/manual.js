@@ -5,6 +5,7 @@
 import { DB } from '../db.js';
 import { UI } from '../utils/ui.js';
 import { ProjectPage } from './project.js';
+import { FolderConnector } from '../sync/folder-connector.js';
 
 export const ManualPage = {
   container: null,
@@ -352,7 +353,8 @@ export const ManualPage = {
           approvedAt: new Date().toISOString()
         });
 
-        UI.showToast(`${this.selectedStudent.name} 様の受講内容を手動登録しました`, 'success');
+        const syncNote = FolderConnector.isConnected() ? '（共有フォルダ同期済）' : '';
+        UI.showToast(`${this.selectedStudent.name} 様の受講内容を手動登録しました${syncNote}`, 'success');
 
         if (typeof ProjectPage.updateHeaderStats === 'function') {
           ProjectPage.updateHeaderStats();

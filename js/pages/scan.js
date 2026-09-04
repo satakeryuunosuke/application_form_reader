@@ -4,6 +4,7 @@ import { ScannerEngine } from '../scanner.js';
 import { Validator } from '../utils/validator.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
 import { ProjectPage } from './project.js';
+import { FolderConnector } from '../sync/folder-connector.js';
 
 export const ScanPage = {
   container: null,
@@ -216,9 +217,12 @@ export const ScanPage = {
           <p style="color: var(--gray-600); margin-bottom: var(--spacing-xl);">
             スキャンしたデータはIndexedDBに正常に保存・更新されました。
           </p>
-          <div style="display: flex; justify-content: center; gap: 12px;">
+          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
             <button id="btn-re-upload" class="btn btn-secondary">
               ➕ 別のPDFをスキャン
+            </button>
+            <button id="btn-go-review" class="btn btn-secondary" style="border-color: var(--primary-400); color: var(--primary-700);">
+              🔍 スキャン照合レビューで確認
             </button>
             <button id="btn-go-list" class="btn btn-primary">
               📊 提出状況一覧を見る
@@ -230,6 +234,10 @@ export const ScanPage = {
       this.container.querySelector('#btn-re-upload').onclick = () => {
         this.pendingQueue = [];
         this.renderUploadView();
+      };
+      this.container.querySelector('#btn-go-review').onclick = () => {
+        const revTabBtn = document.querySelector('.tab-btn[data-tab="review"]');
+        if (revTabBtn) revTabBtn.click();
       };
       this.container.querySelector('#btn-go-list').onclick = () => {
         const listTabBtn = document.querySelector('.tab-btn[data-tab="list"]');
@@ -782,9 +790,10 @@ export const ScanPage = {
   async saveAndProceed(submissionId, student, dataToSave, isOverwrite = false) {
     try {
       await DB.saveSubmission(submissionId, dataToSave);
+      const syncText = FolderConnector.isConnected() ? '（共有同期済）' : '';
       const msg = isOverwrite 
-        ? `${student.name} 様 (${student.nichinokenId}) を上書き登録しました`
-        : `${student.name} 様 (${student.nichinokenId}) を承認しました`;
+        ? `${student.name} 様 (${student.nichinokenId}) を上書き登録しました${syncText}`
+        : `${student.name} 様 (${student.nichinokenId}) を承認しました${syncText}`;
       UI.showToast(msg, 'success', 2000);
 
       // プロジェクトヘッダーの統計およびバッジを即時更新
