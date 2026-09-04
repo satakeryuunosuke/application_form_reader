@@ -578,6 +578,11 @@ export const HomePage = {
           renderStep();
         } else if (wizardStep === 3) {
           if (calibratorInstance) {
+            // バーコードが読み取れているかチェック
+            if (!calibratorInstance.isBarcodeDetected()) {
+              UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
+              return;
+            }
             customTemplate = calibratorInstance.getTemplate();
           }
           // 作成実行

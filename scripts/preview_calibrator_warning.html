@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Calibrator Warning Preview</title>
+  <link rel="stylesheet" href="../css/variables.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/pages.css">
+  <script src="../lib/dexie.min.js"></script>
+  <script src="../lib/xlsx.full.min.js"></script>
+  <script src="../lib/pdf.min.js"></script>
+  <script src="../lib/zxing-library.min.js"></script>
+</head>
+<body style="background: #1e293b; padding: 30px; display: flex; justify-content: center;">
+  <div style="background: #ffffff; border-radius: 12px; width: 1000px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid var(--gray-200); padding-bottom: 12px;">
+      <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700;">新規プロジェクト作成 (Step 3 / 3: 受講票書式設定)</h3>
+      <span class="badge badge-danger" style="font-size: 0.85rem;">⚠️ バーコード未検出</span>
+    </div>
+    <div id="calib-mount"></div>
+  </div>
+
+  <script type="module">
+    import { TemplateCalibrator } from '../js/components/calibrator.js';
+
+    const mount = document.getElementById('calib-mount');
+    const calib = new TemplateCalibrator(mount);
+
+    // サンプル画像を未検出状態（白紙画像）として読み込ませる
+    const cv = document.createElement('canvas');
+    cv.width = 1190;
+    cv.height = 840;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    // 帳票風の枠線
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(50, 50, cv.width - 100, cv.height - 100);
+
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    const file = new File([blob], 'sample_unreadable.png', { type: 'image/png' });
+    await calib.loadFile(file);
+  </script>
+</body>
+</html>

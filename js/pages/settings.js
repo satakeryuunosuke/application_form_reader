@@ -241,6 +241,10 @@ export const SettingsPage = {
     const saveDefaultTemplateBtn = this.container.querySelector('#btn-save-default-template');
     if (saveDefaultTemplateBtn) {
       saveDefaultTemplateBtn.onclick = async () => {
+        if (this.calibrator && !this.calibrator.isBarcodeDetected()) {
+          UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
+          return;
+        }
         try {
           const templateToSave = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
           const updatedSettings = {

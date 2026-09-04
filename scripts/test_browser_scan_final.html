@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Final User Scan Barcode Detection</title>
+  <script src="../lib/pdf.min.js"></script>
+  <script src="../lib/zxing-library.min.js"></script>
+</head>
+<body>
+  <h1>Test Barcode Detection on SCAN0000_rotated.pdf</h1>
+  <pre id="output" style="background: #222; color: #0f0; padding: 20px; font-family: monospace; font-size: 14px;"></pre>
+
+  <script type="module">
+    import { ScannerEngine } from '../js/scanner.js';
+    import { CheckboxEngine } from '../js/checkbox.js';
+
+    const log = [];
+    function print(msg) {
+      log.push(msg);
+      console.log(msg);
+      document.getElementById('output').textContent = log.join('\n');
+    }
+
+    async function runTest() {
+      try {
+        print('1. Loading pdf.worker...');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '../lib/pdf.worker.min.js';
+
+        print('2. Fetching /output/SCAN0000_rotated.pdf ...');
+        const res = await fetch('../output/SCAN0000_rotated.pdf');
+        const arrayBuffer = await res.arrayBuffer();
+
+        print('3. Parsing PDF document...');
+        const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true }).promise;
+        print(`PDF Pages: ${pdfDoc.numPages}`);
+
+        const page = await pdfDoc.getPage(1);
+        const unscaled = page.getViewport({ scale: 1.0 });
+        const maxDim = Math.max(unscaled.width, unscaled.height);
+        const scale = Math.max(2.5, Math.min(3.5, 2200 / maxDim));
+        print(`Unscaled size: ${unscaled.width}x${unscaled.height}, Dynamic Scale: ${scale.toFixed(3)}`);
+
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        print(`Render canvas size: ${canvas.width}x${canvas.height}`);
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        print('4. Canvas rendered. Calling ScannerEngine.detectBarcode(canvas)...');
+
+        const startTime = performance.now();
+        const barcodeResult = await ScannerEngine.detectBarcode(canvas);
+        const elapsed = (performance.now() - startTime).toFixed(1);
+
+        print(`5. Detection finished in ${elapsed} ms.`);
+        print(`Barcode Found: ${barcodeResult.found}`);
+        print(`Barcode Text: "${barcodeResult.text}" (raw: "${barcodeResult.rawText}")`);
+        if (barcodeResult.found && barcodeResult.box) {
+          const b = barcodeResult.box;
+          print(`Box: x=[${b.minX}, ${b.maxX}], y=[${b.minY}, ${b.maxY}], w=${b.width}, h=${b.height}`);
+          print(`Center: (${b.centerX.toFixed(1)}, ${b.centerY.toFixed(1)}), Skew Angle: ${b.angleDeg.toFixed(3)} deg`);
+
+          // チェックボックス判定のテスト
+          const targetRects = CheckboxEngine.calculateTargetRects(canvas, barcodeResult.box);
+          const noChangeEval = CheckboxEngine.evaluateCheckbox(canvas, targetRects.noChangeRect, targetRects.threshold);
+          const hasChangeEval = CheckboxEngine.evaluateCheckbox(canvas, targetRects.hasChangeRect, targetRects.threshold);
+          print(`NoChange Checkbox: isChecked=${noChangeEval.isChecked} (darkRatio=${(noChangeEval.darkRatio*100).toFixed(1)}%)`);
+          print(`HasChange Checkbox: isChecked=${hasChangeEval.isChecked} (darkRatio=${(hasChangeEval.darkRatio*100).toFixed(1)}%)`);
+        }
+
+        if (barcodeResult.found && barcodeResult.text === 'TDN60013') {
+          print('\n>>> TEST PASSED: Perfectly detected TDN60013! <<<');
+        } else {
+          print('\n>>> TEST FAILED: Barcode text mismatch or not found. <<<');
+        }
+
+      } catch (err) {
+        print(`\nERROR: ${err.message}\n${err.stack}`);
+      }
+    }
+
+    runTest();
+  </script>
+</body>
+</html>

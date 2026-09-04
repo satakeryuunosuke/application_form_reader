@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Test ZXing on User Scan Fixed</title>
+  <script src="../lib/pdf.min.js"></script>
+  <script src="../lib/zxing-library.min.js"></script>
+</head>
+<body>
+  <h1>Test ZXing Fixed</h1>
+  <pre id="results" style="font-size: 14px; background: #eee; padding: 20px;"></pre>
+
+  <script type="module">
+    const log = [];
+    function print(msg) {
+      log.push(msg);
+      console.log(msg);
+      document.getElementById('results').textContent = log.join('\n');
+    }
+
+    async function decodeCanvas(reader, canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
+      const img = new Image();
+      img.src = dataUrl;
+      await new Promise(r => { img.onload = r; });
+      return await reader.decodeFromImageElement(img);
+    }
+
+    async function test() {
+      try {
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+          ZXing.BarcodeFormat.CODE_39,
+          ZXing.BarcodeFormat.CODE_128
+        ]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        const reader = new ZXing.BrowserMultiFormatReader(hints);
+
+        // 1. オリジナルスキャン画像 (1191x840)
+        print('Testing output/scan_sample_p1.png ...');
+        const img = new Image();
+        img.src = '../output/scan_sample_p1.png';
+        await new Promise(r => { img.onload = r; });
+
+        const cv = document.createElement('canvas');
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        const ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        try {
+          const resFull = await decodeCanvas(reader, cv);
+          print(`[1] Full image decode SUCCESS: text='${resFull.getText()}'`);
+        } catch (e) {
+          print(`[1] Full image decode failed: ${e.message}`);
+        }
+
+        // 2. ROI (左上: x: 0~500, y: 0~250)
+        const roiCv = document.createElement('canvas');
+        roiCv.width = 500; roiCv.height = 250;
+        const roiCtx = roiCv.getContext('2d');
+        roiCtx.drawImage(cv, 0, 0, 500, 250, 0, 0, 500, 250);
+
+        try {
+          const resRoi = await decodeCanvas(reader, roiCv);
+          print(`[2] ROI decode SUCCESS: text='${resRoi.getText()}'`);
+        } catch (e) {
+          print(`[2] ROI decode failed: ${e.message}`);
+        }
+
+        // 3. 高解像度版 (2381x1679)
+        print('Testing high-res output/scan_sample_highres.png ...');
+        const imgHi = new Image();
+        imgHi.src = '../output/scan_sample_highres.png';
+        await new Promise(r => { imgHi.onload = r; });
+
+        const cvHi = document.createElement('canvas');
+        cvHi.width = imgHi.naturalWidth; cvHi.height = imgHi.naturalHeight;
+        const ctxHi = cvHi.getContext('2d');
+        ctxHi.drawImage(imgHi, 0, 0);
+
+        try {
+          const resHi = await decodeCanvas(reader, cvHi);
+          print(`[3] High-res full SUCCESS: text='${resHi.getText()}'`);
+        } catch (e) {
+          print(`[3] High-res full failed: ${e.message}`);
+        }
+
+        // 4. 高解像度 ROI
+        const roiHi = document.createElement('canvas');
+        roiHi.width = 1000; roiHi.height = 500;
+        const roiHiCtx = roiHi.getContext('2d');
+        roiHiCtx.drawImage(cvHi, 0, 0, 1000, 500, 0, 0, 1000, 500);
+
+        try {
+          const resRoiHi = await decodeCanvas(reader, roiHi);
+          print(`[4] High-res ROI SUCCESS: text='${resRoiHi.getText()}'`);
+        } catch (e) {
+          print(`[4] High-res ROI failed: ${e.message}`);
+        }
+
+      } catch (err) {
+        print(`Fatal error: ${err.message}`);
+      }
+    }
+
+    test();
+  </script>
+</body>
+</html>

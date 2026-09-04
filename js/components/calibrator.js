@@ -496,17 +496,30 @@ export class TemplateCalibrator {
       centerX: bcX + bcW / 2,
       centerY: bcY + bcH / 2,
       width: bcW,
-      height: bcH
+      height: bcH,
+      angle: 0,
+      angleDeg: 0
     };
 
     this.loadedPages = [{
       canvas: sampleCanvas,
       barcodeBox: this.barcodeBox,
+      barcodeText: 'TDN60013',
+      barcodeFound: true,
       pageNum: 1
     }];
 
     this.syncSlidersFromTemplate();
     this.drawOverlay();
+  }
+
+  /**
+   * 現在のページでバーコードが正常に検出されているか
+   */
+  isBarcodeDetected() {
+    if (!this.loadedPages || this.loadedPages.length === 0) return false;
+    const cur = this.loadedPages[this.currentPageIndex];
+    return !!(cur && cur.barcodeFound);
   }
 
   /**
@@ -534,7 +547,11 @@ export class TemplateCalibrator {
 
         for (let i = 1; i <= Math.min(numPages, 10); i++) {
           const page = await pdfDoc.getPage(i);
-          const viewport = page.getViewport({ scale: 2.0 });
+          // A5や低解像度スキャンでもバーコードの細線を鮮明に捉えるため、最適解像度スケールを自動算出
+          const unscaled = page.getViewport({ scale: 1.0 });
+          const maxDim = Math.max(unscaled.width, unscaled.height);
+          const scale = Math.max(2.5, Math.min(3.5, 2200 / maxDim));
+          const viewport = page.getViewport({ scale });
 
           const cv = document.createElement('canvas');
           cv.width = viewport.width;
@@ -545,20 +562,32 @@ export class TemplateCalibrator {
           const bcResult = await ScannerEngine.detectBarcode(cv);
           this.loadedPages.push({
             canvas: cv,
+            barcodeFound: bcResult.found,
             barcodeBox: bcResult.box || {
               centerX: cv.width * 0.13,
               centerY: cv.height * 0.10,
               width: cv.width * 0.15,
-              height: cv.height * 0.05
+              height: cv.height * 0.05,
+              angle: 0,
+              angleDeg: 0
             },
-            barcodeText: bcResult.text,
+            barcodeText: bcResult.text || '',
             pageNum: i
           });
         }
 
         this.updatePaginationUI();
         this.setPage(0);
-        UI.showToast(`${this.loadedPages.length} ページのPDFを読み込みました`, 'success');
+
+        const foundCount = this.loadedPages.filter(p => p.barcodeFound).length;
+        if (foundCount === 0) {
+          UI.showToast('⚠️ バーコードを検出できませんでした。画像の向き・鮮明さ・傾きをご確認ください。', 'warning');
+        } else if (foundCount === this.loadedPages.length) {
+          const first = this.loadedPages[0];
+          UI.showToast(`バーコード「${first.barcodeText}」を検出しました（全${this.loadedPages.length}ページ）`, 'success');
+        } else {
+          UI.showToast(`${this.loadedPages.length} ページ中 ${foundCount} ページのバーコードを検出しました`, 'warning');
+        }
       } else {
         // 画像ファイル
         const img = new Image();
@@ -576,19 +605,27 @@ export class TemplateCalibrator {
 
           this.loadedPages = [{
             canvas: cv,
+            barcodeFound: bcResult.found,
             barcodeBox: bcResult.box || {
               centerX: cv.width * 0.13,
               centerY: cv.height * 0.10,
               width: cv.width * 0.15,
-              height: cv.height * 0.05
+              height: cv.height * 0.05,
+              angle: 0,
+              angleDeg: 0
             },
-            barcodeText: bcResult.text,
+            barcodeText: bcResult.text || '',
             pageNum: 1
           }];
 
           this.updatePaginationUI();
           this.setPage(0);
-          UI.showToast('画像を読み込みました', 'success');
+
+          if (bcResult.found) {
+            UI.showToast(`バーコード「${bcResult.text}」を検出しました`, 'success');
+          } else {
+            UI.showToast('⚠️ バーコードを検出できませんでした。画像の向き・鮮明さ・傾きをご確認ください。', 'warning');
+          }
         };
         img.src = url;
       }
@@ -615,9 +652,17 @@ export class TemplateCalibrator {
       pageNumEl.style.display = 'none';
     }
 
-    if (pageBadge) {
+    if (pageBadge && this.loadedPages.length > 0) {
       const cur = this.loadedPages[this.currentPageIndex];
-      pageBadge.textContent = cur.barcodeText ? `🏷️ バーコード: ${cur.barcodeText}` : '📄 読み込みファイル';
+      if (cur.barcodeFound) {
+        const deg = cur.barcodeBox && cur.barcodeBox.angleDeg !== undefined ? Math.round(cur.barcodeBox.angleDeg * 10) / 10 : 0;
+        const degText = Math.abs(deg) >= 0.2 ? ` (傾き: ${deg > 0 ? '+' : ''}${deg}°)` : '';
+        pageBadge.className = 'badge badge-success';
+        pageBadge.textContent = `🏷️ バーコード: ${cur.barcodeText}${degText}`;
+      } else {
+        pageBadge.className = 'badge badge-danger font-bold';
+        pageBadge.textContent = '⚠️ バーコード未検出';
+      }
     }
   }
 
@@ -639,6 +684,8 @@ export class TemplateCalibrator {
 
     const srcW = this.sourceCanvas.width;
     const srcH = this.sourceCanvas.height;
+    const cur = this.loadedPages && this.loadedPages[this.currentPageIndex];
+    const isDetected = cur ? cur.barcodeFound : false;
 
     // 表示用Canvasサイズ
     this.canvas.width = srcW;
@@ -650,25 +697,54 @@ export class TemplateCalibrator {
 
     if (!this.barcodeBox) return;
 
-    // 2. バーコード枠（青）
-    ctx.save();
-    ctx.strokeStyle = '#2563eb';
-    ctx.lineWidth = 3;
-    ctx.fillStyle = 'rgba(37, 99, 235, 0.12)';
+    // 2. バーコード枠（検知時は青＋傾き回転、未検知時は赤破線警告）
     const bc = this.barcodeBox;
-    const bcX = bc.centerX - bc.width / 2;
-    const bcY = bc.centerY - bc.height / 2;
-    ctx.fillRect(bcX, bcY, bc.width, bc.height);
-    ctx.strokeRect(bcX, bcY, bc.width, bc.height);
+    ctx.save();
+    if (isDetected) {
+      ctx.translate(bc.centerX, bc.centerY);
+      ctx.rotate(bc.angle || 0);
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(37, 99, 235, 0.12)';
+      ctx.fillRect(-bc.width / 2, -bc.height / 2, bc.width, bc.height);
+      ctx.strokeRect(-bc.width / 2, -bc.height / 2, bc.width, bc.height);
 
-    // バーコード中心点
-    ctx.fillStyle = '#2563eb';
-    ctx.beginPath();
-    ctx.arc(bc.centerX, bc.centerY, 4, 0, Math.PI * 2);
-    ctx.fill();
+      // バーコード中心点
+      ctx.fillStyle = '#2563eb';
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // 未検出時の警告表示
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([6, 4]);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.10)';
+      const bcX = bc.centerX - bc.width / 2;
+      const bcY = bc.centerY - bc.height / 2;
+      ctx.fillRect(bcX, bcY, bc.width, bc.height);
+      ctx.strokeRect(bcX, bcY, bc.width, bc.height);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠️ バーコード未検出（位置未確定）', bc.centerX, bc.centerY + 5);
+    }
     ctx.restore();
 
-    // 3. 読取枠の計算（完全な正方形）
+    // 未検出時の上部警告バナー
+    if (!isDetected) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.90)';
+      ctx.fillRect(0, 0, srcW, 36);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠️ バーコードが読み取れていません。鮮明なファイルを選択するか、向きをご確認ください。', srcW / 2, 23);
+      ctx.restore();
+    }
+
+    // 3. 読取枠の計算（完全な正方形＋傾きアフィン変換）
     const rects = CheckboxEngine.calculateTargetRects(this.sourceCanvas, this.barcodeBox, this.template);
 
     // 4. 黒画素率の評価
@@ -685,11 +761,18 @@ export class TemplateCalibrator {
     this.drawTargetBox(ctx, rects.hasChangeRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', '変更あり (正方形)', isHasChangeActive);
 
     // 7. 判定UIの更新
-    this.updateEvalStatus(noChangeEval, hasChangeEval);
+    this.updateEvalStatus(noChangeEval, hasChangeEval, isDetected);
   }
 
   drawTargetBox(ctx, rect, strokeColor, fillColor, label, isActive) {
     ctx.save();
+    const cx = rect.cx !== undefined ? rect.cx : (rect.x + rect.w / 2);
+    const cy = rect.cy !== undefined ? rect.cy : (rect.y + rect.h / 2);
+    const angle = rect.angle || 0;
+
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = isActive ? 3.5 : 2;
     ctx.fillStyle = fillColor;
@@ -698,8 +781,11 @@ export class TemplateCalibrator {
       ctx.setLineDash([5, 3]);
     }
 
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    const halfW = rect.w / 2;
+    const halfH = rect.h / 2;
+
+    ctx.fillRect(-halfW, -halfH, rect.w, rect.h);
+    ctx.strokeRect(-halfW, -halfH, rect.w, rect.h);
     ctx.setLineDash([]);
 
     // ラベルタグ
@@ -707,18 +793,32 @@ export class TemplateCalibrator {
     ctx.font = 'bold 12px sans-serif';
     const tagText = `${label}${isActive ? ' [選択中]' : ''}`;
     const tagW = ctx.measureText(tagText).width + 8;
-    ctx.fillRect(rect.x, rect.y - 18, tagW, 17);
+    ctx.fillRect(-halfW, -halfH - 18, tagW, 17);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(tagText, rect.x + 4, rect.y - 5);
+    ctx.fillText(tagText, -halfW + 4, -halfH - 5);
 
     ctx.restore();
   }
 
-  updateEvalStatus(noChangeEval, hasChangeEval) {
+  updateEvalStatus(noChangeEval, hasChangeEval, isDetected = true) {
     const noStatusEl = this.container.querySelector('#eval-no-change-status');
     const noRatioEl = this.container.querySelector('#eval-no-change-ratio');
     const hasStatusEl = this.container.querySelector('#eval-has-change-status');
     const hasRatioEl = this.container.querySelector('#eval-has-change-ratio');
+
+    if (!isDetected) {
+      if (noStatusEl) {
+        noStatusEl.className = 'badge badge-danger';
+        noStatusEl.textContent = '未検出';
+      }
+      if (noRatioEl) noRatioEl.textContent = '黒画素: -';
+      if (hasStatusEl) {
+        hasStatusEl.className = 'badge badge-danger';
+        hasStatusEl.textContent = '未検出';
+      }
+      if (hasRatioEl) hasRatioEl.textContent = '黒画素: -';
+      return;
+    }
 
     if (noStatusEl && noRatioEl) {
       const pct = Math.round(noChangeEval.darkRatio * 100);

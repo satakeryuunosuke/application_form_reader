@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="../lib/zxing-library.min.js"></script>
+</head>
+<body>
+  <pre id="methods"></pre>
+  <script>
+    const reader = new ZXing.BrowserMultiFormatReader();
+    const set = new Set();
+    let curr = reader;
+    while (curr) {
+      Object.getOwnPropertyNames(curr).forEach(p => set.add(p));
+      curr = Object.getPrototypeOf(curr);
+    }
+    const all = Array.from(set).filter(p => p.toLowerCase().includes('decode'));
+    document.getElementById('methods').textContent = all.join('\n');
+    console.log(all);
+  </script>
+</body>
+</html>

@@ -279,6 +279,10 @@ export const ProjectPage = {
     modal.querySelector('#btn-modal-cancel').onclick = closeModal;
 
     modal.querySelector('#btn-modal-save').onclick = async () => {
+      if (!calibrator.isBarcodeDetected()) {
+        UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
+        return;
+      }
       const templateToSave = calibrator.getTemplate();
       try {
         await DB.updateProject(projectId, { scanTemplate: templateToSave });

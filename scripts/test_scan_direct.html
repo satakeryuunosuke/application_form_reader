@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Direct ScannerEngine Barcode Test</title>
+</head>
+<body>
+  <h1>Direct ScannerEngine Test</h1>
+  <pre id="output" style="background: #222; color: #0f0; padding: 20px; font-size: 14px;"></pre>
+
+  <script type="module">
+    import { ScannerEngine } from '../js/scanner.js';
+
+    const log = [];
+    function print(msg) {
+      log.push(msg);
+      console.log(msg);
+      document.getElementById('output').textContent = log.join('\n');
+    }
+
+    async function run() {
+      try {
+        print('[1] Loading output/scan_sample_highres.png ...');
+        const img = new Image();
+        img.src = '../output/scan_sample_highres.png';
+        await new Promise((res, rej) => {
+          img.onload = res;
+          img.onerror = rej;
+        });
+
+        print(`[2] Image loaded: ${img.naturalWidth} x ${img.naturalHeight}`);
+        const cv = document.createElement('canvas');
+        cv.width = img.naturalWidth;
+        cv.height = img.naturalHeight;
+        const ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        print('[3] Calling ScannerEngine.detectBarcode(cv) ...');
+        const start = performance.now();
+        const result = await ScannerEngine.detectBarcode(cv);
+        const elapsed = (performance.now() - start).toFixed(1);
+
+        print(`[4] Finished in ${elapsed} ms:`);
+        print(`  found: ${result.found}`);
+        print(`  text: "${result.text}" (raw: "${result.rawText}")`);
+        if (result.box) {
+          print(`  box: x=[${result.box.minX}, ${result.box.maxX}], y=[${result.box.minY}, ${result.box.maxY}]`);
+          print(`  skew: ${result.box.angleDeg.toFixed(3)} deg`);
+        }
+
+        if (result.found && result.text === 'TDN60013') {
+          print('\n>>> SUCCESS: TDN60013 DETECTED PERFECTLY! <<<');
+        } else {
+          print('\n>>> FAILURE: Not matched. <<<');
+        }
+      } catch (e) {
+        print('Error: ' + e.message + '\n' + e.stack);
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>

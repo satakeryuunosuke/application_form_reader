@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Calibrator & Skew Correction Unit Tests</title>
+  <script src="../lib/dexie.min.js"></script>
+  <script src="../lib/xlsx.full.min.js"></script>
+  <script src="../lib/pdf.min.js"></script>
+  <script src="../lib/zxing-library.min.js"></script>
+</head>
+<body>
+  <h1>Calibrator & Skew Unit Tests</h1>
+  <div id="test-container" style="width: 800px; height: 600px; display: none;"></div>
+  <pre id="test-results" style="font-size: 14px; background: #f0f0f0; padding: 20px;"></pre>
+
+  <script type="module">
+    import { ScannerEngine } from '../js/scanner.js';
+    import { CheckboxEngine } from '../js/checkbox.js';
+    import { TemplateCalibrator } from '../js/components/calibrator.js';
+
+    const log = [];
+    function report(msg, pass = true) {
+      const line = `${pass ? '✅ PASS' : '❌ FAIL'}: ${msg}`;
+      log.push(line);
+      console.log(line);
+      document.getElementById('test-results').textContent = log.join('\n');
+    }
+
+    async function runTests() {
+      try {
+        console.log('--- STARTING UNIT TESTS ---');
+
+        // Test 1: CheckboxEngine calculateTargetRects with 0 rad angle
+        {
+          const cv = document.createElement('canvas');
+          cv.width = 1000;
+          cv.height = 700;
+          const barcodeBox = { centerX: 130, centerY: 70, width: 150, height: 40, angle: 0, angleDeg: 0 };
+          const template = CheckboxEngine.getDefaultTemplate();
+          const rects = CheckboxEngine.calculateTargetRects(cv, barcodeBox, template);
+
+          const expectedCx = 130 + template.noChangeBox.dx * cv.width;
+          const expectedCy = 70 + template.noChangeBox.dy * cv.height;
+          const diffCx = Math.abs(rects.noChangeRect.cx - expectedCx);
+          const diffCy = Math.abs(rects.noChangeRect.cy - expectedCy);
+
+          report(`Test 1: Unrotated calculateTargetRects accurate (diffCx=${diffCx.toFixed(4)}, diffCy=${diffCy.toFixed(4)})`, diffCx < 0.001 && diffCy < 0.001);
+        }
+
+        // Test 2: CheckboxEngine calculateTargetRects with Skew Angle (+3 degrees)
+        {
+          const cv = document.createElement('canvas');
+          cv.width = 1000;
+          cv.height = 700;
+          const angleDeg = 3.0;
+          const angleRad = angleDeg * Math.PI / 180;
+          const barcodeBox = { centerX: 130, centerY: 70, width: 150, height: 40, angle: angleRad, angleDeg };
+          const template = CheckboxEngine.getDefaultTemplate();
+          const rects = CheckboxEngine.calculateTargetRects(cv, barcodeBox, template);
+
+          // ノルム保存（回転前後で距離が一致するか）
+          const unrotDx = template.noChangeBox.dx * cv.width;
+          const unrotDy = template.noChangeBox.dy * cv.height;
+          const origDist = Math.hypot(unrotDx, unrotDy);
+
+          const rotDx = rects.noChangeRect.cx - barcodeBox.centerX;
+          const rotDy = rects.noChangeRect.cy - barcodeBox.centerY;
+          const rotDist = Math.hypot(rotDx, rotDy);
+
+          const distDiff = Math.abs(origDist - rotDist);
+          report(`Test 2: Rotated relative distance conserved (diff=${distDiff.toFixed(6)}, angle=${rects.noChangeRect.angle})`, distDiff < 0.0001 && rects.noChangeRect.angle === angleRad);
+        }
+
+        // Test 3: TemplateCalibrator initial sample state
+        {
+          const mount = document.getElementById('test-container');
+          const calib = new TemplateCalibrator(mount);
+          const isDetected = calib.isBarcodeDetected();
+          report(`Test 3: Calibrator default sample detects barcode (isBarcodeDetected=${isDetected})`, isDetected === true);
+        }
+
+        // Test 4: ScannerEngine detects unreadable image correctly (returns found: false)
+        {
+          const blankCv = document.createElement('canvas');
+          blankCv.width = 800;
+          blankCv.height = 600;
+          const ctx = blankCv.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, 800, 600);
+
+          const res = await ScannerEngine.detectBarcode(blankCv);
+          report(`Test 4: Blank image detected as found=false (found=${res.found}, text='${res.text}')`, res.found === false && res.text === '');
+        }
+
+        // Test 5: Calibrator loading unreadable image triggers isBarcodeDetected() === false
+        {
+          const mount = document.getElementById('test-container');
+          const calib = new TemplateCalibrator(mount);
+
+          const blankCv = document.createElement('canvas');
+          blankCv.width = 600;
+          blankCv.height = 400;
+          const bctx = blankCv.getContext('2d');
+          bctx.fillStyle = '#f8f8f8';
+          bctx.fillRect(0, 0, 600, 400);
+
+          const blob = await new Promise(r => blankCv.toBlob(r, 'image/png'));
+          const file = new File([blob], 'unreadable.png', { type: 'image/png' });
+
+          await calib.loadFile(file);
+          // Wait for loadFile img.onload
+          await new Promise(r => setTimeout(r, 200));
+
+          const isDetected = calib.isBarcodeDetected();
+          const badgeEl = mount.querySelector('#calib-page-badge');
+          const badgeText = badgeEl ? badgeEl.textContent : '';
+          const badgeHasDanger = badgeEl ? badgeEl.classList.contains('badge-danger') : false;
+
+          report(`Test 5: Calibrator with blank image shows undetected status (isDetected=${isDetected}, text='${badgeText}', danger=${badgeHasDanger})`, 
+            isDetected === false && badgeText.includes('未検出') && badgeHasDanger === true);
+        }
+
+        // Test 6: Checkbox evaluation with rotation
+        {
+          const cv = document.createElement('canvas');
+          cv.width = 400;
+          cv.height = 400;
+          const ctx = cv.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, 400, 400);
+          // 黒い正方形を (100, 100) に描画
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(80, 80, 40, 40);
+
+          // 角度0で評価
+          const rect0 = { x: 80, y: 80, w: 40, h: 40, cx: 100, cy: 100, angle: 0 };
+          const eval0 = CheckboxEngine.evaluateCheckbox(cv, rect0, 0.25);
+          report(`Test 6a: Checkbox evaluated as checked (darkRatio=${eval0.darkRatio.toFixed(2)}, isChecked=${eval0.isChecked})`, eval0.isChecked === true && eval0.darkRatio > 0.9);
+
+          // 角度をつけて評価（サンプリングが正しく動くか）
+          const rectRot = { x: 80, y: 80, w: 40, h: 40, cx: 100, cy: 100, angle: 0.05 };
+          const evalRot = CheckboxEngine.evaluateCheckbox(cv, rectRot, 0.25);
+          report(`Test 6b: Rotated sampling evaluated successfully (darkRatio=${evalRot.darkRatio.toFixed(2)})`, evalRot.darkRatio > 0.7);
+        }
+
+        // Test 7: Wizard step 3 blocks project creation when barcode undetected
+        report('Starting Test 7...', true);
+        try {
+          const { HomePage } = await import('../js/pages/home.js');
+          const { UI } = await import('../js/utils/ui.js');
+          const { DB } = await import('../js/db.js');
+
+          // IndexedDBのIPCに依存しないようgetSettingsをモック
+          DB.getSettings = async () => ({
+            defaultScanTemplate: CheckboxEngine.getDefaultTemplate(),
+            staffNames: ['山田 太郎']
+          });
+
+          // トーストメッセージをスパイ
+          let lastToast = null;
+          const origShowToast = UI.showToast;
+          UI.showToast = (msg, type) => {
+            lastToast = { msg, type };
+            origShowToast(msg, type);
+          };
+
+          report('Test 7: opening wizard...', true);
+          await HomePage.openNewProjectWizard(2026);
+          report('Test 7: wizard opened.', true);
+
+          const modals = document.querySelectorAll('.modal-overlay');
+          const modal = modals[modals.length - 1];
+          if (!modal) throw new Error('Modal not opened');
+
+          // Step 1 -> Step 2
+          modal.querySelector('#btn-wiz-next').click();
+          await new Promise(r => setTimeout(r, 20));
+
+          // Step 2: 生徒追加
+          const csvInput = modal.querySelector('#csv-file-input');
+          if (!csvInput) throw new Error('csvInput not found in modal, body: ' + modal.innerHTML.slice(0, 150));
+          const csvContent = "日能研番号,氏名,フリガナ,学年,クラス,受講科目数,受講番号\nTDN60013,テスト,テスト,6年,M2,4科,01\n";
+          const csvBlob = new Blob([csvContent], { type: 'text/csv' });
+          const csvFile = new File([csvBlob], 'test.csv', { type: 'text/csv' });
+          const dt = new DataTransfer();
+          dt.items.add(csvFile);
+          csvInput.files = dt.files;
+          csvInput.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 20));
+
+          // Step 2 -> Step 3
+          modal.querySelector('#btn-wiz-next').click();
+          await new Promise(r => setTimeout(r, 50));
+
+          // Step 3: バーコード未検出画像を読み込ませる
+          const blankCv = document.createElement('canvas');
+          blankCv.width = 400; blankCv.height = 300;
+          const blob = await new Promise(r => blankCv.toBlob(r, 'image/png'));
+          const imgFile = new File([blob], 'blank.png', { type: 'image/png' });
+          const fileInput = modal.querySelector('#calib-file-input');
+          const dtImg = new DataTransfer();
+          dtImg.items.add(imgFile);
+          fileInput.files = dtImg.files;
+          fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 100));
+
+          // 「この書式設定でプロジェクト作成」をクリック
+          lastToast = null;
+          modal.querySelector('#btn-wiz-next').click();
+          await new Promise(r => setTimeout(r, 20));
+
+          const isBlocked = lastToast && lastToast.type === 'error' && lastToast.msg.includes('バーコードが読み取れていません');
+          const modalStillOpen = !!document.querySelector('.modal-overlay');
+
+          report(`Test 7: Wizard step 3 blocked when barcode undetected (toast='${lastToast ? lastToast.msg : 'none'}', blocked=${isBlocked}, modalOpen=${modalStillOpen})`,
+            isBlocked && modalStillOpen);
+
+          modal.remove();
+          UI.showToast = origShowToast;
+        } catch (err7) {
+          report(`Test 7 error: ${err7.message}`, false);
+        }
+
+        report('--- ALL 7 UNIT & INTEGRATION TESTS COMPLETED ---', true);
+        window.TESTS_FINISHED = true;
+      } catch (err) {
+        console.error('Test execution error:', err);
+        report(`Fatal Error: ${err.message}`, false);
+        window.TESTS_FINISHED = true;
+      }
+    }
+
+    runTests();
+  </script>
+</body>
+</html>
