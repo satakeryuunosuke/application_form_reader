@@ -153,12 +153,16 @@ export const ManualPage = {
     if (this.project.status === '完了') {
       return; // 完了時はイベントバインド不要
     }
-    staffSelect.onchange = () => {
-      this.selectedStaff = staffSelect.value;
-      if (this.selectedStaff) {
-        staffSelect.style.borderColor = '';
-      }
-    };
+
+    const staffSelect = this.container.querySelector('#man-sel-staff');
+    if (staffSelect) {
+      staffSelect.onchange = () => {
+        this.selectedStaff = staffSelect.value;
+        if (this.selectedStaff) {
+          staffSelect.style.borderColor = '';
+        }
+      };
+    }
 
     const searchInput = this.container.querySelector('#man-inp-search-student');
     const resultsBox = this.container.querySelector('#man-student-search-results');
@@ -170,19 +174,34 @@ export const ManualPage = {
     const dispClass = this.container.querySelector('#man-disp-class');
     const dispStatus = this.container.querySelector('#man-disp-status');
 
+    // ひらがなをカタカナに変換するヘルパー
+    const toKatakana = (str) => {
+      return (str || '').replace(/[\u3041-\u3096]/g, ch =>
+        String.fromCharCode(ch.charCodeAt(0) + 0x60)
+      );
+    };
+
     // 生徒インクリメンタル検索
     searchInput.oninput = () => {
-      const q = searchInput.value.trim().toLowerCase();
-      if (!q) {
+      const rawQ = searchInput.value.trim().toLowerCase();
+      if (!rawQ) {
         resultsBox.style.display = 'none';
         return;
       }
 
-      const matches = this.studentsList.filter(s =>
-        s.nichinokenId.toLowerCase().includes(q) ||
-        s.name.toLowerCase().includes(q) ||
-        (s.nameKana || '').toLowerCase().includes(q)
-      );
+      const q = rawQ.replace(/[\s　]+/g, '');
+      const qKana = toKatakana(q);
+
+      const matches = this.studentsList.filter(s => {
+        const id = (s.nichinokenId || '').toLowerCase();
+        const name = (s.name || '').toLowerCase().replace(/[\s　]+/g, '');
+        const kana = toKatakana((s.nameKana || '').toLowerCase().replace(/[\s　]+/g, ''));
+
+        return id.includes(q) ||
+          name.includes(q) ||
+          kana.includes(qKana) ||
+          (s.name || '').toLowerCase().includes(rawQ);
+      });
 
       if (matches.length === 0) {
         resultsBox.innerHTML = '<div style="padding: 8px 12px; font-size: 0.85rem; color: var(--gray-500);">該当する生徒はいません</div>';
