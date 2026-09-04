@@ -13,7 +13,8 @@ export const ListPage = {
   allStudentsWithSubmissions: [],
   filteredList: [],
   currentStatusFilter: 'all',
-  currentClassFilter: 'all',
+  currentPrevClassFilter: 'all',
+  currentPostClassFilter: 'all',
   searchQuery: '',
 
   async render(container, project) {
@@ -28,6 +29,18 @@ export const ListPage = {
     this.allStudentsWithSubmissions = await DB.getProjectStudentsWithSubmissions(project.id);
     const classes = await DB.getProjectClasses(project.id);
     const stats = await DB.getProjectStats(project.id);
+
+    // 変更前クラス一覧
+    const prevClasses = classes;
+
+    // 変更後クラス一覧の構築（プロジェクトクラス ＋ 実際に登録された受講クラスの和集合）
+    const postClassSet = new Set(classes);
+    for (const item of this.allStudentsWithSubmissions) {
+      if (item.enrollmentClass && item.enrollmentClass !== '-' && item.enrollmentClass !== '非受講') {
+        postClassSet.add(item.enrollmentClass);
+      }
+    }
+    const postClasses = Array.from(postClassSet).sort();
 
     this.container.innerHTML = `
       <div class="view-container">
@@ -81,7 +94,7 @@ export const ListPage = {
               <input type="text" id="inp-search" class="form-control" placeholder="🔍 氏名・カナ・日能研番号で検索..." value="${this.searchQuery}">
             </div>
 
-            <select id="sel-filter-status" class="form-control" style="width: 150px;">
+            <select id="sel-filter-status" class="form-control" style="width: 145px;">
               <option value="all" ${this.currentStatusFilter === 'all' ? 'selected' : ''}>ステータス: すべて</option>
               <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済のみ</option>
               <option value="no-change" ${this.currentStatusFilter === 'no-change' ? 'selected' : ''}>変更なし</option>
@@ -90,9 +103,16 @@ export const ListPage = {
               <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
             </select>
 
-            <select id="sel-filter-class" class="form-control" style="width: 140px;">
-              <option value="all" ${this.currentClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
-              ${classes.map(c => `<option value="${c}" ${this.currentClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+            <select id="sel-filter-prev-class" class="form-control" style="width: 145px; ${this.currentPrevClassFilter !== 'all' ? 'border-color: var(--primary-600); font-weight: bold; background: var(--primary-50);' : ''}" title="変更前の所属クラスで絞り込み">
+              <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>変更前: すべて</option>
+              ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c} (変更前)</option>`).join('')}
+            </select>
+
+            <select id="sel-filter-post-class" class="form-control" style="width: 155px; ${this.currentPostClassFilter !== 'all' ? 'border-color: var(--primary-600); font-weight: bold; background: var(--primary-50);' : ''}" title="変更後の確定受講クラスで絞り込み">
+              <option value="all" ${this.currentPostClassFilter === 'all' ? 'selected' : ''}>変更後: すべて</option>
+              ${postClasses.map(c => `<option value="${c}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${c} (変更後)</option>`).join('')}
+              <option value="非受講" ${this.currentPostClassFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
+              <option value="unsubmitted" ${this.currentPostClassFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定（未提出）</option>
             </select>
 
             <button id="btn-reset-filters" class="btn btn-ghost btn-sm" title="フィルタをリセット">リセット</button>
@@ -131,9 +151,17 @@ export const ListPage = {
       this.applyFiltersAndRenderTable();
     };
 
-    const classSelect = this.container.querySelector('#sel-filter-class');
-    classSelect.onchange = () => {
-      this.currentClassFilter = classSelect.value;
+    const prevClassSelect = this.container.querySelector('#sel-filter-prev-class');
+    prevClassSelect.onchange = () => {
+      this.currentPrevClassFilter = prevClassSelect.value;
+      this.updateClassFilterStyles();
+      this.applyFiltersAndRenderTable();
+    };
+
+    const postClassSelect = this.container.querySelector('#sel-filter-post-class');
+    postClassSelect.onchange = () => {
+      this.currentPostClassFilter = postClassSelect.value;
+      this.updateClassFilterStyles();
       this.applyFiltersAndRenderTable();
     };
 
@@ -141,11 +169,14 @@ export const ListPage = {
     resetBtn.onclick = () => {
       this.searchQuery = '';
       this.currentStatusFilter = 'all';
-      this.currentClassFilter = 'all';
+      this.currentPrevClassFilter = 'all';
+      this.currentPostClassFilter = 'all';
       searchInput.value = '';
       statusSelect.value = 'all';
-      classSelect.value = 'all';
+      prevClassSelect.value = 'all';
+      postClassSelect.value = 'all';
       this.updateSummaryCardActive();
+      this.updateClassFilterStyles();
       this.applyFiltersAndRenderTable();
     };
 
@@ -175,6 +206,34 @@ export const ListPage = {
     };
   },
 
+  updateClassFilterStyles() {
+    const prevClassSelect = this.container?.querySelector('#sel-filter-prev-class');
+    if (prevClassSelect) {
+      if (this.currentPrevClassFilter !== 'all') {
+        prevClassSelect.style.borderColor = 'var(--primary-600)';
+        prevClassSelect.style.fontWeight = 'bold';
+        prevClassSelect.style.background = 'var(--primary-50)';
+      } else {
+        prevClassSelect.style.borderColor = '';
+        prevClassSelect.style.fontWeight = '';
+        prevClassSelect.style.background = '';
+      }
+    }
+
+    const postClassSelect = this.container?.querySelector('#sel-filter-post-class');
+    if (postClassSelect) {
+      if (this.currentPostClassFilter !== 'all') {
+        postClassSelect.style.borderColor = 'var(--primary-600)';
+        postClassSelect.style.fontWeight = 'bold';
+        postClassSelect.style.background = 'var(--primary-50)';
+      } else {
+        postClassSelect.style.borderColor = '';
+        postClassSelect.style.fontWeight = '';
+        postClassSelect.style.background = '';
+      }
+    }
+  },
+
   updateSummaryCardActive() {
     const sumCards = this.container.querySelectorAll('.summary-card');
     sumCards.forEach(card => {
@@ -201,10 +260,31 @@ export const ListPage = {
         if (item.status === '未提出' || item.enrollmentClass !== '非受講') return false;
       }
 
-      // 2. クラスフィルター
-      if (this.currentClassFilter !== 'all' && item.className !== this.currentClassFilter) return false;
+      // 2. 変更前クラスフィルター（所属クラス）
+      if (this.currentPrevClassFilter !== 'all' && item.className !== this.currentPrevClassFilter) {
+        return false;
+      }
 
-      // 3. 検索クエリ
+      // 3. 変更後クラスフィルター（確定受講クラス）
+      if (this.currentPostClassFilter !== 'all') {
+        if (this.currentPostClassFilter === 'unsubmitted') {
+          // 未提出または受講クラス未定
+          if (item.status !== '未提出' && item.enrollmentClass !== '-' && item.enrollmentClass) {
+            return false;
+          }
+        } else if (this.currentPostClassFilter === '非受講') {
+          if (item.enrollmentClass !== '非受講') {
+            return false;
+          }
+        } else {
+          // 指定されたクラス名（確定受講クラスが一致するもの）
+          if (item.status === '未提出' || item.enrollmentClass !== this.currentPostClassFilter) {
+            return false;
+          }
+        }
+      }
+
+      // 4. 検索クエリ
       if (this.searchQuery) {
         const q = this.searchQuery;
         const matchId = item.nichinokenId.toLowerCase().includes(q);
@@ -239,9 +319,9 @@ export const ListPage = {
               <th>日能研番号</th>
               <th>氏名</th>
               <th>氏名カナ</th>
-              <th>所属クラス</th>
+              <th>所属クラス <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(変更前)</span></th>
               <th>提出ステータス</th>
-              <th>受講クラス (確定)</th>
+              <th>受講クラス (確定) <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(変更後)</span></th>
               <th>受付方法</th>
               <th>承認者</th>
               <th>日時</th>

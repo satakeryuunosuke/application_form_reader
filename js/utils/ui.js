@@ -93,6 +93,7 @@ export const UI = {
       const day = String(d.getDate()).padStart(2, '0');
       const h = String(d.getHours()).padStart(2, '0');
       const min = String(d.getMinutes()).padStart(2, '0');
+      return `${y}/${m}/${day} ${h}:${min}`;
     } catch {
       return isoString;
     }
