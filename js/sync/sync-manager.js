@@ -360,10 +360,20 @@ export const SyncManager = {
         }
       }
 
+      // 1.5 students.json の確認と同期（新規生徒の追加および情報修正を同期、削除は事故防止のため非実行）
+      let studentsAdded = 0;
+      let studentsUpdated = 0;
+      const sharedStudents = await this.readJsonFile(projDir, 'students.json');
+      if (Array.isArray(sharedStudents) && sharedStudents.length > 0) {
+        const stuSyncRes = await this.syncStudentsFromShared(projectId, sharedStudents);
+        studentsAdded = stuSyncRes.studentsAdded;
+        studentsUpdated = stuSyncRes.studentsUpdated;
+      }
+
       // 2. events/ ディレクトリの走査
       const eventsDir = await this.getSubdir(projDir, 'events');
       if (!eventsDir) {
-        return { newEventsCount: 0, totalEvents: 0, connected: true };
+        return { newEventsCount: 0, totalEvents: 0, studentsAdded, studentsUpdated, connected: true };
       }
 
       let newEventsCount = 0;
@@ -404,6 +414,8 @@ export const SyncManager = {
       return {
         newEventsCount,
         totalEvents: existingEventIds.size,
+        studentsAdded,
+        studentsUpdated,
         connected: true,
         lastSync: new Date()
       };
@@ -411,6 +423,118 @@ export const SyncManager = {
       console.error(`同期エラー (${projectId}):`, err);
       throw err;
     }
+  },
+
+  /**
+   * 共有フォルダの students.json をローカルDBと照合し、新規生徒の追加および情報更新を反映
+   * （※事故防止のため、生徒の削除は行わない）
+   * @param {string} projectId
+   * @param {Array} sharedStudents
+   * @returns {Promise<{ studentsAdded: number, studentsUpdated: number }>}
+   */
+  async syncStudentsFromShared(projectId, sharedStudents) {
+    let studentsAdded = 0;
+    let studentsUpdated = 0;
+
+    if (!Array.isArray(sharedStudents) || sharedStudents.length === 0) {
+      return { studentsAdded, studentsUpdated };
+    }
+
+    const localStudents = await db.students.where('projectId').equals(projectId).toArray();
+    const localMap = new Map(localStudents.map(s => [s.id, s]));
+    const localNidMap = new Map(localStudents.map(s => [s.nichinokenId?.toUpperCase(), s]));
+
+    const toAddStudents = [];
+    const toAddSubmissions = [];
+    const toUpdateStudents = [];
+
+    for (const s of sharedStudents) {
+      if (!s || !s.nichinokenId) continue;
+      const cleanNid = s.nichinokenId.trim().toUpperCase();
+      const local = localMap.get(s.id) || localNidMap.get(cleanNid);
+
+      if (!local) {
+        // 新規追加生徒
+        const studentId = s.id || ('stu_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+        const cleanName = (s.name || '').trim();
+        const cleanKana = (s.nameKana || '').trim();
+        const cleanClass = (s.className || '').trim();
+        const cleanCourse = (s.course || '4科').trim();
+
+        toAddStudents.push({
+          id: studentId,
+          projectId,
+          nichinokenId: cleanNid,
+          name: cleanName,
+          nameKana: cleanKana,
+          className: cleanClass,
+          course: cleanCourse
+        });
+
+        toAddSubmissions.push({
+          id: 'sub_' + studentId,
+          projectId,
+          studentId,
+          status: '未提出',
+          hasChange: false,
+          enrollmentClass: cleanClass,
+          enrollmentCourse: cleanCourse,
+          inputMethod: '',
+          approvedBy: '',
+          submittedAt: null,
+          approvedAt: null,
+          remarks: '',
+          scanImageBlob: null,
+          history: [],
+          reviewStatus: 'unreviewed',
+          reviewedAt: null,
+          reviewedBy: '',
+          reviewNote: ''
+        });
+
+        studentsAdded++;
+      } else {
+        // 既存生徒の情報更新チェック
+        const cleanName = (s.name || '').trim();
+        const cleanKana = (s.nameKana || '').trim();
+        const cleanClass = (s.className || '').trim();
+        const cleanCourse = (s.course || '4科').trim();
+
+        const isChanged = (
+          local.name !== cleanName ||
+          (local.nameKana || '') !== cleanKana ||
+          local.className !== cleanClass ||
+          (local.course || '4科') !== cleanCourse
+        );
+
+        if (isChanged) {
+          toUpdateStudents.push({
+            id: local.id,
+            updates: {
+              name: cleanName,
+              nameKana: cleanKana,
+              className: cleanClass,
+              course: cleanCourse
+            }
+          });
+          studentsUpdated++;
+        }
+      }
+    }
+
+    if (toAddStudents.length > 0 || toUpdateStudents.length > 0) {
+      await db.transaction('rw', db.students, db.submissions, async () => {
+        if (toAddStudents.length > 0) {
+          await db.students.bulkAdd(toAddStudents);
+          await db.submissions.bulkAdd(toAddSubmissions);
+        }
+        for (const item of toUpdateStudents) {
+          await db.students.update(item.id, item.updates);
+        }
+      });
+    }
+
+    return { studentsAdded, studentsUpdated };
   },
 
   /**

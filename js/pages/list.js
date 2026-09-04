@@ -27,6 +27,15 @@ export const ListPage = {
     this.container = container;
     this.project = project;
 
+    // 共有フォルダ接続中なら最新状態（新規生徒・修正・提出イベント等）を自動同期
+    if (FolderConnector.isConnected()) {
+      try {
+        await SyncManager.syncFromSharedFolder(project.id);
+      } catch (syncErr) {
+        console.warn('一覧表示時の共有同期スキップ:', syncErr);
+      }
+    }
+
     // プロジェクトヘッダー統計およびタブバッジを同期
     if (typeof ProjectPage.updateHeaderStats === 'function') {
       ProjectPage.updateHeaderStats();
@@ -329,7 +338,12 @@ export const ListPage = {
         syncBtn.textContent = '🔄 更新中...';
         try {
           const res = await SyncManager.syncFromSharedFolder(this.project.id);
-          UI.showToast(`最新データを取得しました（新規イベント: ${res.newEventsCount}件）`, 'success');
+          const parts = [];
+          if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
+          if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
+          if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
+          const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
+          UI.showToast(`最新データを取得しました${detail}`, 'success');
           await this.render(this.container, this.project);
         } catch (e) {
           UI.showToast(`同期エラー: ${e.message}`, 'error');

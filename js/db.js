@@ -445,6 +445,15 @@ export const DB = {
       throw new Error('このプロジェクトは「完了」しているため生徒を追加できません。「進行中に戻す」を行ってから操作してください。');
     }
 
+    // 他PCが直前に追加した生徒と競合しないよう、追加前に共有フォルダと同期
+    if (FolderConnector.isConnected()) {
+      try {
+        await SyncManager.syncFromSharedFolder(projectId);
+      } catch (syncErr) {
+        console.warn('生徒追加前の共有同期スキップ:', syncErr);
+      }
+    }
+
     const cleanId = (nichinokenId || '').trim().toUpperCase();
     const cleanName = (name || '').trim();
     const cleanKana = (nameKana || '').trim();
@@ -518,6 +527,15 @@ export const DB = {
     if (!project) throw new Error('プロジェクトが見つかりません');
     if (project.status === '完了') {
       throw new Error('このプロジェクトは「完了」しているため生徒を追加できません。「進行中に戻す」を行ってから操作してください。');
+    }
+
+    // 他PCが直前に追加した生徒と競合しないよう、一括追加前に共有フォルダと同期
+    if (FolderConnector.isConnected()) {
+      try {
+        await SyncManager.syncFromSharedFolder(projectId);
+      } catch (syncErr) {
+        console.warn('一括生徒追加前の共有同期スキップ:', syncErr);
+      }
     }
 
     const existingStudents = await db.students.where('projectId').equals(projectId).toArray();
@@ -642,6 +660,15 @@ export const DB = {
     const student = await db.students.get(studentId);
     if (!student) throw new Error('生徒が見つかりません');
 
+    // 他PCによる更新や追加と競合しないよう、更新前に共有フォルダと同期
+    if (FolderConnector.isConnected() && student.projectId) {
+      try {
+        await SyncManager.syncFromSharedFolder(student.projectId);
+      } catch (syncErr) {
+        console.warn('生徒更新前の共有同期スキップ:', syncErr);
+      }
+    }
+
     const updates = {};
     if (name !== undefined) updates.name = name.trim();
     if (nameKana !== undefined) updates.nameKana = nameKana.trim();
@@ -663,35 +690,10 @@ export const DB = {
   },
 
   /**
-   * 生徒をプロジェクトから削除（紐づく提出データ・スキャン画像・変更履歴も完全削除）
+   * 生徒削除（※データ消失事故防止のため機能廃止）
    */
   async deleteStudentFromProject(projectId, studentId) {
-    const project = await db.projects.get(projectId);
-    if (!project) throw new Error('プロジェクトが見つかりません');
-    if (project.status === '完了') {
-      throw new Error('このプロジェクトは「完了」しているため生徒を削除できません。「進行中に戻す」を行ってから操作してください。');
-    }
-
-    const student = await db.students.get(studentId);
-    if (!student || student.projectId !== projectId) {
-      throw new Error('対象の生徒データが見つかりません');
-    }
-
-    await db.transaction('rw', db.students, db.submissions, async () => {
-      await db.submissions.where('studentId').equals(studentId).delete();
-      await db.students.delete(studentId);
-    });
-
-    if (FolderConnector.isConnected()) {
-      try {
-        const allStudents = await db.students.where('projectId').equals(projectId).toArray();
-        await SyncManager.writeStudentList(projectId, allStudents);
-      } catch (syncErr) {
-        console.warn('生徒削除後の共有フォルダ反映失敗:', syncErr);
-      }
-    }
-
-    return student;
+    throw new Error('データ消失事故防止のため、生徒の削除機能は廃止されました。受講しない生徒は受講確認票の確認時に「非受講」を選択してください。');
   },
 
   /**

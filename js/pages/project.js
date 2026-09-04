@@ -24,6 +24,15 @@ export const ProjectPage = {
     this.container = container;
     this.currentTab = tab || 'scan';
 
+    // 共有フォルダ接続中なら最新状態（新規生徒・修正・提出イベント等）を自動同期
+    if (FolderConnector.isConnected()) {
+      try {
+        await SyncManager.syncFromSharedFolder(projectId);
+      } catch (syncErr) {
+        console.warn('画面表示時の共有同期スキップ:', syncErr);
+      }
+    }
+
     const project = await DB.getProject(projectId);
     if (!project) {
       UI.showToast('プロジェクトが見つかりません', 'error');
@@ -70,7 +79,7 @@ export const ProjectPage = {
             <button id="btn-toggle-project-status" class="btn ${isCompleted ? 'btn-primary' : 'btn-secondary'} btn-sm" title="${isCompleted ? 'このプロジェクトを進行中に戻す' : 'このプロジェクトを完了にする'}">
               ${isCompleted ? '🔄 進行中に戻す' : '🏁 完了にする'}
             </button>
-            <button id="btn-manage-students" class="btn btn-secondary btn-sm" title="${isCompleted ? '完了プロジェクトのため生徒管理は不可' : '生徒の追加・削除（個別追加 / CSV追加取込 / 登録解除）'}" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+            <button id="btn-manage-students" class="btn btn-secondary btn-sm" title="${isCompleted ? '完了プロジェクトのため生徒管理は不可' : '生徒の追加・編集（個別追加 / CSV一括追加 / 登録情報修正）'}" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
               👥 生徒管理
             </button>
             <button id="btn-edit-template" class="btn btn-secondary btn-sm" title="${isCompleted ? '完了プロジェクトのため書式調整は不可' : 'このプロジェクトの受講確認票書式・読取位置を微調整'}" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
@@ -159,7 +168,12 @@ export const ProjectPage = {
         syncBtn.textContent = '🔄 同期中...';
         try {
           const res = await SyncManager.syncFromSharedFolder(projectId);
-          UI.showToast(`共有フォルダと同期しました（新規イベント: ${res.newEventsCount}件）`, 'success');
+          const parts = [];
+          if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
+          if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
+          if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
+          const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
+          UI.showToast(`共有フォルダと同期しました${detail}`, 'success');
           await this.render(this.container, projectId, this.currentTab);
         } catch (err) {
           UI.showToast(`同期エラー: ${err.message}`, 'error');
@@ -364,9 +378,18 @@ export const ProjectPage = {
   },
 
   /**
-   * 生徒管理モーダル（生徒の追加・削除 / 緊急・メンテナンス用）
+   * 生徒管理モーダル（生徒の追加・編集 / 事故防止のため削除は廃止）
    */
   async openStudentManagementModal(projectId) {
+    // 共有フォルダ接続中なら最新生徒情報を取得してからモーダルを開く
+    if (FolderConnector.isConnected()) {
+      try {
+        await SyncManager.syncFromSharedFolder(projectId);
+      } catch (syncErr) {
+        console.warn('生徒管理モーダル表示前の共有同期スキップ:', syncErr);
+      }
+    }
+
     const project = await DB.getProject(projectId);
     if (!project) return;
 
@@ -416,7 +439,7 @@ export const ProjectPage = {
           <!-- モーダル内タブ切り替え -->
           <div style="display: flex; border-bottom: 1px solid var(--gray-200); padding: 0 var(--spacing-lg); background: var(--gray-50);">
             <button id="modal-tab-list" class="btn btn-ghost" style="border-radius: 0; padding: 10px 16px; font-weight: 700; ${activeModalTab === 'list' ? 'border-bottom: 3px solid var(--primary-600); color: var(--primary-600);' : 'color: var(--gray-600);'}">
-              📋 登録生徒一覧・削除 (${students.length}名)
+              📋 登録生徒一覧・編集 (${students.length}名)
             </button>
             <button id="modal-tab-add" class="btn btn-ghost" style="border-radius: 0; padding: 10px 16px; font-weight: 700; ${activeModalTab === 'add' ? 'border-bottom: 3px solid var(--primary-600); color: var(--primary-600);' : 'color: var(--gray-600);'}">
               ➕ 生徒の追加（手動 / CSV）
@@ -425,7 +448,12 @@ export const ProjectPage = {
 
           <div class="modal-body" style="flex: 1; overflow-y: auto; padding: var(--spacing-lg);">
             ${activeModalTab === 'list' ? `
-              <!-- 1. 生徒一覧 & 削除エリア -->
+              <!-- 1. 生徒一覧 & 編集エリア -->
+              <div style="background: #f8fafc; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 12px; font-size: 0.82rem; color: var(--gray-600); display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1rem;">ℹ️</span>
+                <span>事故防止のため生徒の削除機能は廃止されました。退会等で受講しない生徒は、受講確認票の確認時に「<strong>非受講</strong>」を選択してください。</span>
+              </div>
+
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md); gap: 12px; flex-wrap: wrap;">
                 <div style="display: flex; gap: 8px; flex: 1; max-width: 500px;">
                   <input type="text" id="modal-inp-search" class="form-control" placeholder="🔍 日能研番号・氏名・カナ・科目で絞り込み..." value="${studentSearchQuery}">
@@ -477,11 +505,8 @@ export const ProjectPage = {
                             ${s.hasChange ? '<span class="badge badge-purple" style="font-size: 0.7rem; margin-left: 2px;">変更有</span>' : ''}
                           </td>
                           <td style="text-align: center; white-space: nowrap;">
-                            <button class="btn btn-ghost btn-sm btn-edit-student" data-id="${s.studentId}" data-name="${s.name}" data-kana="${s.nameKana || ''}" data-class="${s.className}" data-course="${s.course || '4科'}" data-nid="${s.nichinokenId}" style="color: var(--primary-700); padding: 2px 6px;" title="生徒情報を編集">
+                            <button class="btn btn-ghost btn-sm btn-edit-student" data-id="${s.studentId}" data-name="${s.name}" data-kana="${s.nameKana || ''}" data-class="${s.className}" data-course="${s.course || '4科'}" data-nid="${s.nichinokenId}" style="color: var(--primary-700); padding: 2px 8px; font-weight: 600;" title="生徒情報を編集">
                               ✏️ 編集
-                            </button>
-                            <button class="btn btn-ghost btn-sm btn-delete-student" data-id="${s.studentId}" data-name="${s.name}" data-nid="${s.nichinokenId}" data-status="${s.status}" data-image="${s.scanImageBlob ? '1' : '0'}" style="color: var(--danger-solid); padding: 2px 6px;" title="生徒を削除">
-                              🗑️ 削除
                             </button>
                           </td>
                         </tr>
@@ -703,38 +728,6 @@ export const ProjectPage = {
                 UI.showToast(`更新エラー: ${err.message}`, 'error');
               }
             };
-          };
-        });
-
-        // 削除ボタン
-        modal.querySelectorAll('.btn-delete-student').forEach(btn => {
-          btn.onclick = async () => {
-            const stuId = btn.dataset.id;
-            const stuName = btn.dataset.name;
-            const stuNid = btn.dataset.nid;
-            const stuStatus = btn.dataset.status;
-            const hasImage = btn.dataset.image === '1';
-
-            let confirmTitle = '生徒の削除';
-            let confirmMsg = `「${stuName}（${stuNid}）」をプロジェクトから削除しますか？`;
-
-            if (stuStatus === '承認済' || hasImage) {
-              confirmTitle = '⚠️ 提出済みデータの削除確認';
-              confirmMsg = `「${stuName}（${stuNid}）」にはすでに【提出・スキャン済みデータ（画像や受付履歴）】が存在します。\n\n削除を実行すると、この生徒の提出データ・履歴もすべて完全に破棄されます。\n本当に削除してよろしいですか？`;
-            }
-
-            const ok = await UI.confirm(confirmTitle, confirmMsg, '削除する', 'danger');
-            if (!ok) return;
-
-            try {
-              await DB.deleteStudentFromProject(projectId, stuId);
-              UI.showToast(`生徒「${stuName}」を削除しました`, 'info');
-              await this.updateHeaderStats();
-              this.renderActiveTab();
-              await renderModalContent();
-            } catch (err) {
-              UI.showToast(`削除エラー: ${err.message}`, 'error');
-            }
           };
         });
       } else if (activeModalTab === 'add') {
