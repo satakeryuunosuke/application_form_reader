@@ -321,9 +321,9 @@ export const ScanPage = {
                   <div id="disp-student-kana" style="font-size: 0.72rem; color: var(--gray-500);">${student ? student.nameKana : ''}</div>
                 </div>
                 <div class="info-box">
-                  <div class="info-label">所属クラス</div>
-                  <div id="disp-student-class" class="info-value">
-                    ${student ? `<span class="badge badge-info" style="font-size: 0.88rem; padding: 3px 8px;">${student.className}</span>` : '<span class="text-muted">-</span>'}
+                  <div class="info-label">所属</div>
+                  <div id="disp-student-class" class="info-value" style="display: flex; gap: 4px; align-items: center;">
+                    ${student ? `<span class="badge badge-info" style="font-size: 0.88rem; padding: 3px 8px;">${student.className}</span> <span class="badge badge-purple" style="font-size: 0.88rem; padding: 3px 8px;">${student.course || '4科'}</span>` : '<span class="text-muted">-</span>'}
                   </div>
                 </div>
               </div>
@@ -347,21 +347,30 @@ export const ScanPage = {
                 <label class="radio-card ${!currentItem.detectedHasChange ? 'selected' : ''}" id="card-opt-no-change">
                   <input type="radio" name="enrollment-choice" value="no-change" ${!currentItem.detectedHasChange ? 'checked' : ''}>
                   <div>
-                    <div class="font-bold" style="font-size: 0.88rem;">変更なし（所属クラスで受講）</div>
-                    <div style="font-size: 0.75rem; color: var(--gray-500); line-height: 1.3;">所属クラスの期間・科目でそのまま受講</div>
+                    <div class="font-bold" style="font-size: 0.88rem;">変更なし（所属クラス・科目で受講）</div>
+                    <div style="font-size: 0.75rem; color: var(--gray-500); line-height: 1.3;">所属クラス・科目のまま受講</div>
                   </div>
                 </label>
 
                 <label class="radio-card ${currentItem.detectedHasChange ? 'selected' : ''}" id="card-opt-has-change">
                   <input type="radio" name="enrollment-choice" value="has-change" ${currentItem.detectedHasChange ? 'checked' : ''}>
                   <div style="flex: 1; min-width: 0;">
-                    <div class="font-bold" style="font-size: 0.88rem;">変更あり（クラス変更 / 非受講）</div>
-                    <div style="margin-top: 4px;">
-                      <select id="sel-change-class" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
-                        <option value="">-- 変更先クラス / 非受講を選択 --</option>
-                        ${this.classList.map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
-                        <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
-                      </select>
+                    <div class="font-bold" style="font-size: 0.88rem;">変更あり（クラス・科目変更 / 非受講）</div>
+                    <div style="margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap;">
+                      <div style="flex: 1; min-width: 140px;">
+                        <select id="sel-change-class" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
+                          <option value="">-- 変更先クラス / 非受講を選択 --</option>
+                          ${student ? `<option value="${student.className}">${student.className} クラス（クラス変更なし）</option>` : ''}
+                          ${this.classList.filter(c => !student || c !== student.className).map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
+                          <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
+                        </select>
+                      </div>
+                      <div style="width: 95px;" id="wrap-change-course">
+                        <select id="sel-change-course" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
+                          <option value="4科" ${student && student.course === '2科' ? '' : 'selected'}>4科</option>
+                          <option value="2科" ${student && student.course === '2科' ? 'selected' : ''}>2科</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </label>
@@ -400,6 +409,7 @@ export const ScanPage = {
    */
   renderExistingInfoSnippet(student, existingSub) {
     if (!student || !existingSub || existingSub.status !== '承認済') return '';
+    const courseDisp = existingSub.enrollmentCourse || (existingSub.enrollmentClass === '非受講' ? '' : (student.course || '4科'));
     return `
       <div style="background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: var(--radius-md); padding: 8px 10px; font-size: 0.78rem;">
         <div style="font-weight: 700; color: var(--warning-text); display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;">
@@ -407,7 +417,7 @@ export const ScanPage = {
           <span style="font-weight: normal; font-size: 0.74rem;">${UI.formatDate(existingSub.approvedAt || existingSub.submittedAt)}</span>
         </div>
         <div style="color: var(--gray-700); line-height: 1.4;">
-          受講: <strong>${existingSub.enrollmentClass || (existingSub.hasChange ? '変更あり' : student.className)}</strong>
+          受講: <strong>${existingSub.enrollmentClass || (existingSub.hasChange ? '変更あり' : student.className)}${courseDisp && courseDisp !== '非受講' ? ' (' + courseDisp + ')' : ''}</strong>
           ${existingSub.hasChange ? '<span class="badge badge-warning" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更あり</span>' : '<span class="badge badge-success" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更なし</span>'}
           ${existingSub.approvedBy ? ` | 担当: <strong>${existingSub.approvedBy}</strong>` : ''}
           ${existingSub.remarks ? `<div style="color: var(--gray-600); margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">備考: ${existingSub.remarks}</div>` : ''}
@@ -550,17 +560,28 @@ export const ScanPage = {
     const cardNoChange = this.container.querySelector('#card-opt-no-change');
     const cardHasChange = this.container.querySelector('#card-opt-has-change');
     const changeClassSelect = this.container.querySelector('#sel-change-class');
+    const changeCourseSelect = this.container.querySelector('#sel-change-course');
 
     const updateRadioUI = () => {
       if (radioNoChange.checked) {
         cardNoChange.classList.add('selected');
         cardHasChange.classList.remove('selected');
         changeClassSelect.disabled = true;
+        if (changeCourseSelect) changeCourseSelect.disabled = true;
       } else {
         cardNoChange.classList.remove('selected');
         cardHasChange.classList.add('selected');
         changeClassSelect.disabled = false;
+        if (changeCourseSelect) {
+          changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
+        }
         changeClassSelect.focus();
+      }
+    };
+
+    changeClassSelect.onchange = () => {
+      if (changeCourseSelect) {
+        changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
       }
     };
 
@@ -568,7 +589,7 @@ export const ScanPage = {
     radioHasChange.onchange = updateRadioUI;
     cardNoChange.onclick = () => { radioNoChange.checked = true; updateRadioUI(); };
     cardHasChange.onclick = (e) => {
-      if (e.target !== changeClassSelect) {
+      if (e.target !== changeClassSelect && e.target !== changeCourseSelect) {
         radioHasChange.checked = true;
         updateRadioUI();
       }
@@ -601,7 +622,11 @@ export const ScanPage = {
 
         nameDisp.textContent = foundStudent.name;
         kanaDisp.textContent = foundStudent.nameKana;
-        classDisp.innerHTML = `<span class="badge badge-info" style="font-size: 0.9rem;">${foundStudent.className}</span>`;
+        classDisp.innerHTML = `<span class="badge badge-info" style="font-size: 0.9rem;">${foundStudent.className}</span> <span class="badge badge-purple" style="font-size: 0.9rem;">${foundStudent.course || '4科'}</span>`;
+
+        if (changeCourseSelect && !currentItem.detectedHasChange) {
+          changeCourseSelect.value = foundStudent.course || '4科';
+        }
 
         if (existingSub && existingSub.status === '承認済') {
           matchBadge.innerHTML = '<span class="badge badge-warning" style="font-weight: bold;">⚠️ 既に登録済（上書き対象）</span>';
@@ -652,6 +677,7 @@ export const ScanPage = {
 
       const hasChange = radioHasChange.checked;
       let enrollmentClass = student.className;
+      let enrollmentCourse = student.course || '4科';
 
       if (hasChange) {
         const selClass = changeClassSelect.value;
@@ -661,6 +687,11 @@ export const ScanPage = {
           return;
         }
         enrollmentClass = selClass;
+        if (enrollmentClass === '非受講') {
+          enrollmentCourse = '非受講';
+        } else {
+          enrollmentCourse = changeCourseSelect ? changeCourseSelect.value : (student.course || '4科');
+        }
       }
 
       const remarks = this.container.querySelector('#txt-remarks').value.trim();
@@ -678,6 +709,7 @@ export const ScanPage = {
         status: '承認済',
         hasChange,
         enrollmentClass,
+        enrollmentCourse,
         inputMethod: 'スキャン',
         approvedBy: this.selectedStaff,
         remarks,
@@ -694,6 +726,7 @@ export const ScanPage = {
           newData: {
             hasChange,
             enrollmentClass,
+            enrollmentCourse,
             remarks,
             staff: this.selectedStaff
           },
@@ -799,7 +832,7 @@ export const ScanPage = {
             </div>
             <div>
               <span class="text-mono font-bold" style="color: var(--primary-600); font-size: 0.95rem;">${student.nichinokenId}</span>
-              <span class="badge badge-gray" style="margin-left: 6px;">所属: ${student.className}</span>
+              <span class="badge badge-gray" style="margin-left: 6px;">所属: ${student.className} (${student.course || '4科'})</span>
             </div>
           </div>
 
@@ -812,7 +845,7 @@ export const ScanPage = {
                 <span class="badge badge-gray" style="font-size: 0.68rem; padding: 1px 5px;">${target.inputMethod || '登録済'}</span>
               </div>
               <div style="font-size: 0.88rem; font-weight: 700; margin-bottom: 4px; color: var(--gray-800);">
-                ${target.enrollmentClass || (target.hasChange ? '変更あり' : student.className)}
+                ${target.enrollmentClass || (target.hasChange ? '変更あり' : student.className)}${target.enrollmentCourse && target.enrollmentCourse !== '非受講' ? ' (' + target.enrollmentCourse + ')' : ''}
                 <span class="badge ${target.hasChange ? 'badge-warning' : 'badge-success'}" style="font-size: 0.68rem; padding: 1px 4px; margin-left: 2px;">
                   ${target.hasChange ? '変更あり' : '変更なし'}
                 </span>
@@ -831,7 +864,7 @@ export const ScanPage = {
                 <span class="badge badge-info" style="font-size: 0.68rem; padding: 1px 5px;">スキャン</span>
               </div>
               <div style="font-size: 0.88rem; font-weight: 700; margin-bottom: 4px; color: var(--primary-900);">
-                ${newData.enrollmentClass}
+                ${newData.enrollmentClass}${newData.enrollmentCourse && newData.enrollmentCourse !== '非受講' ? ' (' + newData.enrollmentCourse + ')' : ''}
                 <span class="badge ${newData.hasChange ? 'badge-warning' : 'badge-success'}" style="font-size: 0.68rem; padding: 1px 4px; margin-left: 2px;">
                   ${newData.hasChange ? '変更あり' : '変更なし'}
                 </span>

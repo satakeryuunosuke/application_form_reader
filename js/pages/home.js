@@ -464,6 +464,7 @@ export const HomePage = {
                   <th>氏名</th>
                   <th>氏名カナ</th>
                   <th>クラス</th>
+                  <th>科目</th>
                 </tr>
               </thead>
               <tbody>
@@ -473,6 +474,7 @@ export const HomePage = {
                     <td>${s.name}</td>
                     <td class="text-muted">${s.nameKana}</td>
                     <td><span class="badge badge-info">${s.className}</span></td>
+                    <td><span class="badge badge-purple">${s.course || '4科'}</span></td>
                   </tr>
                 `).join('')}
               </tbody>

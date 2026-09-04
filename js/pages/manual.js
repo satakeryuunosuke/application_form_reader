@@ -79,7 +79,7 @@ export const ManualPage = {
                 <span id="man-disp-id" class="text-mono" style="font-size: 0.95rem; margin-left: 6px; color: var(--primary-700);"></span>
               </div>
               <div style="font-size: 0.82rem; color: var(--gray-600); margin-top: 2px;">
-                所属クラス: <span id="man-disp-class" class="badge badge-gray"></span> | 
+                所属: <span id="man-disp-class" class="badge badge-gray"></span> <span id="man-disp-course" class="badge badge-purple"></span> | 
                 現在のステータス: <span id="man-disp-status" class="badge badge-info"></span>
               </div>
             </div>
@@ -112,20 +112,31 @@ export const ManualPage = {
             <label class="radio-card selected" id="man-card-no-change" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
               <input type="radio" name="man-enroll-choice" value="no-change" checked ${isCompleted ? 'disabled' : ''}>
               <div>
-                <div class="font-bold">変更なし（所属クラスで受講）</div>
+                <div class="font-bold">変更なし（所属クラス・科目で受講）</div>
+                <div style="font-size: 0.76rem; color: var(--gray-500); margin-top: 2px;">所属クラス・科目のまま受講</div>
               </div>
             </label>
 
             <label class="radio-card" id="man-card-has-change" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
               <input type="radio" name="man-enroll-choice" value="has-change" ${isCompleted ? 'disabled' : ''}>
               <div style="flex: 1;">
-                <div class="font-bold">変更あり（クラス変更 / 非受講）</div>
-                <div style="margin-top: 6px;">
-                  <select id="man-sel-change-class" class="form-control font-bold" style="padding: 6px 10px;" disabled>
-                    <option value="">-- 変更先クラス / 非受講を選択 --</option>
-                    ${this.classList.map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
-                    <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
-                  </select>
+                <div class="font-bold">変更あり（クラス・科目変更 / 非受講）</div>
+                <div style="margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap;">
+                  <div style="flex: 1; min-width: 170px;">
+                    <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先クラス</label>
+                    <select id="man-sel-change-class" class="form-control font-bold" style="padding: 6px 10px;" disabled>
+                      <option value="">-- 変更先クラス / 非受講を選択 --</option>
+                      ${this.classList.map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
+                      <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
+                    </select>
+                  </div>
+                  <div style="width: 125px;" id="man-wrap-change-course">
+                    <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先科目</label>
+                    <select id="man-sel-change-course" class="form-control font-bold" style="padding: 6px 10px;" disabled>
+                      <option value="4科">4科</option>
+                      <option value="2科">2科</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </label>
@@ -249,17 +260,28 @@ export const ManualPage = {
     const cardNoChange = this.container.querySelector('#man-card-no-change');
     const cardHasChange = this.container.querySelector('#man-card-has-change');
     const changeClassSelect = this.container.querySelector('#man-sel-change-class');
+    const changeCourseSelect = this.container.querySelector('#man-sel-change-course');
 
     const updateRadio = () => {
       if (radioNoChange.checked) {
         cardNoChange.classList.add('selected');
         cardHasChange.classList.remove('selected');
         changeClassSelect.disabled = true;
+        changeCourseSelect.disabled = true;
       } else {
         cardNoChange.classList.remove('selected');
         cardHasChange.classList.add('selected');
         changeClassSelect.disabled = false;
+        changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
         changeClassSelect.focus();
+      }
+    };
+
+    changeClassSelect.onchange = () => {
+      if (changeClassSelect.value === '非受講') {
+        changeCourseSelect.disabled = true;
+      } else if (radioHasChange.checked) {
+        changeCourseSelect.disabled = false;
       }
     };
 
@@ -267,7 +289,7 @@ export const ManualPage = {
     radioHasChange.onchange = updateRadio;
     cardNoChange.onclick = () => { radioNoChange.checked = true; updateRadio(); };
     cardHasChange.onclick = (e) => {
-      if (e.target !== changeClassSelect) {
+      if (e.target !== changeClassSelect && e.target !== changeCourseSelect) {
         radioHasChange.checked = true;
         updateRadio();
       }
@@ -300,6 +322,7 @@ export const ManualPage = {
 
       const hasChange = radioHasChange.checked;
       let enrollmentClass = this.selectedStudent.className;
+      let enrollmentCourse = this.selectedStudent.course || '4科';
 
       if (hasChange) {
         const sel = changeClassSelect.value;
@@ -309,6 +332,11 @@ export const ManualPage = {
           return;
         }
         enrollmentClass = sel;
+        if (enrollmentClass === '非受講') {
+          enrollmentCourse = '非受講';
+        } else {
+          enrollmentCourse = changeCourseSelect.value || '4科';
+        }
       }
 
       try {
@@ -316,6 +344,7 @@ export const ManualPage = {
           status: '承認済',
           hasChange,
           enrollmentClass,
+          enrollmentCourse,
           inputMethod: method,
           approvedBy: staff,
           remarks,
@@ -337,20 +366,44 @@ export const ManualPage = {
     };
   },
 
+  updateChangeClassOptions(stu) {
+    const select = this.container.querySelector('#man-sel-change-class');
+    if (!select) return;
+    const currentStuClass = stu ? stu.className : '';
+    let html = `<option value="">-- 変更先クラス / 非受講を選択 --</option>`;
+    if (currentStuClass) {
+      html += `<option value="${currentStuClass}">${currentStuClass} クラス（クラス変更なし）</option>`;
+    }
+    this.classList.forEach(c => {
+      if (c !== currentStuClass) {
+        html += `<option value="${c}">${c} クラスへ変更</option>`;
+      }
+    });
+    html += `<option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>`;
+    select.innerHTML = html;
+  },
+
   selectStudent(stu, dispName, dispId, dispClass, dispStatus, card, resultsBox, searchInput) {
     this.selectedStudent = stu;
     dispName.textContent = stu.name;
     dispId.textContent = stu.nichinokenId;
     dispClass.textContent = stu.className;
+    const dispCourse = this.container.querySelector('#man-disp-course');
+    if (dispCourse) {
+      dispCourse.textContent = stu.course || '4科';
+    }
     dispStatus.textContent = stu.status;
     card.classList.remove('hidden');
     resultsBox.style.display = 'none';
     searchInput.value = `${stu.name} (${stu.nichinokenId})`;
 
+    this.updateChangeClassOptions(stu);
+
     // 既存の入力があれば初期反映
     const radioNoChange = this.container.querySelector('input[value="no-change"]');
     const radioHasChange = this.container.querySelector('input[value="has-change"]');
     const changeClassSelect = this.container.querySelector('#man-sel-change-class');
+    const changeCourseSelect = this.container.querySelector('#man-sel-change-course');
     const cardNoChange = this.container.querySelector('#man-card-no-change');
     const cardHasChange = this.container.querySelector('#man-card-has-change');
     const remarksInput = this.container.querySelector('#man-txt-remarks');
@@ -363,11 +416,21 @@ export const ManualPage = {
       cardHasChange.classList.add('selected');
       changeClassSelect.disabled = false;
       changeClassSelect.value = stu.enrollmentClass || '';
+      if (changeCourseSelect) {
+        changeCourseSelect.value = (stu.enrollmentCourse && stu.enrollmentCourse !== '-' && stu.enrollmentCourse !== '非受講')
+          ? stu.enrollmentCourse 
+          : (stu.course || '4科');
+        changeCourseSelect.disabled = (stu.enrollmentClass === '非受講');
+      }
     } else {
       radioNoChange.checked = true;
       cardNoChange.classList.add('selected');
       cardHasChange.classList.remove('selected');
       changeClassSelect.disabled = true;
+      if (changeCourseSelect) {
+        changeCourseSelect.value = stu.course || '4科';
+        changeCourseSelect.disabled = true;
+      }
     }
   }
 };

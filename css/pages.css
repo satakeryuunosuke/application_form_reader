@@ -612,3 +612,111 @@
   display: inline-block;
   cursor: crosshair;
 }
+
+/* --- Submission List Table Layout Optimization --- */
+.submission-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.submission-list-table th,
+.submission-list-table td {
+  padding: 10px 8px;
+  vertical-align: middle;
+}
+
+.submission-list-table .col-id {
+  width: 100px;
+  min-width: 95px;
+  white-space: nowrap;
+}
+
+/* 氏名カラムを広々と確保 */
+.submission-list-table .col-name {
+  min-width: 160px;
+  white-space: nowrap;
+  font-size: 0.96rem;
+  letter-spacing: 0.02em;
+}
+
+.submission-list-table .col-kana {
+  min-width: 140px;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: var(--gray-600);
+}
+
+/* クラス・科目など短い情報のカラムを徹底的にコンパクト化 */
+.submission-list-table .col-compact-class {
+  width: 65px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 8px 4px;
+}
+
+.submission-list-table .col-compact-course {
+  width: 60px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 8px 4px;
+}
+
+.submission-list-table .col-status {
+  width: 85px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 8px 4px;
+}
+
+.submission-list-table .col-method {
+  width: 65px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 8px 4px;
+  font-size: 0.8rem;
+}
+
+.submission-list-table .col-approver {
+  width: 70px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 8px 4px;
+  font-size: 0.8rem;
+}
+
+.submission-list-table .col-date {
+  width: 100px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  padding: 8px 4px;
+  color: var(--gray-500);
+}
+
+.submission-list-table .col-remarks {
+  min-width: 90px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: var(--gray-600);
+}
+
+.submission-list-table .col-history {
+  width: 80px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 8px 4px;
+}
+
+.submission-list-table th .th-sub {
+  font-size: 0.72rem;
+  color: var(--gray-500);
+  font-weight: normal;
+  display: block;
+  line-height: 1.1;
+  margin-top: 1px;
+}
+

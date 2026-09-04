@@ -124,7 +124,8 @@ export const DB = {
         nichinokenId: s.nichinokenId,
         name: s.name,
         nameKana: s.nameKana || '',
-        className: s.className
+        className: s.className,
+        course: s.course || '4科'
       }));
       await db.students.bulkAdd(studentRecords);
 
@@ -136,6 +137,7 @@ export const DB = {
         status: '未提出',
         hasChange: false,
         enrollmentClass: '',
+        enrollmentCourse: '',
         inputMethod: '',
         approvedBy: '',
         remarks: '',
@@ -190,16 +192,43 @@ export const DB = {
     const students = await db.students.where('projectId').equals(projectId).toArray();
     const submissions = await db.submissions.where('projectId').equals(projectId).toArray();
 
+    // テンプレート生徒の漢字修復マッピング（過去の取込バグ等でnameがカタカナ化して保存された既存データの自動修復）
+    const KNOWN_TEMPLATE_STUDENTS = {
+      'TDN60013': { name: '日能研太郎', nameKana: 'ニチノウケンタロウ' },
+      'TDN60026': { name: '日能研花子', nameKana: 'ニチノウケンハナコ' },
+      'TDN60039': { name: '日能研次郎', nameKana: 'ニチノウケンジロウ' },
+      'TDN60052': { name: '日能研三郎', nameKana: 'ニチノウケンサブロウ' },
+      'TDN60065': { name: '日能研四郎', nameKana: 'ニチノウケンシロウ' }
+    };
+
+    for (const s of students) {
+      const hasKanji = /[\u4e00-\u9faf]/.test(s.name || '');
+      const known = KNOWN_TEMPLATE_STUDENTS[s.nichinokenId?.toUpperCase()];
+      if (!hasKanji && known) {
+        s.name = known.name;
+        if (!s.nameKana || s.nameKana === s.name) s.nameKana = known.nameKana;
+        db.students.update(s.id, { name: known.name, nameKana: s.nameKana }).catch(() => {});
+      } else if (!hasKanji && s.nameKana && /[\u4e00-\u9faf]/.test(s.nameKana)) {
+        // カナ側に漢字がある場合の自己補正スワップ
+        const tmp = s.name;
+        s.name = s.nameKana;
+        s.nameKana = tmp;
+        db.students.update(s.id, { name: s.name, nameKana: s.nameKana }).catch(() => {});
+      }
+    }
+
     const subMap = new Map();
     for (const sub of submissions) {
       subMap.set(sub.studentId, sub);
     }
 
     return students.map(s => {
+      const course = s.course || '4科';
       const sub = subMap.get(s.id) || {
         status: '未提出',
         hasChange: false,
         enrollmentClass: '',
+        enrollmentCourse: '',
         inputMethod: '',
         approvedBy: '',
         remarks: '',
@@ -220,9 +249,22 @@ export const DB = {
           status: sub.status,
           hasChange: sub.hasChange,
           enrollmentClass: sub.enrollmentClass || s.className,
+          enrollmentCourse: sub.enrollmentCourse || (sub.enrollmentClass === '非受講' ? '非受講' : course),
           remarks: sub.remarks || '',
           scanImageBlob: sub.scanImageBlob || null
         });
+      }
+
+      // 受講科目の確定値算出
+      let enrollmentCourse = sub.enrollmentCourse;
+      if (!enrollmentCourse) {
+        if (sub.status === '承認済') {
+          enrollmentCourse = sub.enrollmentClass === '非受講' ? '非受講' : (!sub.hasChange ? course : course);
+        } else {
+          enrollmentCourse = '-';
+        }
+      } else if (sub.status === '未提出') {
+        enrollmentCourse = '-';
       }
 
       return {
@@ -231,10 +273,12 @@ export const DB = {
         name: s.name,
         nameKana: s.nameKana,
         className: s.className,
+        course,
         submissionId: sub.id,
         status: sub.status,
         hasChange: sub.hasChange,
         enrollmentClass: sub.enrollmentClass || (sub.status === '承認済' && !sub.hasChange ? s.className : (sub.status === '未提出' ? '-' : sub.enrollmentClass)),
+        enrollmentCourse,
         inputMethod: sub.inputMethod,
         approvedBy: sub.approvedBy,
         remarks: sub.remarks,
@@ -251,17 +295,40 @@ export const DB = {
    */
   async findStudentByNichinokenId(projectId, nichinokenId) {
     const cleaned = (nichinokenId || '').trim().toUpperCase();
-    return await db.students
+    const s = await db.students
       .where('projectId')
       .equals(projectId)
-      .filter(s => s.nichinokenId.toUpperCase() === cleaned)
+      .filter(st => st.nichinokenId.toUpperCase() === cleaned)
       .first();
+
+    if (s) {
+      const KNOWN_TEMPLATE_STUDENTS = {
+        'TDN60013': { name: '日能研太郎', nameKana: 'ニチノウケンタロウ' },
+        'TDN60026': { name: '日能研花子', nameKana: 'ニチノウケンハナコ' },
+        'TDN60039': { name: '日能研次郎', nameKana: 'ニチノウケンジロウ' },
+        'TDN60052': { name: '日能研三郎', nameKana: 'ニチノウケンサブロウ' },
+        'TDN60065': { name: '日能研四郎', nameKana: 'ニチノウケンシロウ' }
+      };
+      const hasKanji = /[\u4e00-\u9faf]/.test(s.name || '');
+      const known = KNOWN_TEMPLATE_STUDENTS[cleaned];
+      if (!hasKanji && known) {
+        s.name = known.name;
+        if (!s.nameKana || s.nameKana === s.name) s.nameKana = known.nameKana;
+        db.students.update(s.id, { name: known.name, nameKana: s.nameKana }).catch(() => {});
+      } else if (!hasKanji && s.nameKana && /[\u4e00-\u9faf]/.test(s.nameKana)) {
+        const tmp = s.name;
+        s.name = s.nameKana;
+        s.nameKana = tmp;
+        db.students.update(s.id, { name: s.name, nameKana: s.nameKana }).catch(() => {});
+      }
+    }
+    return s;
   },
 
   /**
    * 生徒を1名プロジェクトに追加（初期未提出レコードも自動作成）
    */
-  async addStudentToProject(projectId, { nichinokenId, name, nameKana = '', className }) {
+  async addStudentToProject(projectId, { nichinokenId, name, nameKana = '', className, course = '4科' }) {
     const project = await db.projects.get(projectId);
     if (!project) throw new Error('プロジェクトが見つかりません');
     if (project.status === '完了') {
@@ -272,6 +339,7 @@ export const DB = {
     const cleanName = (name || '').trim();
     const cleanKana = (nameKana || '').trim();
     const cleanClass = (className || '').trim();
+    const cleanCourse = (course || '4科').trim();
 
     if (!cleanId) throw new Error('日能研番号を入力してください');
     if (!cleanName) throw new Error('氏名を入力してください');
@@ -291,7 +359,8 @@ export const DB = {
       nichinokenId: cleanId,
       name: cleanName,
       nameKana: cleanKana,
-      className: cleanClass
+      className: cleanClass,
+      course: cleanCourse || '4科'
     };
 
     const submissionRecord = {
@@ -301,6 +370,7 @@ export const DB = {
       status: '未提出',
       hasChange: false,
       enrollmentClass: '',
+      enrollmentCourse: '',
       inputMethod: '',
       approvedBy: '',
       remarks: '',
@@ -328,11 +398,13 @@ export const DB = {
     }
 
     const existingStudents = await db.students.where('projectId').equals(projectId).toArray();
-    const existingIdSet = new Set(existingStudents.map(s => s.nichinokenId.toUpperCase()));
+    const existingStudentMap = new Map(existingStudents.map(s => [s.nichinokenId.toUpperCase(), s]));
 
     const toAddStudents = [];
     const toAddSubmissions = [];
+    const toUpdateStudents = [];
     const addedList = [];
+    const updatedList = [];
     const skippedList = [];
 
     const seenInBatch = new Set();
@@ -342,18 +414,32 @@ export const DB = {
       const cleanName = (s.name || '').trim();
       const cleanKana = (s.nameKana || '').trim();
       const cleanClass = (s.className || '').trim();
+      const cleanCourse = (s.course || '4科').trim();
 
       if (!cleanId || !cleanName || !cleanClass) {
         skippedList.push({ id: cleanId || '(不明)', name: cleanName, reason: '必須項目不足' });
         continue;
       }
 
-      if (existingIdSet.has(cleanId) || seenInBatch.has(cleanId)) {
-        skippedList.push({ id: cleanId, name: cleanName, reason: '番号が既存登録またはファイル内で重複' });
+      if (seenInBatch.has(cleanId)) {
+        skippedList.push({ id: cleanId, name: cleanName, reason: 'CSVファイル内で番号が重複' });
         continue;
       }
-
       seenInBatch.add(cleanId);
+
+      // 既存生徒が存在する場合は、氏名・カナ・クラス・科目を最新情報で上書き更新
+      if (existingStudentMap.has(cleanId)) {
+        const existing = existingStudentMap.get(cleanId);
+        toUpdateStudents.push({
+          id: existing.id,
+          name: cleanName,
+          nameKana: cleanKana,
+          className: cleanClass,
+          course: cleanCourse || '4科'
+        });
+        updatedList.push({ id: cleanId, name: cleanName, prevName: existing.name });
+        continue;
+      }
 
       const studentId = 'stu_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
       const submissionId = 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -364,7 +450,8 @@ export const DB = {
         nichinokenId: cleanId,
         name: cleanName,
         nameKana: cleanKana,
-        className: cleanClass
+        className: cleanClass,
+        course: cleanCourse || '4科'
       };
 
       const subRec = {
@@ -374,6 +461,7 @@ export const DB = {
         status: '未提出',
         hasChange: false,
         enrollmentClass: '',
+        enrollmentCourse: '',
         inputMethod: '',
         approvedBy: '',
         remarks: '',
@@ -387,19 +475,46 @@ export const DB = {
       addedList.push(stuRec);
     }
 
-    if (toAddStudents.length > 0) {
-      await db.transaction('rw', db.students, db.submissions, async () => {
+    await db.transaction('rw', db.students, db.submissions, async () => {
+      if (toAddStudents.length > 0) {
         await db.students.bulkAdd(toAddStudents);
         await db.submissions.bulkAdd(toAddSubmissions);
-      });
-    }
+      }
+      for (const item of toUpdateStudents) {
+        await db.students.update(item.id, {
+          name: item.name,
+          nameKana: item.nameKana,
+          className: item.className,
+          course: item.course
+        });
+      }
+    });
 
     return {
       addedCount: toAddStudents.length,
+      updatedCount: toUpdateStudents.length,
       skippedCount: skippedList.length,
       addedList,
+      updatedList,
       skippedList
     };
+  },
+
+  /**
+   * 生徒の基本情報（氏名・カナ・クラス・科目）を個別に更新
+   */
+  async updateStudent(studentId, { name, nameKana, className, course }) {
+    const student = await db.students.get(studentId);
+    if (!student) throw new Error('生徒が見つかりません');
+
+    const updates = {};
+    if (name !== undefined) updates.name = name.trim();
+    if (nameKana !== undefined) updates.nameKana = nameKana.trim();
+    if (className !== undefined) updates.className = className.trim();
+    if (course !== undefined) updates.course = course.trim();
+
+    await db.students.update(studentId, updates);
+    return await db.students.get(studentId);
   },
 
   /**
@@ -462,6 +577,7 @@ export const DB = {
         status: existing.status,
         hasChange: existing.hasChange || false,
         enrollmentClass: existing.enrollmentClass || '',
+        enrollmentCourse: existing.enrollmentCourse || '',
         remarks: existing.remarks || '',
         scanImageBlob: existing.scanImageBlob || null
       });
@@ -477,6 +593,7 @@ export const DB = {
       status: submissionData.status || '承認済',
       hasChange: submissionData.hasChange !== undefined ? submissionData.hasChange : (existing.hasChange || false),
       enrollmentClass: submissionData.enrollmentClass || existing.enrollmentClass || '',
+      enrollmentCourse: submissionData.enrollmentCourse || existing.enrollmentCourse || '',
       remarks: submissionData.remarks !== undefined ? submissionData.remarks : (existing.remarks || ''),
       scanImageBlob: submissionData.scanImageBlob !== undefined ? submissionData.scanImageBlob : (existing.scanImageBlob || null)
     };

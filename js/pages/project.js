@@ -348,7 +348,8 @@ export const ProjectPage = {
           (s.nichinokenId && s.nichinokenId.toLowerCase().includes(q)) ||
           (s.name && s.name.toLowerCase().includes(q)) ||
           (s.nameKana && s.nameKana.toLowerCase().includes(q)) ||
-          (s.className && s.className.toLowerCase().includes(q))
+          (s.className && s.className.toLowerCase().includes(q)) ||
+          (s.course && s.course.toLowerCase().includes(q))
         );
       });
 
@@ -382,7 +383,7 @@ export const ProjectPage = {
               <!-- 1. 生徒一覧 & 削除エリア -->
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md); gap: 12px; flex-wrap: wrap;">
                 <div style="display: flex; gap: 8px; flex: 1; max-width: 500px;">
-                  <input type="text" id="modal-inp-search" class="form-control" placeholder="🔍 日能研番号・氏名・カナで絞り込み..." value="${studentSearchQuery}">
+                  <input type="text" id="modal-inp-search" class="form-control" placeholder="🔍 日能研番号・氏名・カナ・科目で絞り込み..." value="${studentSearchQuery}">
                   <select id="modal-sel-class-filter" class="form-control" style="width: 140px;">
                     <option value="all" ${selectedClassFilter === 'all' ? 'selected' : ''}>全クラス</option>
                     ${classes.map(c => `<option value="${c}" ${selectedClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
@@ -401,6 +402,7 @@ export const ProjectPage = {
                       <th>氏名</th>
                       <th>カナ</th>
                       <th style="width: 80px;">クラス</th>
+                      <th style="width: 70px;">科目</th>
                       <th style="width: 120px;">提出状況</th>
                       <th style="width: 80px; text-align: center;">操作</th>
                     </tr>
@@ -408,7 +410,7 @@ export const ProjectPage = {
                   <tbody>
                     ${filteredStudents.length === 0 ? `
                       <tr>
-                        <td colspan="6" style="text-align: center; color: var(--gray-500); padding: 30px;">
+                        <td colspan="7" style="text-align: center; color: var(--gray-500); padding: 30px;">
                           該当する生徒が見つかりません
                         </td>
                       </tr>
@@ -418,15 +420,22 @@ export const ProjectPage = {
                       return `
                         <tr>
                           <td class="text-mono font-bold">${s.nichinokenId}</td>
-                          <td class="font-bold">${s.name}</td>
+                          <td class="font-bold">
+                            ${s.name}
+                            ${(!/[\u4e00-\u9faf]/.test(s.name) && s.name) ? '<span class="badge badge-warning" style="font-size: 0.68rem; margin-left: 4px; padding: 1px 4px;">カナ氏名</span>' : ''}
+                          </td>
                           <td class="text-muted" style="font-size: 0.8rem;">${s.nameKana || '-'}</td>
                           <td><span class="badge badge-info">${s.className}</span></td>
+                          <td><span class="badge badge-purple">${s.course || '4科'}</span></td>
                           <td>
                             <span class="badge ${badgeClass}">${s.status}</span>
                             ${s.hasChange ? '<span class="badge badge-purple" style="font-size: 0.7rem; margin-left: 2px;">変更有</span>' : ''}
                           </td>
-                          <td style="text-align: center;">
-                            <button class="btn btn-ghost btn-sm btn-delete-student" data-id="${s.studentId}" data-name="${s.name}" data-nid="${s.nichinokenId}" data-status="${s.status}" data-image="${s.scanImageBlob ? '1' : '0'}" style="color: var(--danger-solid); padding: 2px 8px;" title="生徒を削除">
+                          <td style="text-align: center; white-space: nowrap;">
+                            <button class="btn btn-ghost btn-sm btn-edit-student" data-id="${s.studentId}" data-name="${s.name}" data-kana="${s.nameKana || ''}" data-class="${s.className}" data-course="${s.course || '4科'}" data-nid="${s.nichinokenId}" style="color: var(--primary-700); padding: 2px 6px;" title="生徒情報を編集">
+                              ✏️ 編集
+                            </button>
+                            <button class="btn btn-ghost btn-sm btn-delete-student" data-id="${s.studentId}" data-name="${s.name}" data-nid="${s.nichinokenId}" data-status="${s.status}" data-image="${s.scanImageBlob ? '1' : '0'}" style="color: var(--danger-solid); padding: 2px 6px;" title="生徒を削除">
                               🗑️ 削除
                             </button>
                           </td>
@@ -465,12 +474,22 @@ export const ProjectPage = {
                       <input type="text" id="add-inp-kana" class="form-control" placeholder="例: ニチノウケン タロウ">
                     </div>
 
-                    <div class="form-group" style="margin-bottom: var(--spacing-md);">
-                      <label class="form-label" style="font-size: 0.85rem;">所属クラス <span class="required">*</span></label>
-                      <input type="text" id="add-inp-class" class="form-control font-bold" placeholder="例: W1, M1, A1 など" list="exist-classes-list" required>
-                      <datalist id="exist-classes-list">
-                        ${classes.map(c => `<option value="${c}">`).join('')}
-                      </datalist>
+                    <div class="form-row" style="margin-bottom: var(--spacing-md); display: flex; gap: 10px;">
+                      <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.85rem;">所属クラス <span class="required">*</span></label>
+                        <input type="text" id="add-inp-class" class="form-control font-bold" placeholder="例: W1, M1, A1 など" list="exist-classes-list" required>
+                        <datalist id="exist-classes-list">
+                          ${classes.map(c => `<option value="${c}">`).join('')}
+                        </datalist>
+                      </div>
+
+                      <div class="form-group" style="width: 120px; margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.85rem;">科目 <span class="required">*</span></label>
+                        <select id="add-sel-course" class="form-control font-bold" required>
+                          <option value="4科" selected>4科</option>
+                          <option value="2科">2科</option>
+                        </select>
+                      </div>
                     </div>
 
                     <button type="submit" id="btn-submit-add-student" class="btn btn-primary" style="width: 100%;">
@@ -555,6 +574,93 @@ export const ProjectPage = {
           };
         }
 
+        // 編集ボタン
+        modal.querySelectorAll('.btn-edit-student').forEach(btn => {
+          btn.onclick = () => {
+            const stuId = btn.dataset.id;
+            const stuName = btn.dataset.name;
+            const stuKana = btn.dataset.kana;
+            const stuClass = btn.dataset.class;
+            const stuCourse = btn.dataset.course || '4科';
+            const stuNid = btn.dataset.nid;
+
+            const editModal = document.createElement('div');
+            editModal.className = 'modal-overlay';
+            editModal.style.zIndex = '1100';
+            editModal.innerHTML = `
+              <div class="modal-content" style="max-width: 440px;">
+                <div class="modal-header">
+                  <h3 class="modal-title font-bold" style="font-size: 1.1rem;">✏️ 生徒情報の編集</h3>
+                  <button class="modal-close" id="edit-modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                  <div style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 12px;">
+                    日能研番号: <strong class="text-mono font-bold" style="color: var(--gray-900);">${stuNid}</strong>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 10px;">
+                    <label class="form-label required">氏名（漢字）</label>
+                    <input type="text" id="edit-inp-name" class="form-control" value="${stuName}" placeholder="例: 日能研太郎" required>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 10px;">
+                    <label class="form-label">氏名カナ</label>
+                    <input type="text" id="edit-inp-kana" class="form-control" value="${stuKana}" placeholder="例: ニチノウケンタロウ">
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                    <div class="form-group">
+                      <label class="form-label required">所属クラス</label>
+                      <input type="text" id="edit-inp-class" class="form-control text-uppercase" value="${stuClass}" placeholder="例: W1" required>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label required">所属科目</label>
+                      <select id="edit-sel-course" class="form-control">
+                        <option value="4科" ${stuCourse === '4科' ? 'selected' : ''}>4科</option>
+                        <option value="2科" ${stuCourse === '2科' ? 'selected' : ''}>2科</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-secondary" id="edit-modal-cancel">キャンセル</button>
+                  <button class="btn btn-primary" id="edit-modal-save">保存する</button>
+                </div>
+              </div>
+            `;
+            document.body.appendChild(editModal);
+
+            const closeEdit = () => editModal.remove();
+            editModal.querySelector('#edit-modal-close').onclick = closeEdit;
+            editModal.querySelector('#edit-modal-cancel').onclick = closeEdit;
+
+            editModal.querySelector('#edit-modal-save').onclick = async () => {
+              const newName = editModal.querySelector('#edit-inp-name').value.trim();
+              const newKana = editModal.querySelector('#edit-inp-kana').value.trim();
+              const newClass = editModal.querySelector('#edit-inp-class').value.trim();
+              const newCourse = editModal.querySelector('#edit-sel-course').value;
+
+              if (!newName || !newClass) {
+                UI.showToast('氏名と所属クラスは必須です', 'error');
+                return;
+              }
+
+              try {
+                await DB.updateStudent(stuId, {
+                  name: newName,
+                  nameKana: newKana,
+                  className: newClass,
+                  course: newCourse
+                });
+                UI.showToast(`生徒「${newName}」の情報を更新しました`, 'success');
+                closeEdit();
+                await this.updateHeaderStats();
+                this.renderActiveTab();
+                await renderModalContent();
+              } catch (err) {
+                UI.showToast(`更新エラー: ${err.message}`, 'error');
+              }
+            };
+          };
+        });
+
         // 削除ボタン
         modal.querySelectorAll('.btn-delete-student').forEach(btn => {
           btn.onclick = async () => {
@@ -619,9 +725,11 @@ export const ProjectPage = {
             const name = nameInput.value.trim();
             const nameKana = kanaInput.value.trim();
             const className = classInput.value.trim();
+            const courseSelect = modal.querySelector('#add-sel-course');
+            const course = courseSelect ? courseSelect.value : '4科';
 
             try {
-              await DB.addStudentToProject(projectId, { nichinokenId, name, nameKana, className });
+              await DB.addStudentToProject(projectId, { nichinokenId, name, nameKana, className, course });
               UI.showToast(`生徒「${name}（${nichinokenId}）」を追加しました`, 'success');
               await this.updateHeaderStats();
               this.renderActiveTab();
@@ -653,17 +761,19 @@ export const ProjectPage = {
 
           try {
             const res = await DB.addStudentsBulkToProject(projectId, parsed.students);
+            const totalProcessed = (res.addedCount || 0) + (res.updatedCount || 0);
             if (resultDiv) {
               resultDiv.style.display = 'block';
-              resultDiv.style.background = res.addedCount > 0 ? 'var(--success-bg)' : 'var(--warning-bg)';
-              resultDiv.style.color = res.addedCount > 0 ? 'var(--success-text)' : 'var(--warning-text)';
-              resultDiv.style.border = `1px solid ${res.addedCount > 0 ? 'var(--success-solid)' : 'var(--warning-solid)'}`;
+              resultDiv.style.background = totalProcessed > 0 ? 'var(--success-bg)' : 'var(--warning-bg)';
+              resultDiv.style.color = totalProcessed > 0 ? 'var(--success-text)' : 'var(--warning-text)';
+              resultDiv.style.border = `1px solid ${totalProcessed > 0 ? 'var(--success-solid)' : 'var(--warning-solid)'}`;
               resultDiv.innerHTML = `
-                <div class="font-bold">処理完了: ${res.addedCount} 名追加、${res.skippedCount} 件スキップ</div>
-                ${res.skippedCount > 0 ? `<div style="font-size: 0.78rem; margin-top: 4px;">スキップ理由: 既に登録済み番号またはフォーマット不備</div>` : ''}
+                <div class="font-bold">処理完了: 新規追加 ${res.addedCount} 名、更新 ${res.updatedCount || 0} 名、スキップ ${res.skippedCount} 件</div>
+                ${res.updatedCount > 0 ? `<div style="font-size: 0.78rem; margin-top: 4px; color: var(--success-text);">✓ 既存生徒の氏名・カナ・クラス・科目を最新CSVで上書き更新しました</div>` : ''}
+                ${res.skippedCount > 0 ? `<div style="font-size: 0.78rem; margin-top: 4px;">スキップ理由: CSV内重複またはフォーマット不備</div>` : ''}
               `;
             }
-            UI.showToast(`CSVから ${res.addedCount} 名の生徒を追加しました`, 'success');
+            UI.showToast(`CSV処理完了: ${res.addedCount} 名追加、${res.updatedCount || 0} 名更新`, 'success');
             await this.updateHeaderStats();
             this.renderActiveTab();
           } catch (err) {

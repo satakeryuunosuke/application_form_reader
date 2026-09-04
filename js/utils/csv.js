@@ -7,11 +7,11 @@ import { Validator } from './validator.js';
 export const CsvUtil = {
   /**
    * CSV文字列をパースして生徒オブジェクトの配列を返す
-   * 先頭4列: 日能研番号, 氏名, 氏名カナ, クラス
-   * 5列目以降は空カラムでも無視して許容
+   * 先頭列: 日能研番号, 氏名, 氏名カナ, クラス, 科目(4科/2科)
+   * ヘッダー名による動的列判定および位置指定に対応
    * 
    * @param {string} csvText
-   * @returns {{ students: Array<{ nichinokenId: string, name: string, nameKana: string, className: string }>, errors: Array<{ row: number, message: string }> }}
+   * @returns {{ students: Array<{ nichinokenId: string, name: string, nameKana: string, className: string, course: string }>, errors: Array<{ row: number, message: string }> }}
    */
   parseStudentsCsv(csvText) {
     const lines = csvText.split(/\r\n|\n|\r/).filter(line => line.trim().length > 0);
@@ -25,14 +25,55 @@ export const CsvUtil = {
 
     // 先頭行がヘッダーか判定
     let startIndex = 0;
+    let colIndices = {
+      id: 0,
+      name: 1,
+      kana: 2,
+      class: 3,
+      course: 4
+    };
+
     const firstLineCols = this.parseCsvLine(lines[0]);
-    if (
-      firstLineCols[0]?.includes('番号') ||
-      firstLineCols[0]?.toLowerCase().includes('id') ||
-      firstLineCols[1]?.includes('氏名') ||
-      firstLineCols[1]?.includes('名前')
-    ) {
+    const isHeader = (
+      firstLineCols.some(c => c.includes('番号') || c.toLowerCase().includes('id') || c.includes('氏名') || c.includes('名前'))
+    );
+
+    if (isHeader) {
       startIndex = 1;
+      // ヘッダー名から各列インデックスを動的に検索
+      firstLineCols.forEach((col, idx) => {
+        const clean = col.replace(/[\s　_（）\(\)［］\[\]]+/g, '');
+        const cLower = clean.toLowerCase();
+
+        // カナ判定キーワード: カナ, フリガナ, ふりがな, よみがな, かな, kana
+        const isKanaHeader = clean.includes('カナ') || clean.includes('フリガナ') || 
+                             clean.includes('ふりがな') || clean.includes('よみがな') || 
+                             clean.includes('かな') || cLower.includes('kana');
+
+        // 番号判定キーワード
+        const isIdHeader = clean.includes('番号') || cLower.includes('id') || clean.includes('記号') || clean.includes('コード');
+
+        // 氏名判定キーワード（カナを含まないこと）
+        const isNameHeader = (clean.includes('氏名') || clean.includes('名前') || clean.includes('生徒名') || clean.includes('生徒') || cLower.includes('name')) && !isKanaHeader;
+
+        // クラス判定キーワード
+        const isClassHeader = clean.includes('クラス') || clean.includes('組') || cLower.includes('class');
+
+        // 科目判定キーワード
+        const isCourseHeader = clean.includes('科目') || clean.includes('コース') || clean.includes('4科') || clean.includes('2科') || cLower.includes('course');
+
+        if (isIdHeader) {
+          colIndices.id = idx;
+        } else if (isKanaHeader) {
+          colIndices.kana = idx;
+        } else if (isNameHeader) {
+          colIndices.name = idx;
+        } else if (isClassHeader) {
+          colIndices.class = idx;
+        } else if (isCourseHeader) {
+          colIndices.course = idx;
+        }
+      });
     }
 
     for (let i = startIndex; i < lines.length; i++) {
@@ -40,10 +81,32 @@ export const CsvUtil = {
       const cols = this.parseCsvLine(lines[i]);
       if (cols.length === 0 || cols.every(c => !c)) continue;
 
-      const nichinokenId = (cols[0] || '').trim().toUpperCase();
-      const name = (cols[1] || '').trim();
-      const nameKana = (cols[2] || '').trim();
-      const className = (cols[3] || '').trim();
+      const nichinokenId = (cols[colIndices.id] || cols[0] || '').trim().toUpperCase();
+      let name = (cols[colIndices.name] || cols[1] || '').trim();
+      let nameKana = (cols[colIndices.kana] || (cols.length > 2 ? cols[2] : '') || '').trim();
+      const className = (cols[colIndices.class] || (cols.length > 3 ? cols[3] : '') || '').trim();
+      const rawCourse = (cols[colIndices.course] !== undefined ? cols[colIndices.course] : (cols.length > 4 ? cols[4] : '')).trim();
+
+      // 氏名とカナの自己補正（もしカナ側に漢字があり、氏名側がカナのみの場合は自動スワップ）
+      const hasKanjiInKana = /[\u4e00-\u9faf]/.test(nameKana);
+      const isKanaOnlyName = /^[ぁ-んァ-ヶー・\s　]+$/.test(name);
+      if (hasKanjiInKana && isKanaOnlyName) {
+        const tmp = name;
+        name = nameKana;
+        nameKana = tmp;
+      }
+
+      // 科目（4科 / 2科）の判定・正規化（未指定時はデフォルト4科）
+      let course = '4科';
+      if (rawCourse) {
+        if (rawCourse.includes('2')) {
+          course = '2科';
+        } else if (rawCourse.includes('4')) {
+          course = '4科';
+        } else if (rawCourse === '2科' || rawCourse === '4科') {
+          course = rawCourse;
+        }
+      }
 
       if (!nichinokenId) {
         errors.push({ row: rowNum, message: '日能研番号が空です' });
@@ -74,7 +137,8 @@ export const CsvUtil = {
         nichinokenId,
         name,
         nameKana: nameKana || '',
-        className
+        className,
+        course
       });
     }
 
@@ -113,10 +177,10 @@ export const CsvUtil = {
    * 配布用生徒データCSVテンプレートのダウンロード
    */
   downloadTemplateCsv() {
-    const header = ['日能研番号', '氏名', '氏名カナ', 'クラス', '', '', ''];
-    const sample1 = ['TDN60013', '日能研太郎', 'ニチノウケンタロウ', 'W1', '', '', ''];
-    const sample2 = ['TDN60026', '日能研花子', 'ニチノウケンハナコ', 'W1', '', '', ''];
-    const sample3 = ['TDN60039', '日能研次郎', 'ニチノウケンジロウ', 'M1', '', '', ''];
+    const header = ['日能研番号', '氏名', '氏名カナ', 'クラス', '科目', '', ''];
+    const sample1 = ['TDN60013', '日能研太郎', 'ニチノウケンタロウ', 'W1', '4科', '', ''];
+    const sample2 = ['TDN60026', '日能研花子', 'ニチノウケンハナコ', 'W1', '4科', '', ''];
+    const sample3 = ['TDN60039', '日能研次郎', 'ニチノウケンジロウ', 'M1', '2科', '', ''];
 
     const csvContent = [header, sample1, sample2, sample3]
       .map(row => row.join(','))
@@ -134,8 +198,10 @@ export const CsvUtil = {
       '氏名',
       '氏名カナ',
       '所属クラス',
+      '所属科目',
       '提出ステータス',
       '受講クラス',
+      '受講科目',
       '受付方法',
       '承認者',
       '受付・承認日時',
@@ -151,8 +217,10 @@ export const CsvUtil = {
         escape(r.name),
         escape(r.nameKana),
         escape(r.className),
+        escape(r.course || '4科'),
         escape(r.status),
         escape(r.enrollmentClass || '-'),
+        escape(r.enrollmentCourse || (r.status === '承認済' ? (r.enrollmentClass === '非受講' ? '非受講' : (r.course || '4科')) : '-')),
         escape(r.inputMethod || '-'),
         escape(r.approvedBy || '-'),
         escape(r.approvedAt || r.submittedAt || '-'),
@@ -175,7 +243,7 @@ export const CsvUtil = {
     }
 
     const data = [
-      ['日能研番号', '氏名', '氏名カナ', '所属クラス', '提出ステータス', '受講クラス', '受付方法', '承認者', '受付・承認日時', '特記事項']
+      ['日能研番号', '氏名', '氏名カナ', '所属クラス', '所属科目', '提出ステータス', '受講クラス', '受講科目', '受付方法', '承認者', '受付・承認日時', '特記事項']
     ];
 
     for (const r of rows) {
@@ -184,8 +252,10 @@ export const CsvUtil = {
         r.name || '',
         r.nameKana || '',
         r.className || '',
+        r.course || '4科',
         r.status || '',
         r.enrollmentClass || '-',
+        r.enrollmentCourse || (r.status === '承認済' ? (r.enrollmentClass === '非受講' ? '非受講' : (r.course || '4科')) : '-'),
         r.inputMethod || '-',
         r.approvedBy || '-',
         r.approvedAt || r.submittedAt || '-',
