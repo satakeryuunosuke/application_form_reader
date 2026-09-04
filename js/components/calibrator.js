@@ -29,6 +29,14 @@ export class TemplateCalibrator {
     this.loadedPages = []; // [{ canvas, barcodeBox, pageNum }]
     this.currentPageIndex = 0;
 
+    // ズーム＆パン状態
+    this.zoomLevel = 1.0;
+    this.panX = 0;
+    this.panY = 0;
+    this.isDragging = false;
+    this.dragStartX = 0;
+    this.dragStartY = 0;
+
     this.render();
     this.initDefaultSample();
   }
@@ -75,7 +83,24 @@ export class TemplateCalibrator {
         <div class="calibrator-layout">
           <!-- 左ペイン：帳票プレビュー & 判定枠オーバーレイ -->
           <div class="calibrator-preview-wrapper" id="calib-dropzone">
-            <div class="calibrator-canvas-container">
+            <!-- プレビュー拡大・縮小ツールバー -->
+            <div class="calibrator-zoom-bar">
+              <div class="calibrator-zoom-controls">
+                <span style="font-weight: 700; color: #93c5fd; font-size: 0.78rem;">🔍 プレビュー表示:</span>
+                <button type="button" id="btn-calib-zoom-out" class="calibrator-zoom-btn" title="縮小 (マウスホイール下)">🔍-</button>
+                <span id="calib-zoom-val" style="font-family: var(--font-mono); min-width: 44px; text-align: center; font-size: 0.78rem;">100%</span>
+                <button type="button" id="btn-calib-zoom-in" class="calibrator-zoom-btn" title="拡大 (マウスホイール上)">🔍+</button>
+                <button type="button" id="btn-calib-zoom-fit" class="calibrator-zoom-btn" title="画面全体に合わせる">全体</button>
+                <button type="button" id="btn-calib-zoom-reset" class="calibrator-zoom-btn" title="原寸大 (100%)">100%</button>
+              </div>
+              <div class="calibrator-zoom-controls">
+                <button type="button" id="btn-calib-focus-target" class="calibrator-zoom-btn btn-focus-target" title="チェックボックス判定エリアを特大フォーカス表示">
+                  🎯 判定枠へズーム
+                </button>
+              </div>
+            </div>
+
+            <div class="calibrator-canvas-container" id="calib-canvas-container" title="ホイールで拡大縮小 / ドラッグで移動 / ダブルクリックで判定枠へズーム">
               <canvas id="calib-canvas"></canvas>
             </div>
             <div class="calibrator-overlay-legend">
@@ -164,7 +189,11 @@ export class TemplateCalibrator {
                   <label class="form-label">判定感度（黒画素率 閾値）</label>
                   <span class="calib-val-badge text-mono" id="val-threshold">25%</span>
                 </div>
-                <input type="range" id="rng-threshold" min="0.10" max="0.60" step="0.01" class="form-range">
+                <div class="calib-input-row">
+                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="-0.01">➖</button>
+                  <input type="range" id="rng-threshold" min="0.00" max="0.60" step="0.01" class="form-range">
+                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="0.01">➕</button>
+                </div>
                 <div style="font-size: 0.72rem; color: var(--gray-500); margin-top: 2px;">
                   ※ 枠線全体の黒画素を含むため、通常は 25%〜30% が推奨です
                 </div>
@@ -237,6 +266,14 @@ export class TemplateCalibrator {
       btn.onclick = () => {
         const target = btn.dataset.target;
         const delta = parseFloat(btn.dataset.delta);
+        if (target === 'threshold') {
+          const currentVal = this.template.threshold !== undefined ? this.template.threshold : 0.25;
+          this.template.threshold = Math.max(0.00, Math.min(0.60, Math.round((currentVal + delta) * 100) / 100));
+          this.syncSlidersFromTemplate();
+          this.drawOverlay();
+          if (this.onChange) this.onChange(this.template);
+          return;
+        }
         const targetBox = this.activeTab === 'noChange' ? this.template.noChangeBox : this.template.hasChangeBox;
         const currentVal = target === 'size' ? (targetBox.size || targetBox.w || 0.022) : targetBox[target];
         targetBox[target] = Math.round((currentVal + delta) * 1000) / 1000;
@@ -302,6 +339,150 @@ export class TemplateCalibrator {
         this.setPage(this.currentPageIndex + 1);
       }
     };
+
+    // --- プレビューズーム＆パン制御 ---
+    const zoomInBtn = this.container.querySelector('#btn-calib-zoom-in');
+    const zoomOutBtn = this.container.querySelector('#btn-calib-zoom-out');
+    const zoomFitBtn = this.container.querySelector('#btn-calib-zoom-fit');
+    const zoomResetBtn = this.container.querySelector('#btn-calib-zoom-reset');
+    const focusTargetBtn = this.container.querySelector('#btn-calib-focus-target');
+    const canvasWrap = this.container.querySelector('#calib-canvas-container');
+
+    const updateZoom = (newZoom, cx = null, cy = null) => {
+      const clamped = Math.max(0.4, Math.min(4.5, newZoom));
+      if (cx !== null && cy !== null && canvasWrap) {
+        const rect = canvasWrap.getBoundingClientRect();
+        const ox = cx - (rect.left + rect.width / 2);
+        const oy = cy - (rect.top + rect.height / 2);
+        this.panX -= (ox - this.panX) * (clamped / this.zoomLevel - 1);
+        this.panY -= (oy - this.panY) * (clamped / this.zoomLevel - 1);
+      }
+      this.zoomLevel = clamped;
+      this.applyCanvasTransform();
+    };
+
+    if (zoomInBtn) zoomInBtn.onclick = () => updateZoom(this.zoomLevel + 0.25);
+    if (zoomOutBtn) zoomOutBtn.onclick = () => updateZoom(this.zoomLevel - 0.25);
+    if (zoomFitBtn) {
+      zoomFitBtn.onclick = () => {
+        this.zoomLevel = 1.0;
+        this.panX = 0;
+        this.panY = 0;
+        this.applyCanvasTransform();
+      };
+    }
+    if (zoomResetBtn) {
+      zoomResetBtn.onclick = () => {
+        this.zoomLevel = 1.6;
+        this.panX = 0;
+        this.panY = 0;
+        this.applyCanvasTransform();
+      };
+    }
+
+    if (focusTargetBtn) {
+      focusTargetBtn.onclick = () => this.focusTargetArea();
+    }
+
+    if (canvasWrap) {
+      // マウスホイールによるズーム
+      canvasWrap.onwheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.15 : -0.15;
+        updateZoom(this.zoomLevel + delta, e.clientX, e.clientY);
+      };
+
+      // ドラッグによるパン操作
+      canvasWrap.onmousedown = (e) => {
+        if (e.button !== 0) return;
+        this.isDragging = true;
+        this.dragStartX = e.clientX - this.panX;
+        this.dragStartY = e.clientY - this.panY;
+        canvasWrap.classList.add('is-dragging');
+      };
+
+      // ダブルクリックで判定枠フォーカス ⇔ フィットのトグル
+      canvasWrap.ondblclick = () => {
+        if (this.zoomLevel > 1.4) {
+          this.zoomLevel = 1.0;
+          this.panX = 0;
+          this.panY = 0;
+          this.applyCanvasTransform();
+        } else {
+          this.focusTargetArea();
+        }
+      };
+    }
+
+    const onMouseMove = (e) => {
+      if (!this.isDragging) return;
+      this.panX = e.clientX - this.dragStartX;
+      this.panY = e.clientY - this.dragStartY;
+      this.applyCanvasTransform();
+    };
+
+    const onMouseUp = () => {
+      if (this.isDragging) {
+        this.isDragging = false;
+        if (canvasWrap) canvasWrap.classList.remove('is-dragging');
+      }
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }
+
+  /**
+   * プレビューCanvasのトランスフォームを適用
+   */
+  applyCanvasTransform() {
+    if (!this.canvas) return;
+    this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
+    const zoomValEl = this.container.querySelector('#calib-zoom-val');
+    if (zoomValEl) zoomValEl.textContent = `${Math.round(this.zoomLevel * 100)}%`;
+  }
+
+  /**
+   * 判定対象エリア（バーコード〜チェックボックス付近）へ自動ズーム＆フォーカス
+   */
+  focusTargetArea() {
+    if (!this.sourceCanvas || !this.barcodeBox) {
+      this.zoomLevel = 2.2;
+      this.panX = 0;
+      this.panY = 0;
+      this.applyCanvasTransform();
+      return;
+    }
+
+    const cvW = this.sourceCanvas.width;
+    const cvH = this.sourceCanvas.height;
+    const bc = this.barcodeBox;
+
+    const targetBox = this.activeTab === 'noChange' ? this.template.noChangeBox : this.template.hasChangeBox;
+    const targetX = bc.centerX + (targetBox.dx || 0) * cvW;
+    const targetY = bc.centerY + (targetBox.dy || 0) * cvH;
+
+    const midX = (bc.centerX + targetX) / 2;
+    const midY = (bc.centerY + targetY) / 2;
+
+    this.zoomLevel = 2.4;
+
+    const normOffsetX = (midX / cvW) - 0.5;
+    const normOffsetY = (midY / cvH) - 0.5;
+
+    const canvasWrap = this.container.querySelector('#calib-canvas-container');
+    const wrapW = canvasWrap ? canvasWrap.clientWidth : 700;
+    const wrapH = canvasWrap ? canvasWrap.clientHeight : 500;
+
+    const scaleFit = Math.min(wrapW / cvW, wrapH / cvH);
+    const displayedW = cvW * scaleFit;
+    const displayedH = cvH * scaleFit;
+
+    this.panX = -normOffsetX * displayedW * this.zoomLevel;
+    this.panY = -normOffsetY * displayedH * this.zoomLevel;
+
+    this.applyCanvasTransform();
+    UI.showToast('🎯 判定枠エリアにズームしました（ドラッグで移動可能）', 'info', 2000);
   }
 
   /**
@@ -762,6 +943,9 @@ export class TemplateCalibrator {
 
     // 7. 判定UIの更新
     this.updateEvalStatus(noChangeEval, hasChangeEval, isDetected);
+
+    // トランスフォーム（ズーム・パン）の再適用
+    this.applyCanvasTransform();
   }
 
   drawTargetBox(ctx, rect, strokeColor, fillColor, label, isActive) {

@@ -235,7 +235,7 @@ export const ProjectPage = {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-      <div class="modal-content modal-xl">
+      <div class="modal-content modal-2xl">
         <div class="modal-header">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="brand-icon" style="width: 28px; height: 28px; font-size: 14px;">📐</span>
@@ -246,9 +246,12 @@ export const ProjectPage = {
               </div>
             </div>
           </div>
-          <button class="btn-ghost btn-sm btn-close-modal">✕</button>
+          <div class="modal-header-actions">
+            <button class="btn-modal-maximize" id="btn-proj-calib-maximize" title="全画面最大化 / 元に戻す">⛶</button>
+            <button class="btn-ghost btn-sm btn-close-modal" title="閉じる">✕</button>
+          </div>
         </div>
-        <div class="modal-body" style="padding: 12px var(--spacing-lg); max-height: 78vh;">
+        <div class="modal-body" style="padding: 10px var(--spacing-lg); max-height: 86vh;">
           <div id="project-calib-container"></div>
         </div>
         <div class="modal-footer">
@@ -259,6 +262,23 @@ export const ProjectPage = {
     `;
 
     document.body.appendChild(modal);
+
+    // 最大化トグル
+    const maxBtn = modal.querySelector('#btn-proj-calib-maximize');
+    if (maxBtn) {
+      maxBtn.onclick = () => {
+        const content = modal.querySelector('.modal-content');
+        if (content.classList.contains('modal-fullscreen')) {
+          content.classList.remove('modal-fullscreen');
+          maxBtn.textContent = '⛶';
+          maxBtn.title = '全画面最大化';
+        } else {
+          content.classList.add('modal-fullscreen');
+          maxBtn.textContent = '🗗';
+          maxBtn.title = '元に戻す';
+        }
+      };
+    }
 
     const mount = modal.querySelector('#project-calib-container');
     const calibrator = new TemplateCalibrator(

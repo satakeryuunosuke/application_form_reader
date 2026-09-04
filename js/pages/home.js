@@ -503,15 +503,20 @@ export const HomePage = {
       }
 
       modal.innerHTML = `
-        <div class="modal-content ${wizardStep === 3 ? 'modal-xl' : ''}">
+        <div class="modal-content ${wizardStep === 3 ? 'modal-2xl' : ''}">
           <div class="modal-header">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="brand-icon" style="width: 28px; height: 28px; font-size: 14px;">➕</span>
               <h3 class="modal-title font-bold">新規プロジェクト作成 (Step ${wizardStep} / 3: ${wizardStep === 1 ? '基本情報' : wizardStep === 2 ? '生徒リスト' : '受講票書式設定'})</h3>
             </div>
-            <button class="btn-ghost btn-sm btn-close-modal">✕</button>
+            <div class="modal-header-actions">
+              ${wizardStep === 3 ? `
+                <button class="btn-modal-maximize" id="btn-wiz-maximize" title="全画面最大化 / 元に戻す">⛶</button>
+              ` : ''}
+              <button class="btn-ghost btn-sm btn-close-modal" title="閉じる">✕</button>
+            </div>
           </div>
-          <div class="modal-body" style="${wizardStep === 3 ? 'padding: 12px var(--spacing-lg); max-height: 78vh;' : ''}">
+          <div class="modal-body" style="${wizardStep === 3 ? 'padding: 10px var(--spacing-lg); max-height: 86vh;' : ''}">
             ${bodyContent}
           </div>
           <div class="modal-footer">
@@ -525,6 +530,23 @@ export const HomePage = {
       // モーダル内イベントバインド
       modal.querySelector('.btn-close-modal').onclick = () => modal.remove();
       modal.querySelector('#btn-wiz-cancel').onclick = () => modal.remove();
+
+      // 最大化トグル
+      const maxBtn = modal.querySelector('#btn-wiz-maximize');
+      if (maxBtn) {
+        maxBtn.onclick = () => {
+          const content = modal.querySelector('.modal-content');
+          if (content.classList.contains('modal-fullscreen')) {
+            content.classList.remove('modal-fullscreen');
+            maxBtn.textContent = '⛶';
+            maxBtn.title = '全画面最大化';
+          } else {
+            content.classList.add('modal-fullscreen');
+            maxBtn.textContent = '🗗';
+            maxBtn.title = '元に戻す';
+          }
+        };
+      }
 
       // Step 3 のキャリブレーター初期化
       let calibratorInstance = null;

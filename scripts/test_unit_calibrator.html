@@ -186,11 +186,11 @@
           dt.items.add(csvFile);
           csvInput.files = dt.files;
           csvInput.dispatchEvent(new Event('change', { bubbles: true }));
-          await new Promise(r => setTimeout(r, 20));
+          await new Promise(r => setTimeout(r, 100));
 
           // Step 2 -> Step 3
           modal.querySelector('#btn-wiz-next').click();
-          await new Promise(r => setTimeout(r, 50));
+          await new Promise(r => setTimeout(r, 100));
 
           // Step 3: バーコード未検出画像を読み込ませる
           const blankCv = document.createElement('canvas');
@@ -221,7 +221,124 @@
           report(`Test 7 error: ${err7.message}`, false);
         }
 
-        report('--- ALL 7 UNIT & INTEGRATION TESTS COMPLETED ---', true);
+        // Test 8: TemplateCalibrator zoom & pan controls & target focus
+        {
+          const mount = document.getElementById('test-container');
+          const calib = new TemplateCalibrator(mount);
+
+          const initialZoom = calib.zoomLevel;
+          report(`Test 8a: Initial zoom is 1.0 (zoom=${initialZoom})`, initialZoom === 1.0);
+
+          // ズームイン
+          const zoomInBtn = mount.querySelector('#btn-calib-zoom-in');
+          zoomInBtn.click();
+          report(`Test 8b: Zoom in increases zoomLevel (zoom=${calib.zoomLevel.toFixed(2)})`, calib.zoomLevel > 1.0);
+
+          // 判定枠フォーカス
+          const focusBtn = mount.querySelector('#btn-calib-focus-target');
+          focusBtn.click();
+          report(`Test 8c: Focus target sets zoomLevel >= 2.0 (zoom=${calib.zoomLevel.toFixed(2)})`, calib.zoomLevel >= 2.0);
+
+          // 全体フィット
+          const fitBtn = mount.querySelector('#btn-calib-zoom-fit');
+          fitBtn.click();
+          report(`Test 8d: Zoom fit resets zoomLevel to 1.0 (zoom=${calib.zoomLevel})`, calib.zoomLevel === 1.0);
+        }
+
+        // Test 9: Wizard step 3 modal-2xl and maximize toggle
+        {
+          const { HomePage } = await import('../js/pages/home.js');
+          await HomePage.openNewProjectWizard(2026);
+          const modals = document.querySelectorAll('.modal-overlay');
+          const modal = modals[modals.length - 1];
+
+          // Step 1 -> Step 2
+          modal.querySelector('#btn-wiz-next').click();
+          await new Promise(r => setTimeout(r, 50));
+
+          // CSV読み込み
+          const csvInput = modal.querySelector('#csv-file-input');
+          const csvContent = "日能研番号,氏名,フリガナ,学年,クラス,受講科目数,受講番号\nTDN60013,テスト,テスト,6年,M2,4科,01\n";
+          const dt = new DataTransfer();
+          dt.items.add(new File([new Blob([csvContent])], 'test.csv'));
+          csvInput.files = dt.files;
+          csvInput.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 100));
+
+          // Step 2 -> Step 3
+          modal.querySelector('#btn-wiz-next').click();
+          await new Promise(r => setTimeout(r, 100));
+
+          const content = modal.querySelector('.modal-content');
+          const hasModal2xl = content.classList.contains('modal-2xl');
+          report(`Test 9a: Wizard Step 3 modal has modal-2xl class (has=${hasModal2xl})`, hasModal2xl);
+
+          const maxBtn = modal.querySelector('#btn-wiz-maximize');
+          report(`Test 9b: Maximize button exists in Step 3 header`, !!maxBtn);
+
+          maxBtn.click();
+          const isFullscreen = content.classList.contains('modal-fullscreen');
+          report(`Test 9c: Clicking maximize adds modal-fullscreen class (isFullscreen=${isFullscreen})`, isFullscreen);
+
+          maxBtn.click();
+          const isRestored = !content.classList.contains('modal-fullscreen');
+          report(`Test 9d: Clicking maximize again restores modal (isRestored=${isRestored})`, isRestored);
+
+          modal.remove();
+        }
+
+        // Test 10: UI.showImageLightbox functionality
+        {
+          const { UI } = await import('../js/utils/ui.js');
+          const sampleDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+          UI.showImageLightbox(sampleDataUrl, 'テスト確認票');
+
+          const lb = document.querySelector('.image-lightbox-overlay');
+          report(`Test 10a: UI.showImageLightbox opens overlay`, !!lb);
+
+          const lbImg = lb ? lb.querySelector('#lb-img') : null;
+          report(`Test 10b: Lightbox contains image element`, !!lbImg);
+
+          const zoomInBtn = lb.querySelector('#lb-zoom-in');
+          zoomInBtn.click();
+          const zoomValText = lb.querySelector('#lb-zoom-val').textContent;
+          report(`Test 10c: Lightbox zoom-in button updates zoom (${zoomValText})`, zoomValText !== '100%');
+
+          const closeBtn = lb.querySelector('.btn-close-lightbox');
+          closeBtn.click();
+          const isClosed = !document.querySelector('.image-lightbox-overlay');
+          report(`Test 10d: Close button removes lightbox overlay`, isClosed);
+        }
+
+        // Test 11: Threshold lower limit of 10% removed
+        {
+          const mount = document.getElementById('test-container');
+          const calib = new TemplateCalibrator(mount);
+
+          const rngTh = mount.querySelector('#rng-threshold');
+          const minVal = parseFloat(rngTh.min);
+          report(`Test 11a: Threshold slider min is 0 or less (min=${rngTh.min})`, minVal <= 0);
+
+          // スライダーで 0.05 (5%) に設定
+          rngTh.value = 0.05;
+          rngTh.dispatchEvent(new Event('input', { bubbles: true }));
+
+          const tpl = calib.getTemplate();
+          const valBadge = mount.querySelector('#val-threshold').textContent;
+          report(`Test 11b: Threshold can be set to 5% (threshold=${tpl.threshold}, badge=${valBadge})`, tpl.threshold === 0.05 && valBadge === '5%');
+
+          // 微調整マイナスボタンでさらに下げる (0.04)
+          const minusBtn = mount.querySelector('.btn-nudge[data-target="threshold"][data-delta="-0.01"]');
+          if (minusBtn) {
+            minusBtn.click();
+            const tplAfterMinus = calib.getTemplate();
+            report(`Test 11c: Nudge minus button reduces threshold below 10% (threshold=${tplAfterMinus.threshold})`, tplAfterMinus.threshold === 0.04);
+          } else {
+            report(`Test 11c: Nudge minus button exists for threshold`, false);
+          }
+        }
+
+        report('--- ALL 11 UNIT & INTEGRATION TESTS COMPLETED ---', true);
         window.TESTS_FINISHED = true;
       } catch (err) {
         console.error('Test execution error:', err);

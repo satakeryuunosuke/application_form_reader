@@ -1,0 +1,56 @@
+import subprocess, os
+
+chrome = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+html = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="../css/variables.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/pages.css">
+</head>
+<body style="background: #1e293b; margin: 0; padding: 0;">
+  <script type="module">
+    import { UI } from '../js/utils/ui.js';
+    
+    // サンプル帳票Canvasを作成してデータURL化
+    const cv = document.createElement('canvas');
+    cv.width = 1190;
+    cv.height = 840;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText('2026年度 夏期講習受講確認票 (原本拡大サンプル)', 100, 100);
+    ctx.font = '24px sans-serif';
+    ctx.fillText('日能研番号: TDN60013  氏名: 日能研 太郎 様  クラス: W1', 100, 180);
+    
+    // チェックボックス
+    ctx.strokeRect(100, 240, 50, 50);
+    ctx.fillText('夏期講習の受講内容に変更が「ない」', 170, 275);
+    ctx.strokeRect(100, 320, 50, 50);
+    ctx.fillText('夏期講習の受講内容に変更が「ある」', 170, 355);
+
+    const dataUrl = cv.toDataURL('image/png');
+    UI.showImageLightbox(dataUrl, '日能研 太郎 様 (TDN60013) スキャン確認票 原本');
+  </script>
+</body>
+</html>"""
+
+with open('scripts/preview_lightbox.html', 'w', encoding='utf-8') as f:
+    f.write(html)
+
+out = os.path.abspath('output/lightbox_preview.png')
+cmd = [
+    chrome,
+    '--headless',
+    '--disable-gpu',
+    '--virtual-time-budget=2000',
+    '--window-size=1450,950',
+    f'--screenshot={out}',
+    'http://127.0.0.1:8000/scripts/preview_lightbox.html'
+]
+subprocess.run(cmd, check=True)
+print('Lightbox screenshot generated:', out)

@@ -259,7 +259,7 @@ export const ScanPage = {
               <span class="badge badge-purple">ページ ${currentItem.pageNum} / ${this.pendingQueue.length}</span>
               ${currentItem.barcodeFound ? '<span class="badge badge-success">バーコード検知済</span>' : '<span class="badge badge-danger">バーコード未検知</span>'}
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
               <button id="btn-scan-calib" class="btn btn-ghost btn-sm" style="color:#fff; border: 1px solid rgba(255,255,255,0.25);" title="このプロジェクトの書式・読取位置を調整">
                 📐 書式調整
               </button>
@@ -267,10 +267,13 @@ export const ScanPage = {
               <span id="zoom-val" style="font-size: 0.8rem; font-family: var(--font-mono);">${Math.round(this.zoomLevel * 100)}%</span>
               <button id="btn-zoom-in" class="btn btn-ghost btn-sm" style="color:#fff;" title="拡大">🔍+</button>
               <button id="btn-zoom-reset" class="btn btn-ghost btn-sm" style="color:#fff;" title="リセット">100%</button>
+              <button id="btn-fullscreen-img" class="btn btn-ghost btn-sm" style="color:#fff; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1);" title="スキャン確認票を全画面拡大表示">
+                ⛶ 全画面拡大
+              </button>
             </div>
           </div>
-          <div class="viewer-canvas-wrap" id="image-viewer-wrap">
-            <img id="scanned-image-preview" src="${currentItem.imageDataUrl}" style="transform: scale(${this.zoomLevel});" alt="スキャン確認票">
+          <div class="viewer-canvas-wrap" id="image-viewer-wrap" title="ホイールでズーム / クリックで全画面拡大">
+            <img id="scanned-image-preview" src="${currentItem.imageDataUrl}" style="transform: scale(${this.zoomLevel}); cursor: pointer;" alt="スキャン確認票" title="クリックして全画面拡大">
           </div>
         </div>
 
@@ -416,10 +419,11 @@ export const ScanPage = {
   bindApprovalEvents(currentItem) {
     const img = this.container.querySelector('#scanned-image-preview');
     const zoomVal = this.container.querySelector('#zoom-val');
+    const viewerWrap = this.container.querySelector('#image-viewer-wrap');
 
     // ズーム制御
     const updateZoom = (z) => {
-      this.zoomLevel = Math.max(0.4, Math.min(2.5, z));
+      this.zoomLevel = Math.max(0.4, Math.min(3.5, z));
       img.style.transform = `scale(${this.zoomLevel})`;
       zoomVal.textContent = `${Math.round(this.zoomLevel * 100)}%`;
     };
@@ -427,6 +431,28 @@ export const ScanPage = {
     this.container.querySelector('#btn-zoom-in').onclick = () => updateZoom(this.zoomLevel + 0.2);
     this.container.querySelector('#btn-zoom-out').onclick = () => updateZoom(this.zoomLevel - 0.2);
     this.container.querySelector('#btn-zoom-reset').onclick = () => updateZoom(1.0);
+
+    // 左ペイン内でのホイールズーム
+    if (viewerWrap) {
+      viewerWrap.onwheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.15 : -0.15;
+        updateZoom(this.zoomLevel + delta);
+      };
+    }
+
+    // 全画面ライトボックス拡大表示
+    const openLightbox = () => {
+      const student = currentItem.matchedStudent;
+      const title = student 
+        ? `${student.name} 様 (${student.nichinokenId}) スキャン確認票`
+        : `受講確認票 (ページ ${currentItem.pageNum})`;
+      UI.showImageLightbox(currentItem.imageDataUrl, title);
+    };
+
+    const fullscreenBtn = this.container.querySelector('#btn-fullscreen-img');
+    if (fullscreenBtn) fullscreenBtn.onclick = openLightbox;
+    if (img) img.onclick = openLightbox;
 
     // 書式調整モーダル起動
     const calibBtn = this.container.querySelector('#btn-scan-calib');
@@ -436,7 +462,7 @@ export const ScanPage = {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.innerHTML = `
-          <div class="modal-content modal-xl">
+          <div class="modal-content modal-2xl">
             <div class="modal-header">
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span class="brand-icon" style="width: 28px; height: 28px; font-size: 14px;">📐</span>
@@ -447,9 +473,12 @@ export const ScanPage = {
                   </div>
                 </div>
               </div>
-              <button class="btn-ghost btn-sm btn-close-modal">✕</button>
+              <div class="modal-header-actions">
+                <button class="btn-modal-maximize" id="btn-scan-calib-maximize" title="全画面最大化 / 元に戻す">⛶</button>
+                <button class="btn-ghost btn-sm btn-close-modal" title="閉じる">✕</button>
+              </div>
             </div>
-            <div class="modal-body" style="padding: 12px var(--spacing-lg); max-height: 78vh;">
+            <div class="modal-body" style="padding: 10px var(--spacing-lg); max-height: 86vh;">
               <div id="scan-calib-container"></div>
             </div>
             <div class="modal-footer">
@@ -459,6 +488,23 @@ export const ScanPage = {
           </div>
         `;
         document.body.appendChild(modal);
+
+        // 最大化トグル
+        const maxBtn = modal.querySelector('#btn-scan-calib-maximize');
+        if (maxBtn) {
+          maxBtn.onclick = () => {
+            const content = modal.querySelector('.modal-content');
+            if (content.classList.contains('modal-fullscreen')) {
+              content.classList.remove('modal-fullscreen');
+              maxBtn.textContent = '⛶';
+              maxBtn.title = '全画面最大化';
+            } else {
+              content.classList.add('modal-fullscreen');
+              maxBtn.textContent = '🗗';
+              maxBtn.title = '元に戻す';
+            }
+          };
+        }
 
         const mount = modal.querySelector('#scan-calib-container');
         const calibrator = new TemplateCalibrator(mount, currentTemplate, (t) => {

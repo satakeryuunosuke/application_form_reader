@@ -520,42 +520,7 @@ export const ListPage = {
    * 画像拡大ライトボックスモーダル
    */
   showImageLightbox(imgSrc, title) {
-    const lightbox = document.createElement('div');
-    lightbox.className = 'image-lightbox-overlay';
-    lightbox.innerHTML = `
-      <div class="image-lightbox-header">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.2rem;">📑</span>
-          <span class="font-bold" style="font-size: 1.05rem;">${title || 'スキャン画像原本プレビュー'}</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <a href="${imgSrc}" download="${(title || 'scan_image').replace(/\s+/g, '_')}.png" class="btn btn-ghost btn-sm" style="color: #fff; border: 1px solid rgba(255,255,255,0.3);" title="画像をダウンロード">
-            💾 保存
-          </a>
-          <button class="btn btn-ghost btn-sm btn-close-lightbox" style="color: #fff; font-size: 1.2rem; line-height: 1;">✕</button>
-        </div>
-      </div>
-      <div class="image-lightbox-body">
-        <img src="${imgSrc}" class="image-lightbox-img" alt="確認票拡大画像">
-      </div>
-    `;
-
-    document.body.appendChild(lightbox);
-
-    const closeLightbox = () => lightbox.remove();
-    lightbox.querySelector('.btn-close-lightbox').onclick = closeLightbox;
-    lightbox.onclick = (e) => {
-      if (e.target === lightbox) closeLightbox();
-    };
-
-    // Escキーで閉じる
-    const escHandler = (e) => {
-      if (e.key === 'Escape') {
-        closeLightbox();
-        document.removeEventListener('keydown', escHandler);
-      }
-    };
-    document.addEventListener('keydown', escHandler);
+    UI.showImageLightbox(imgSrc, title);
   }
 };
 
