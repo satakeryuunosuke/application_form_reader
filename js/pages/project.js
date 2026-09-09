@@ -348,7 +348,7 @@ export const ProjectPage = {
                   <div class="dashboard-card-icon">📷</div>
                   <div>
                     <h4 class="dashboard-card-title">読み取り・承認（スキャン処理）</h4>
-                    <span class="badge ${isCompleted ? 'badge-gray' : 'badge-primary'}">${isCompleted ? '🔒 ロック中' : 'QR/バーコード一括読取'}</span>
+                    <span class="badge ${isCompleted ? 'badge-gray' : 'badge-primary'}">${isCompleted ? '🔒 ロック中' : 'バーコード一括読取'}</span>
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
