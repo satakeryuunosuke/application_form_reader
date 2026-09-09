@@ -3,6 +3,7 @@
  */
 
 import { DB } from './db.js';
+import { APP_VERSION } from './version.js';
 import { HomePage } from './pages/home.js';
 import { ProjectPage } from './pages/project.js';
 import { SettingsPage } from './pages/settings.js';
@@ -34,6 +35,9 @@ class App {
 
   async init() {
     try {
+      const verEl = document.getElementById('header-app-version');
+      if (verEl) verEl.textContent = APP_VERSION;
+
       await DB.init();
       this.updateSyncIndicator();
       window.addEventListener('hashchange', () => this.handleRoute());
