@@ -44,6 +44,8 @@ export const ProjectPage = {
     const stats = await DB.getProjectStats(projectId);
     const isCompleted = project.status === '完了';
     const isFolderConnected = FolderConnector.isConnected();
+    const lastSync = SyncManager.getLastSyncTime(projectId);
+    const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
     this.container.innerHTML = `
       <div class="view-container">
@@ -73,8 +75,11 @@ export const ProjectPage = {
             </div>
           </div>
 
-          <!-- ヘッダー右側: 主要2ボタンのみのシンプル構成 -->
+          <!-- ヘッダー右側: 主要ボタン群 -->
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button id="btn-header-sync" class="btn btn-secondary btn-md" style="font-weight: 600;" title="${isFolderConnected ? '共有フォルダから最新の受講変更・提出データや生徒名簿を取り込んで同期' : '共有フォルダに接続して同期を実行'}">
+              🔄 同期${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}
+            </button>
             <button id="btn-go-manual" class="btn btn-primary btn-md" style="font-weight: 700; box-shadow: var(--shadow-sm);" title="電話や口頭での受講変更、手動でのデータ登録・追加画面を開く">
               ✏️ 手動登録・変更
             </button>
@@ -103,7 +108,7 @@ export const ProjectPage = {
   },
 
   /**
-   * ヘッダーの統計数値を最新データで更新
+   * ヘッダーの統計数値および同期ボタン表示を最新データで更新
    */
   async updateHeaderStats() {
     if (!this.currentProject || !this.container) return;
@@ -116,8 +121,85 @@ export const ProjectPage = {
       if (totalEl) totalEl.textContent = stats.total;
       if (submittedEl) submittedEl.textContent = stats.submitted;
       if (unsubmittedEl) unsubmittedEl.textContent = stats.unsubmitted;
+
+      // 同期ボタンの最終同期時刻も最新化
+      const syncBtn = this.container.querySelector('#btn-header-sync');
+      if (syncBtn && !syncBtn.disabled) {
+        const lastSync = SyncManager.getLastSyncTime(this.currentProject.id);
+        const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        syncBtn.innerHTML = `🔄 同期${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+      }
     } catch (e) {
       console.error('Failed to update header stats:', e);
+    }
+  },
+
+  /**
+   * 共有フォルダとの手動同期を実行
+   */
+  async handleSync(projectId) {
+    if (!FolderConnector.isConnected()) {
+      if (!FolderConnector.isSupported()) {
+        UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
+        return;
+      }
+      const connectNow = await UI.confirm(
+        '共有フォルダの接続',
+        '現在共有フォルダに未接続です。同期を行うために共有フォルダ（社内LANまたはローカルフォルダ）を選択して接続しますか？',
+        'フォルダを選択して接続',
+        'primary'
+      );
+      if (!connectNow) return;
+
+      try {
+        await FolderConnector.connect();
+        UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
+        await SyncManager.readSharedSettings();
+      } catch (connErr) {
+        if (connErr.name !== 'AbortError') {
+          UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
+        }
+        return;
+      }
+    }
+
+    const syncBtn = this.container.querySelector('#btn-header-sync');
+    const dashSyncBtn = this.container.querySelector('#btn-dash-sync');
+
+    if (syncBtn) {
+      syncBtn.disabled = true;
+      syncBtn.innerHTML = '🔄 同期中...';
+    }
+    if (dashSyncBtn) {
+      dashSyncBtn.disabled = true;
+      dashSyncBtn.innerHTML = '🔄 同期中...';
+    }
+
+    try {
+      await SyncManager.flushPendingQueueInBackground();
+      const res = await SyncManager.syncFromSharedFolder(projectId);
+      const parts = [];
+      if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
+      if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
+      if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
+      const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
+      UI.showToast(`共有フォルダと同期しました${detail}`, 'success');
+
+      // 画面全体を再描画して最新データを反映
+      await this.render(this.container, projectId, this.currentTab);
+    } catch (err) {
+      console.error('同期エラー:', err);
+      UI.showToast(`同期エラー: ${err.message}`, 'error');
+      const lastSync = SyncManager.getLastSyncTime(projectId);
+      const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = `🔄 同期${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+      }
+      if (dashSyncBtn) {
+        dashSyncBtn.disabled = false;
+        dashSyncBtn.innerHTML = '🔄 最新データに同期';
+      }
     }
   },
 
@@ -125,6 +207,13 @@ export const ProjectPage = {
     const backBtn = this.container.querySelector('#btn-back-home');
     if (backBtn) {
       backBtn.onclick = () => { window.location.hash = '#home'; };
+    }
+
+    const syncBtn = this.container.querySelector('#btn-header-sync');
+    if (syncBtn) {
+      syncBtn.onclick = () => {
+        this.handleSync(projectId);
+      };
     }
 
     const manualBtn = this.container.querySelector('#btn-go-manual');
@@ -377,7 +466,7 @@ export const ProjectPage = {
               </div>
             </div>
 
-            <!-- ステータス切替 -->
+            <!-- ステータス切替（完了／進行中） -->
             <div class="dashboard-card">
               <div>
                 <div class="dashboard-card-header">
@@ -460,27 +549,8 @@ export const ProjectPage = {
 
     const syncBtn = content.querySelector('#btn-dash-sync');
     if (syncBtn) {
-      syncBtn.onclick = async () => {
-        if (!FolderConnector.isConnected()) {
-          UI.showToast('共有フォルダが未接続です。設定画面またはホームから接続してください。', 'info');
-          return;
-        }
-        syncBtn.disabled = true;
-        syncBtn.textContent = '🔄 同期中...';
-        try {
-          const res = await SyncManager.syncFromSharedFolder(projectId);
-          const parts = [];
-          if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
-          if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
-          if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
-          const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
-          UI.showToast(`共有フォルダと同期しました${detail}`, 'success');
-          await this.render(this.container, projectId, 'dashboard');
-        } catch (err) {
-          UI.showToast(`同期エラー: ${err.message}`, 'error');
-          syncBtn.disabled = false;
-          syncBtn.textContent = '🔄 最新データに同期';
-        }
+      syncBtn.onclick = () => {
+        this.handleSync(projectId);
       };
     }
 

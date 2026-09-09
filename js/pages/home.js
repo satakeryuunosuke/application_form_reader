@@ -220,8 +220,6 @@ export const HomePage = {
           <span class="badge badge-info" style="font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700;">${APP_VERSION}</span>
           <span style="color: var(--gray-400);">•</span>
           <span style="color: var(--success-text); font-weight: 600;">🔒 完全ローカル動作（外部通信ゼロ）</span>
-          <span style="color: var(--gray-400);">•</span>
-          <span>データ保持: 3年間</span>
         </div>
         <div class="home-system-footer-right">
           <button id="btn-show-version-info" class="btn btn-ghost btn-sm" style="font-size: 0.8rem; color: var(--primary-600); padding: 2px 8px;">
@@ -261,12 +259,6 @@ export const HomePage = {
               }
               ${isShared ? '<span class="badge badge-info" style="font-size: 0.72rem; padding: 2px 6px;">📁 共有同期</span>' : ''}
               ${isExpired ? '<span class="badge badge-warning">3年経過</span>' : ''}
-            </div>
-            <div>
-              ${isCompleted
-                ? `<button class="project-status-toggle-btn btn-to-active" data-id="${p.id}" data-action="reopen" title="進行中に戻す">🔄 進行中に戻す</button>`
-                : `<button class="project-status-toggle-btn btn-to-complete" data-id="${p.id}" data-action="complete" title="完了にする">🏁 完了にする</button>`
-              }
             </div>
           </div>
           <h3 class="project-title">${p.title}</h3>
@@ -364,35 +356,6 @@ export const HomePage = {
       tab.addEventListener('click', () => {
         this.currentFilter = tab.dataset.filter;
         this.render(this.container);
-      });
-    });
-
-    // ステータス変更トグルボタン
-    const statusBtns = this.container.querySelectorAll('.project-status-toggle-btn');
-    statusBtns.forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const projectId = btn.dataset.id;
-        const action = btn.dataset.action;
-        const newStatus = action === 'complete' ? '完了' : '進行中';
-
-        if (action === 'complete') {
-          const ok = await UI.confirm(
-            'プロジェクトの完了',
-            'このプロジェクトを「完了」にしますか？（後からいつでも「進行中」に戻せます）',
-            '完了にする',
-            'primary'
-          );
-          if (!ok) return;
-        }
-
-        try {
-          await DB.updateProjectStatus(projectId, newStatus);
-          UI.showToast(newStatus === '完了' ? 'プロジェクトを完了にしました' : 'プロジェクトを進行中に戻しました', 'success');
-          await this.render(this.container);
-        } catch (err) {
-          UI.showToast(`ステータス変更エラー: ${err.message}`, 'error');
-        }
       });
     });
 
