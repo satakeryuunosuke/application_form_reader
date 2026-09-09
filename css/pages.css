@@ -1061,4 +1061,135 @@
   font-weight: bold;
 }
 
+/* ==========================================================================
+   Project Management Dashboard & Sub-view Navigation Styles
+   ========================================================================== */
+.dashboard-container {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: var(--spacing-sm) 0 var(--spacing-2xl) 0;
+}
+
+.dashboard-nav-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--primary-50);
+  border: 1px solid var(--primary-200);
+  border-radius: var(--radius-lg);
+  padding: 12px 20px;
+  margin-bottom: var(--spacing-xl);
+}
+
+.dashboard-nav-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.dashboard-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--spacing-md);
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--gray-200);
+}
+
+.dashboard-section-title {
+  font-size: 1.12rem;
+  font-weight: 800;
+  color: var(--gray-900);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.dashboard-card {
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.dashboard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-300);
+}
+
+.dashboard-card.card-featured {
+  border-color: var(--primary-300);
+  background: linear-gradient(180deg, #ffffff 0%, #f0f7ff 100%);
+}
+
+.dashboard-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.dashboard-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.dashboard-card.card-featured .dashboard-card-icon {
+  background: var(--primary-100);
+}
+
+.dashboard-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 4px;
+}
+
+.dashboard-card-desc {
+  font-size: 0.85rem;
+  color: var(--gray-600);
+  line-height: 1.5;
+  margin-bottom: 16px;
+  flex: 1;
+}
+
+.subpage-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  margin-bottom: var(--spacing-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.subpage-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+
 

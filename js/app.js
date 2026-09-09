@@ -71,7 +71,7 @@ class App {
       await HomePage.render(this.mainContainer);
     } else if (route === 'project') {
       const projectId = parts[1];
-      const tab = parts[2] || 'scan';
+      const tab = parts[2] || 'list';
       if (!projectId) {
         window.location.hash = '#home';
         return;

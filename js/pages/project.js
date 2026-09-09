@@ -18,11 +18,11 @@ import { SyncManager } from '../sync/sync-manager.js';
 export const ProjectPage = {
   container: null,
   currentProject: null,
-  currentTab: 'scan',
+  currentTab: 'list',
 
-  async render(container, projectId, tab = 'scan') {
+  async render(container, projectId, tab = 'list') {
     this.container = container;
-    this.currentTab = tab || 'scan';
+    this.currentTab = tab || 'list';
 
     // 共有フォルダ接続中なら最新状態（新規生徒・修正・提出イベント等）を自動同期
     if (FolderConnector.isConnected()) {
@@ -42,15 +42,15 @@ export const ProjectPage = {
     this.currentProject = project;
 
     const stats = await DB.getProjectStats(projectId);
-    const reviewStats = await DB.getReviewStats(projectId);
     const isCompleted = project.status === '完了';
     const isFolderConnected = FolderConnector.isConnected();
 
     this.container.innerHTML = `
       <div class="view-container">
+        <!-- プロジェクト表層ヘッダー（シンプル化） -->
         <div class="project-header-bar">
           <div class="project-header-title">
-            <button id="btn-back-home" class="back-btn" title="ホームに戻る">←</button>
+            <button id="btn-back-home" class="back-btn" title="プロジェクト一覧（ホーム）に戻る">←</button>
             <div>
               <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;">
                 <span class="badge badge-info">${project.year}年度</span>
@@ -62,7 +62,7 @@ export const ProjectPage = {
                 <span class="badge ${isFolderConnected ? 'badge-success' : 'badge-gray'}" style="font-size: 0.75rem;">
                   ${isFolderConnected ? '🟢 共有同期中' : '⚪ ローカル'}
                 </span>
-                <h1 style="font-size: 1.45rem; font-weight: 800; color: var(--gray-900); display: inline; margin-left: 4px;">${project.title}</h1>
+                <h1 style="font-size: 1.4rem; font-weight: 800; color: var(--gray-900); display: inline; margin-left: 4px;">${project.title}</h1>
               </div>
               <div style="font-size: 0.82rem; color: var(--gray-500);">
                 登録生徒数: <span id="header-stat-total" class="font-bold text-mono">${stats.total}</span> 名 | 
@@ -72,21 +72,14 @@ export const ProjectPage = {
               </div>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <button id="btn-sync-project" class="btn btn-secondary btn-sm" title="共有フォルダの最新差分イベントを取り込んで更新">
-              🔄 最新に更新
+
+          <!-- ヘッダー右側: 主要2ボタンのみのシンプル構成 -->
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button id="btn-go-manual" class="btn btn-primary btn-md" style="font-weight: 700; box-shadow: var(--shadow-sm);" title="電話や口頭での受講変更、手動でのデータ登録・追加画面を開く">
+              ✏️ 手動登録・変更
             </button>
-            <button id="btn-toggle-project-status" class="btn ${isCompleted ? 'btn-primary' : 'btn-secondary'} btn-sm" title="${isCompleted ? 'このプロジェクトを進行中に戻す' : 'このプロジェクトを完了にする'}">
-              ${isCompleted ? '🔄 進行中に戻す' : '🏁 完了にする'}
-            </button>
-            <button id="btn-manage-students" class="btn btn-secondary btn-sm" title="${isCompleted ? '完了プロジェクトのため生徒管理は不可' : '生徒の追加・編集（個別追加 / CSV一括追加 / 登録情報修正）'}" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-              👥 生徒管理
-            </button>
-            <button id="btn-edit-template" class="btn btn-secondary btn-sm" title="${isCompleted ? '完了プロジェクトのため書式調整は不可' : 'このプロジェクトの受講確認票書式・読取位置を微調整'}" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-              📐 書式・読取位置調整
-            </button>
-            <button id="btn-delete-project" class="btn btn-ghost btn-sm" style="color: var(--danger-solid);" title="プロジェクト削除">
-              🗑️ 削除
+            <button id="btn-go-dashboard" class="btn ${this.currentTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'} btn-md" style="font-weight: 600;" title="スキャン読取・照合・生徒管理・書式調整などの詳細機能をまとめたダッシュボードを開く">
+              🛠️ 管理ダッシュボード
             </button>
           </div>
         </div>
@@ -95,28 +88,12 @@ export const ProjectPage = {
           <div class="card" style="border-left: 4px solid var(--gray-400); background: var(--gray-100); padding: 10px 16px; margin-bottom: var(--spacing-md); display: flex; align-items: center; justify-content: space-between;">
             <div style="font-size: 0.88rem; color: var(--gray-700); display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 1.15rem;">🔒</span>
-              <span><strong>このプロジェクトは「完了」に設定されているため、データの変更・新規スキャンはロックされています。</strong> 内容を変更・追加する場合は、右上の「<strong>🔄 進行中に戻す</strong>」ボタンを押してください。</span>
+              <span><strong>このプロジェクトは「完了」に設定されています（データ変更ロック中）。</strong> 登録情報の閲覧は可能です。編集やスキャンを行う場合は「<strong>🛠️ 管理ダッシュボード</strong>」から「進行中に戻す」を行ってください。</span>
             </div>
           </div>
         ` : ''}
 
-        <div class="tab-nav">
-          <button class="tab-btn ${this.currentTab === 'scan' ? 'active' : ''}" data-tab="scan">
-            📷 読み取り・承認
-          </button>
-          <button class="tab-btn ${this.currentTab === 'list' ? 'active' : ''}" data-tab="list">
-            📊 提出状況一覧
-            <span id="tab-badge-list" class="tab-badge">${stats.submitted}/${stats.total}</span>
-          </button>
-          <button class="tab-btn ${this.currentTab === 'manual' ? 'active' : ''}" data-tab="manual">
-            ✏️ 手動登録・変更
-          </button>
-          <button class="tab-btn ${this.currentTab === 'review' ? 'active' : ''}" data-tab="review">
-            🔍 スキャン照合
-            <span id="tab-badge-review" class="tab-badge ${reviewStats.unreviewed > 0 ? 'badge-warning' : 'badge-success'}">${reviewStats.unreviewed > 0 ? '未確認 ' + reviewStats.unreviewed : '完了'}</span>
-          </button>
-        </div>
-
+        <!-- メインコンテンツ表示エリア -->
         <div id="project-tab-content"></div>
       </div>
     `;
@@ -126,27 +103,19 @@ export const ProjectPage = {
   },
 
   /**
-   * ヘッダーの統計数値およびタブバッジを最新データで更新
+   * ヘッダーの統計数値を最新データで更新
    */
   async updateHeaderStats() {
     if (!this.currentProject || !this.container) return;
     try {
       const stats = await DB.getProjectStats(this.currentProject.id);
-      const reviewStats = await DB.getReviewStats(this.currentProject.id);
       const totalEl = this.container.querySelector('#header-stat-total');
       const submittedEl = this.container.querySelector('#header-stat-submitted');
       const unsubmittedEl = this.container.querySelector('#header-stat-unsubmitted');
-      const badgeEl = this.container.querySelector('#tab-badge-list');
-      const revBadgeEl = this.container.querySelector('#tab-badge-review');
 
       if (totalEl) totalEl.textContent = stats.total;
       if (submittedEl) submittedEl.textContent = stats.submitted;
       if (unsubmittedEl) unsubmittedEl.textContent = stats.unsubmitted;
-      if (badgeEl) badgeEl.textContent = `${stats.submitted}/${stats.total}`;
-      if (revBadgeEl) {
-        revBadgeEl.textContent = reviewStats.unreviewed > 0 ? `未確認 ${reviewStats.unreviewed}` : '完了';
-        revBadgeEl.className = `tab-badge ${reviewStats.unreviewed > 0 ? 'badge-warning' : 'badge-success'}`;
-      }
     } catch (e) {
       console.error('Failed to update header stats:', e);
     }
@@ -154,10 +123,342 @@ export const ProjectPage = {
 
   bindEvents(projectId) {
     const backBtn = this.container.querySelector('#btn-back-home');
-    backBtn.onclick = () => { window.location.hash = '#home'; };
+    if (backBtn) {
+      backBtn.onclick = () => { window.location.hash = '#home'; };
+    }
 
-    // 共有フォルダ手動同期ボタン
-    const syncBtn = this.container.querySelector('#btn-sync-project');
+    const manualBtn = this.container.querySelector('#btn-go-manual');
+    if (manualBtn) {
+      manualBtn.onclick = () => {
+        window.location.hash = `#project/${projectId}/manual`;
+      };
+    }
+
+    const dashboardBtn = this.container.querySelector('#btn-go-dashboard');
+    if (dashboardBtn) {
+      dashboardBtn.onclick = () => {
+        if (this.currentTab === 'dashboard') {
+          window.location.hash = `#project/${projectId}/list`;
+        } else {
+          window.location.hash = `#project/${projectId}/dashboard`;
+        }
+      };
+    }
+  },
+
+  async renderActiveTab() {
+    const content = this.container.querySelector('#project-tab-content');
+    if (!content) return;
+
+    this.updateHeaderStats();
+    content.innerHTML = '';
+
+    if (this.currentTab === 'list') {
+      // 表層デフォルト: 提出状況一覧を直接表示
+      await ListPage.render(content, this.currentProject);
+    } else if (this.currentTab === 'manual') {
+      // 手動登録・変更画面
+      await ManualPage.render(content, this.currentProject);
+    } else if (this.currentTab === 'dashboard') {
+      // 管理ダッシュボード
+      await this.renderDashboard(content, this.currentProject);
+    } else if (this.currentTab === 'scan') {
+      // スキャン画面（上部に戻るナビゲーションバーを付加）
+      content.innerHTML = `
+        <div class="subpage-nav-bar">
+          <div class="subpage-nav-left">
+            <button id="btn-scan-back-dash" class="btn btn-secondary btn-sm" style="font-weight: 700;">
+              ← 管理ダッシュボードに戻る
+            </button>
+            <button id="btn-scan-back-list" class="btn btn-ghost btn-sm" style="color: var(--gray-600);">
+              提出状況一覧へ
+            </button>
+          </div>
+          <div style="font-size: 0.85rem; color: var(--gray-600);">
+            📷 受講確認票 読み取り・承認（スキャン処理）
+          </div>
+        </div>
+        <div id="scan-page-inner"></div>
+      `;
+      content.querySelector('#btn-scan-back-dash').onclick = () => {
+        window.location.hash = `#project/${this.currentProject.id}/dashboard`;
+      };
+      content.querySelector('#btn-scan-back-list').onclick = () => {
+        window.location.hash = `#project/${this.currentProject.id}/list`;
+      };
+      await ScanPage.render(content.querySelector('#scan-page-inner'), this.currentProject);
+    } else if (this.currentTab === 'review') {
+      // スキャン照合画面（上部に戻るナビゲーションバーを付加）
+      content.innerHTML = `
+        <div class="subpage-nav-bar">
+          <div class="subpage-nav-left">
+            <button id="btn-rev-back-dash" class="btn btn-secondary btn-sm" style="font-weight: 700;">
+              ← 管理ダッシュボードに戻る
+            </button>
+            <button id="btn-rev-back-list" class="btn btn-ghost btn-sm" style="color: var(--gray-600);">
+              提出状況一覧へ
+            </button>
+          </div>
+          <div style="font-size: 0.85rem; color: var(--gray-600);">
+            🔍 スキャン照合・原本確認
+          </div>
+        </div>
+        <div id="review-page-inner"></div>
+      `;
+      content.querySelector('#btn-rev-back-dash').onclick = () => {
+        window.location.hash = `#project/${this.currentProject.id}/dashboard`;
+      };
+      content.querySelector('#btn-rev-back-list').onclick = () => {
+        window.location.hash = `#project/${this.currentProject.id}/list`;
+      };
+      await ReviewPage.render(content.querySelector('#review-page-inner'), this.currentProject);
+    } else {
+      // 未知のタブなら一覧へ
+      await ListPage.render(content, this.currentProject);
+    }
+  },
+
+  /**
+   * より複雑な機能を格納した管理ダッシュボードの描画
+   */
+  async renderDashboard(content, project) {
+    const projectId = project.id;
+    const stats = await DB.getProjectStats(projectId);
+    const reviewStats = await DB.getReviewStats(projectId);
+    const isCompleted = project.status === '完了';
+    const isFolderConnected = FolderConnector.isConnected();
+
+    content.innerHTML = `
+      <div class="dashboard-container">
+        <!-- 上部ナビゲーションバナー -->
+        <div class="dashboard-nav-banner">
+          <div class="dashboard-nav-banner-left">
+            <button id="btn-dash-back-list" class="btn btn-secondary btn-sm" style="font-weight: 700;">
+              ← 提出状況一覧（通常画面）に戻る
+            </button>
+            <span style="font-size: 0.92rem; color: var(--primary-800); font-weight: 700;">
+              🛠️ 管理ダッシュボード
+            </span>
+          </div>
+          <div style="font-size: 0.82rem; color: var(--gray-600);">
+            高度なスキャン処理・照合・生徒名簿・各種設定機能
+          </div>
+        </div>
+
+        <!-- セクション1: 受講確認票 スキャン・照合業務 -->
+        <div class="dashboard-section">
+          <div class="dashboard-section-header">
+            <span style="font-size: 1.25rem;">📷</span>
+            <h3 class="dashboard-section-title">受講確認票 スキャン・照合業務</h3>
+          </div>
+          <div class="dashboard-grid">
+            <!-- スキャン読み取り・承認 -->
+            <div class="dashboard-card card-featured">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">📷</div>
+                  <div>
+                    <h4 class="dashboard-card-title">読み取り・承認（スキャン処理）</h4>
+                    <span class="badge ${isCompleted ? 'badge-gray' : 'badge-primary'}">${isCompleted ? '🔒 ロック中' : 'QR/バーコード一括読取'}</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  スキャナーや画像ファイル（PDF/JPEG）から受講確認票のバーコード・チェックボックスを一括読み取りし、提出状況を反映・承認します。
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-open-scan" class="btn btn-primary btn-block" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                  📷 スキャン画面を開く
+                </button>
+              </div>
+            </div>
+
+            <!-- スキャン照合・確認 -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">🔍</div>
+                  <div>
+                    <h4 class="dashboard-card-title">スキャン照合・確認</h4>
+                    <span class="badge ${reviewStats.unreviewed > 0 ? 'badge-warning' : 'badge-success'}">
+                      ${reviewStats.unreviewed > 0 ? `未確認 ${reviewStats.unreviewed}件` : '全件確認済'}
+                    </span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  読み取った受講確認票の原本画像と自動認識結果を並べて照合し、チェックの誤りや未確認の差異がないか確認・修正します。
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-open-review" class="btn btn-secondary btn-block">
+                  🔍 照合画面を開く
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- セクション2: 生徒名簿・データ管理 -->
+        <div class="dashboard-section">
+          <div class="dashboard-section-header">
+            <span style="font-size: 1.25rem;">👥</span>
+            <h3 class="dashboard-section-title">生徒名簿・データ管理</h3>
+          </div>
+          <div class="dashboard-grid">
+            <!-- 生徒管理 -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">👥</div>
+                  <div>
+                    <h4 class="dashboard-card-title">生徒名簿の管理・追加</h4>
+                    <span class="badge badge-info">登録生徒: ${stats.total}名</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  受講対象の生徒を個別に新規登録、またはCSV/Excelファイルから一括取り込みします。登録済み生徒情報の修正もここから行えます。
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-manage-students" class="btn btn-secondary btn-block" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                  👥 生徒管理を開く
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- セクション3: 設定・メンテナンス -->
+        <div class="dashboard-section">
+          <div class="dashboard-section-header">
+            <span style="font-size: 1.25rem;">⚙️</span>
+            <h3 class="dashboard-section-title">プロジェクト設定・メンテナンス</h3>
+          </div>
+          <div class="dashboard-grid">
+            <!-- 書式調整 -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">📐</div>
+                  <div>
+                    <h4 class="dashboard-card-title">書式・読取位置調整</h4>
+                    <span class="badge badge-gray">キャリブレーション</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  受講確認票の印刷ズレがある場合に、バーコードや各チェックボックスの読み取り枠位置を画面上でプレビューしながら微調整します。
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-edit-template" class="btn btn-secondary btn-block" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                  📐 書式調整を開く
+                </button>
+              </div>
+            </div>
+
+            <!-- 共有同期 -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">🔄</div>
+                  <div>
+                    <h4 class="dashboard-card-title">共有フォルダ最新同期</h4>
+                    <span class="badge ${isFolderConnected ? 'badge-success' : 'badge-gray'}">${isFolderConnected ? '🟢 接続中' : '⚪ 未接続'}</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  共有フォルダから、他のPCが追加した生徒や提出・変更イベントの最新差分を手動で取り込んでデータを最新化します。
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-sync" class="btn btn-secondary btn-block">
+                  🔄 最新データに同期
+                </button>
+              </div>
+            </div>
+
+            <!-- ステータス切替 -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">${isCompleted ? '🔄' : '🏁'}</div>
+                  <div>
+                    <h4 class="dashboard-card-title">${isCompleted ? 'プロジェクトを進行中に戻す' : 'プロジェクトを完了にする'}</h4>
+                    <span class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}">${isCompleted ? '🏁 完了中' : '🟢 進行中'}</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  ${isCompleted 
+                    ? '現在「完了」状態のためデータの新規登録やスキャンがロックされています。「進行中」に戻すと再び編集が可能になります。' 
+                    : '講習業務が終了した際に「完了」に設定します。誤操作によるデータ変更やスキャン受付がロックされます。'}
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-toggle-status" class="btn ${isCompleted ? 'btn-primary' : 'btn-secondary'} btn-block">
+                  ${isCompleted ? '🔄 進行中に戻す（ロック解除）' : '🏁 完了にする（編集ロック）'}
+                </button>
+              </div>
+            </div>
+
+            <!-- 削除 -->
+            <div class="dashboard-card" style="border-color: #ffcdd2;">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon" style="background: #ffebee;">🗑️</div>
+                  <div>
+                    <h4 class="dashboard-card-title" style="color: var(--danger-solid);">プロジェクトの削除</h4>
+                    <span class="badge badge-danger">危険操作</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  このプロジェクトと、登録されている生徒名簿・受講提出データをすべて完全に削除します。※この操作は元に戻せません。
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-delete" class="btn btn-ghost btn-block" style="color: var(--danger-solid); border: 1px solid var(--danger-solid);">
+                  🗑️ プロジェクトを削除
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // ダッシュボード内のイベントバインド
+    content.querySelector('#btn-dash-back-list').onclick = () => {
+      window.location.hash = `#project/${projectId}/list`;
+    };
+
+    const scanBtn = content.querySelector('#btn-dash-open-scan');
+    if (scanBtn) {
+      scanBtn.onclick = () => {
+        window.location.hash = `#project/${projectId}/scan`;
+      };
+    }
+
+    const reviewBtn = content.querySelector('#btn-dash-open-review');
+    if (reviewBtn) {
+      reviewBtn.onclick = () => {
+        window.location.hash = `#project/${projectId}/review`;
+      };
+    }
+
+    const manageStudentsBtn = content.querySelector('#btn-dash-manage-students');
+    if (manageStudentsBtn) {
+      manageStudentsBtn.onclick = () => {
+        this.openStudentManagementModal(projectId);
+      };
+    }
+
+    const editTemplateBtn = content.querySelector('#btn-dash-edit-template');
+    if (editTemplateBtn) {
+      editTemplateBtn.onclick = () => {
+        this.openTemplateCalibrationModal(projectId);
+      };
+    }
+
+    const syncBtn = content.querySelector('#btn-dash-sync');
     if (syncBtn) {
       syncBtn.onclick = async () => {
         if (!FolderConnector.isConnected()) {
@@ -174,23 +475,22 @@ export const ProjectPage = {
           if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
           const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
           UI.showToast(`共有フォルダと同期しました${detail}`, 'success');
-          await this.render(this.container, projectId, this.currentTab);
+          await this.render(this.container, projectId, 'dashboard');
         } catch (err) {
           UI.showToast(`同期エラー: ${err.message}`, 'error');
           syncBtn.disabled = false;
-          syncBtn.textContent = '🔄 最新に更新';
+          syncBtn.textContent = '🔄 最新データに同期';
         }
       };
     }
 
-    // ステータス切り替え（完了／進行中）
-    const toggleStatusBtn = this.container.querySelector('#btn-toggle-project-status');
+    const toggleStatusBtn = content.querySelector('#btn-dash-toggle-status');
     if (toggleStatusBtn) {
       toggleStatusBtn.onclick = async () => {
-        const isCompleted = this.currentProject.status === '完了';
-        const newStatus = isCompleted ? '進行中' : '完了';
+        const isComp = this.currentProject.status === '完了';
+        const newStatus = isComp ? '進行中' : '完了';
 
-        if (!isCompleted) {
+        if (!isComp) {
           const ok = await UI.confirm(
             'プロジェクトの完了',
             `「${this.currentProject.title}」を「完了」にしますか？\n（完了状態になると誤変更防止のためデータ登録・スキャンがロックされます。後からいつでも「進行中」に戻せます）`,
@@ -203,80 +503,28 @@ export const ProjectPage = {
         try {
           await DB.updateProjectStatus(projectId, newStatus);
           UI.showToast(newStatus === '完了' ? 'プロジェクトを完了にしました（編集ロック）' : 'プロジェクトを進行中に戻しました（編集可能）', 'success');
-          await this.render(this.container, projectId, this.currentTab);
+          await this.render(this.container, projectId, 'dashboard');
         } catch (err) {
           UI.showToast(`ステータス変更エラー: ${err.message}`, 'error');
         }
       };
     }
 
-    // 生徒管理モーダル
-    const manageStudentsBtn = this.container.querySelector('#btn-manage-students');
-    if (manageStudentsBtn) {
-      manageStudentsBtn.onclick = () => {
-        if (this.currentProject.status === '完了') {
-          UI.showToast('完了したプロジェクトの生徒データは変更できません。「進行中に戻す」を行ってください。', 'warning');
-          return;
+    const deleteBtn = content.querySelector('#btn-dash-delete');
+    if (deleteBtn) {
+      deleteBtn.onclick = async () => {
+        const ok = await UI.confirm(
+          'プロジェクトの削除',
+          `「${this.currentProject.title}」と、登録されている生徒・提出データをすべて削除しますか？（この操作は元に戻せません）`,
+          '削除する',
+          'danger'
+        );
+        if (ok) {
+          await DB.deleteProject(projectId);
+          UI.showToast('プロジェクトを削除しました', 'info');
+          window.location.hash = '#home';
         }
-        this.openStudentManagementModal(projectId);
       };
-    }
-
-    // 書式調整モーダル
-    const editTemplateBtn = this.container.querySelector('#btn-edit-template');
-    if (editTemplateBtn) {
-      editTemplateBtn.onclick = () => {
-        if (this.currentProject.status === '完了') {
-          UI.showToast('完了したプロジェクトの書式設定は変更できません。「進行中に戻す」を行ってください。', 'warning');
-          return;
-        }
-        this.openTemplateCalibrationModal(projectId);
-      };
-    }
-
-    const deleteBtn = this.container.querySelector('#btn-delete-project');
-    deleteBtn.onclick = async () => {
-      const ok = await UI.confirm(
-        'プロジェクトの削除',
-        `「${this.currentProject.title}」と、登録されている生徒・提出データをすべて削除しますか？（この操作は元に戻せません）`,
-        '削除する',
-        'danger'
-      );
-      if (ok) {
-        await DB.deleteProject(projectId);
-        UI.showToast('プロジェクトを削除しました', 'info');
-        window.location.hash = '#home';
-      }
-    };
-
-    const tabBtns = this.container.querySelectorAll('.tab-btn');
-    tabBtns.forEach(btn => {
-      btn.onclick = async () => {
-        const tab = btn.dataset.tab;
-        this.currentTab = tab;
-        tabBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        await this.updateHeaderStats();
-        this.renderActiveTab();
-      };
-    });
-  },
-
-  async renderActiveTab() {
-    const content = this.container.querySelector('#project-tab-content');
-    if (!content) return;
-
-    this.updateHeaderStats();
-
-    content.innerHTML = '';
-    if (this.currentTab === 'scan') {
-      await ScanPage.render(content, this.currentProject);
-    } else if (this.currentTab === 'list') {
-      await ListPage.render(content, this.currentProject);
-    } else if (this.currentTab === 'manual') {
-      await ManualPage.render(content, this.currentProject);
-    } else if (this.currentTab === 'review') {
-      await ReviewPage.render(content, this.currentProject);
     }
   },
 

@@ -32,6 +32,17 @@ export const ManualPage = {
     const nowIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     this.container.innerHTML = `
+      <div class="subpage-nav-bar" style="max-width: 680px; margin: 0 auto var(--spacing-md) auto;">
+        <div class="subpage-nav-left">
+          <button id="btn-manual-back-list" class="btn btn-secondary btn-sm" style="font-weight: 700;">
+            ← 提出状況一覧に戻る
+          </button>
+        </div>
+        <div style="font-size: 0.82rem; color: var(--gray-600);">
+          ${this.project.title}
+        </div>
+      </div>
+
       <div class="card" style="max-width: 680px; margin: 0 auto; ${isCompleted ? 'opacity: 0.95;' : ''}">
         <div class="card-header">
           <h2 class="card-title">✏️ 受講変更・手動登録</h2>
@@ -44,7 +55,7 @@ export const ManualPage = {
               <span style="font-size: 1.2rem;">🔒</span>
               <div>
                 <strong>このプロジェクトは「完了」しているため、手動登録・変更はロックされています。</strong><br>
-                内容を変更したい場合は、上部ヘッダーの「<strong>🔄 進行中に戻す</strong>」ボタンを押してください。
+                内容を変更したい場合は、管理ダッシュボードから「<strong>🔄 進行中に戻す</strong>」を行ってください。
               </div>
             </div>
           </div>
@@ -65,7 +76,14 @@ export const ManualPage = {
 
         <!-- 2. 生徒検索 -->
         <div class="form-group">
-          <label class="form-label">生徒を検索・選択 <span class="required">*</span></label>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 4px;">
+            <label class="form-label" style="margin-bottom: 0;">生徒を検索・選択 <span class="required">*</span></label>
+            ${!isCompleted ? `
+              <button type="button" id="btn-manual-add-new-student" class="btn btn-ghost btn-sm" style="color: var(--primary-600); font-size: 0.8rem; padding: 2px 6px;">
+                ➕ 名簿にない新規生徒を追加
+              </button>
+            ` : ''}
+          </div>
           <input type="text" id="man-inp-search-student" class="form-control" placeholder="日能研番号または氏名・カナを入力..." ${isCompleted ? 'disabled' : ''}>
           <div id="man-student-search-results" style="margin-top: 4px; max-height: 180px; overflow-y: auto; border: 1px solid var(--gray-200); border-radius: var(--radius-md); display: none; background: #fff;"></div>
         </div>
@@ -162,8 +180,26 @@ export const ManualPage = {
   },
 
   bindEvents() {
+    const backBtn = this.container.querySelector('#btn-manual-back-list');
+    if (backBtn) {
+      backBtn.onclick = () => {
+        window.location.hash = `#project/${this.project.id}/list`;
+      };
+    }
+
+    const addStudentBtn = this.container.querySelector('#btn-manual-add-new-student');
+    if (addStudentBtn) {
+      addStudentBtn.onclick = async () => {
+        if (typeof ProjectPage.openStudentManagementModal === 'function') {
+          await ProjectPage.openStudentManagementModal(this.project.id);
+          // モーダル操作後に生徒リストを再取得
+          this.studentsList = await DB.getProjectStudentsWithSubmissions(this.project.id);
+        }
+      };
+    }
+
     if (this.project.status === '完了') {
-      return; // 完了時はイベントバインド不要
+      return; // 完了時は入力用イベントバインド不要
     }
 
     const staffSelect = this.container.querySelector('#man-sel-staff');
