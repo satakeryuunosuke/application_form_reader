@@ -656,12 +656,6 @@ export const ProjectPage = {
               </div>
             </div>
 
-            <!-- ステータス切替（完了／進行中） -->
-            <div class="dashboard-card">
-              <div>
-                <div class="dashboard-card-header">
-                  <div class="dashboard-card-icon">${isCompleted ? '🔄' : '🏁'}</div>
-                  <div>
             <!-- 完了（アーカイブ） -->
             <div class="dashboard-card">
               <div>
