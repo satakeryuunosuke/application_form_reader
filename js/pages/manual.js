@@ -376,6 +376,9 @@ export const ManualPage = {
         }
       }
 
+      const saveBtn = this.container.querySelector('#btn-save-manual');
+      if (saveBtn) UI.setButtonLoading(saveBtn, true, '登録中...');
+
       try {
         await DB.saveSubmission(this.selectedStudent.submissionId, {
           status: '承認済',
@@ -400,6 +403,7 @@ export const ManualPage = {
         await this.render(this.container, this.project);
       } catch (err) {
         UI.showToast(`保存エラー: ${err.message}`, 'error');
+        if (saveBtn) UI.setButtonLoading(saveBtn, false);
       }
     };
   },

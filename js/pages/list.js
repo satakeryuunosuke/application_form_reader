@@ -334,8 +334,13 @@ export const ListPage = {
     const syncBtn = this.container.querySelector('#btn-list-sync');
     if (syncBtn) {
       syncBtn.onclick = async () => {
-        syncBtn.disabled = true;
-        syncBtn.textContent = '🔄 更新中...';
+        UI.setButtonLoading(syncBtn, true, '更新中...');
+        UI.showLoading({
+          title: '受講者データを同期中...',
+          message: 'ファイルサーバーから最新の提出・承認データを取得・反映しています。画面を閉じずにお待ちください。',
+          icon: '🔄'
+        });
+
         try {
           const res = await SyncManager.syncFromSharedFolder(this.project.id);
           const parts = [];
@@ -347,8 +352,10 @@ export const ListPage = {
           await this.render(this.container, this.project);
         } catch (e) {
           UI.showToast(`同期エラー: ${e.message}`, 'error');
-          syncBtn.disabled = false;
-          syncBtn.textContent = '🔄 最新に更新';
+          UI.setButtonLoading(syncBtn, false);
+          syncBtn.innerHTML = '🔄 最新に更新';
+        } finally {
+          UI.hideLoading();
         }
       };
     }

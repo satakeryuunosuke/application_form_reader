@@ -9,6 +9,43 @@ import { PendingQueue } from './pending-queue.js';
 
 export const SyncManager = {
   lastSyncTimes: new Map(), // projectId -> Date
+  _activeSyncPromises: new Map(), // projectId -> Promise
+  _lockMap: new Map(), // key -> Promise
+
+  /**
+   * 現在同期処理が実行中かどうか
+   * @param {string} [projectId]
+   * @returns {boolean}
+   */
+  isSyncing(projectId = null) {
+    if (projectId) {
+      return this._activeSyncPromises.has(projectId);
+    }
+    return this._activeSyncPromises.size > 0;
+  },
+
+  /**
+   * 汎用非同期排他実行ヘルパー (Mutex)
+   * 同一キーの非同期処理が走っている場合、直列化して順次実行
+   */
+  async withLock(key, asyncFn) {
+    while (this._lockMap.has(key)) {
+      try {
+        await this._lockMap.get(key);
+      } catch (e) {
+        // 先行処理のエラーは無視して自処理へ進む
+      }
+    }
+    const promise = (async () => {
+      try {
+        return await asyncFn();
+      } finally {
+        this._lockMap.delete(key);
+      }
+    })();
+    this._lockMap.set(key, promise);
+    return await promise;
+  },
 
   /**
    * クライアント識別子（PC端末名・ID）の取得（なければ自動生成して保存）
@@ -329,100 +366,117 @@ export const SyncManager = {
 
   /**
    * 指定プロジェクトの共有フォルダ内イベントを全走査し、ローカル IndexedDB に反映
+   * （排他制御により、同一プロジェクトの同時実行や連打時は先行処理の完了を待機して重複を防ぐ）
    * @param {string} projectId
    * @returns {Promise<{ newEventsCount: number, totalEvents: number }>}
    */
   async syncFromSharedFolder(projectId) {
-    if (!FolderConnector.isConnected()) {
+    if (!projectId) {
       return { newEventsCount: 0, totalEvents: 0, connected: false };
     }
 
-    const rootHandle = FolderConnector.getDirHandle();
-    if (!rootHandle) {
-      return { newEventsCount: 0, totalEvents: 0, connected: false };
+    // 既に同一プロジェクトの同期が実行中の場合は、既存のPromiseを共有（二重処理を完全防止）
+    if (this._activeSyncPromises.has(projectId)) {
+      return await this._activeSyncPromises.get(projectId);
     }
 
-    try {
-      const projDir = await this.getSubdir(rootHandle, projectId);
-      if (!projDir) {
-        return { newEventsCount: 0, totalEvents: 0, notFound: true };
+    const syncPromise = (async () => {
+      if (!FolderConnector.isConnected()) {
+        return { newEventsCount: 0, totalEvents: 0, connected: false };
       }
 
-      // 1. meta.json の確認と更新（ステータス変更等の同期）
-      const meta = await this.readJsonFile(projDir, 'meta.json');
-      if (meta) {
-        const localProj = await db.projects.get(projectId);
-        if (localProj && localProj.status !== meta.status) {
-          await db.projects.update(projectId, {
-            status: meta.status,
-            completedAt: meta.completedAt || null
-          });
+      const rootHandle = FolderConnector.getDirHandle();
+      if (!rootHandle) {
+        return { newEventsCount: 0, totalEvents: 0, connected: false };
+      }
+
+      try {
+        const projDir = await this.getSubdir(rootHandle, projectId);
+        if (!projDir) {
+          return { newEventsCount: 0, totalEvents: 0, notFound: true };
         }
-      }
 
-      // 1.5 students.json の確認と同期（新規生徒の追加および情報修正を同期、削除は事故防止のため非実行）
-      let studentsAdded = 0;
-      let studentsUpdated = 0;
-      const sharedStudents = await this.readJsonFile(projDir, 'students.json');
-      if (Array.isArray(sharedStudents) && sharedStudents.length > 0) {
-        const stuSyncRes = await this.syncStudentsFromShared(projectId, sharedStudents);
-        studentsAdded = stuSyncRes.studentsAdded;
-        studentsUpdated = stuSyncRes.studentsUpdated;
-      }
-
-      // 2. events/ ディレクトリの走査
-      const eventsDir = await this.getSubdir(projDir, 'events');
-      if (!eventsDir) {
-        return { newEventsCount: 0, totalEvents: 0, studentsAdded, studentsUpdated, connected: true };
-      }
-
-      let newEventsCount = 0;
-      const existingEvents = await db.syncEvents.where('projectId').equals(projectId).toArray();
-      const existingEventIds = new Set(existingEvents.map(e => e.eventId));
-
-      // events ディレクトリ内のすべての .json ファイルを探索
-      for await (const [name, handle] of eventsDir.entries()) {
-        if (handle.kind === 'file' && name.endsWith('.json')) {
-          try {
-            const file = await handle.getFile();
-            const text = await file.text();
-            const event = JSON.parse(text);
-
-            if (event && event.eventId && !existingEventIds.has(event.eventId)) {
-              await db.syncEvents.put({
-                eventId: event.eventId,
-                projectId,
-                studentId: event.studentId || '',
-                timestamp: event.timestamp || Date.now(),
-                event
-              });
-              existingEventIds.add(event.eventId);
-              newEventsCount++;
-            }
-          } catch (fileErr) {
-            console.warn(`イベントファイル読み込みスキップ: ${name}`, fileErr);
+        // 1. meta.json の確認と更新（ステータス変更等の同期）
+        const meta = await this.readJsonFile(projDir, 'meta.json');
+        if (meta) {
+          const localProj = await db.projects.get(projectId);
+          if (localProj && localProj.status !== meta.status) {
+            await db.projects.update(projectId, {
+              status: meta.status,
+              completedAt: meta.completedAt || null
+            });
           }
         }
-      }
 
-      // 3. 新規イベントがあった場合、イベントを時系列にリプレイして submissions テーブルを更新
-      if (newEventsCount > 0 || existingEvents.length > 0) {
-        await this.replayEventsToSubmissions(projectId);
-      }
+        // 1.5 students.json の確認と同期（新規生徒の追加および情報修正を同期、削除は事故防止のため非実行）
+        let studentsAdded = 0;
+        let studentsUpdated = 0;
+        const sharedStudents = await this.readJsonFile(projDir, 'students.json');
+        if (Array.isArray(sharedStudents) && sharedStudents.length > 0) {
+          const stuSyncRes = await this.syncStudentsFromShared(projectId, sharedStudents);
+          studentsAdded = stuSyncRes.studentsAdded;
+          studentsUpdated = stuSyncRes.studentsUpdated;
+        }
 
-      this.lastSyncTimes.set(projectId, new Date());
-      return {
-        newEventsCount,
-        totalEvents: existingEventIds.size,
-        studentsAdded,
-        studentsUpdated,
-        connected: true,
-        lastSync: new Date()
-      };
-    } catch (err) {
-      console.error(`同期エラー (${projectId}):`, err);
-      throw err;
-    }
+        // 2. events/ ディレクトリの走査
+        const eventsDir = await this.getSubdir(projDir, 'events');
+        if (!eventsDir) {
+          return { newEventsCount: 0, totalEvents: 0, studentsAdded, studentsUpdated, connected: true };
+        }
+
+        let newEventsCount = 0;
+        const existingEvents = await db.syncEvents.where('projectId').equals(projectId).toArray();
+        const existingEventIds = new Set(existingEvents.map(e => e.eventId));
+
+        // events ディレクトリ内のすべての .json ファイルを探索
+        for await (const [name, handle] of eventsDir.entries()) {
+          if (handle.kind === 'file' && name.endsWith('.json')) {
+            try {
+              const file = await handle.getFile();
+              const text = await file.text();
+              const event = JSON.parse(text);
+
+              if (event && event.eventId && !existingEventIds.has(event.eventId)) {
+                await db.syncEvents.put({
+                  eventId: event.eventId,
+                  projectId,
+                  studentId: event.studentId || '',
+                  timestamp: event.timestamp || Date.now(),
+                  event
+                });
+                existingEventIds.add(event.eventId);
+                newEventsCount++;
+              }
+            } catch (fileErr) {
+              console.warn(`イベントファイル読み込みスキップ: ${name}`, fileErr);
+            }
+          }
+        }
+
+        // 3. 新規イベントがあった場合、イベントを時系列にリプレイして submissions テーブルを更新
+        if (newEventsCount > 0 || existingEvents.length > 0) {
+          await this.replayEventsToSubmissions(projectId);
+        }
+
+        this.lastSyncTimes.set(projectId, new Date());
+        return {
+          newEventsCount,
+          totalEvents: existingEventIds.size,
+          studentsAdded,
+          studentsUpdated,
+          connected: true,
+          lastSync: new Date()
+        };
+      } catch (err) {
+        console.error(`同期エラー (${projectId}):`, err);
+        throw err;
+      } finally {
+        this._activeSyncPromises.delete(projectId);
+      }
+    })();
+
+    this._activeSyncPromises.set(projectId, syncPromise);
+    return await syncPromise;
   },
 
   /**

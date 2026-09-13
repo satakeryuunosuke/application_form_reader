@@ -38,6 +38,162 @@ export const UI = {
     }, duration);
   },
 
+  /* ================= ローディング & 連打防止オーバーレイ ================= */
+  _loadingDepth: 0,
+  _loadingTimerId: null,
+  _loadingStartTime: 0,
+
+  /**
+   * 全画面ローディングオーバーレイを表示（画面操作を完全遮断して連打を防止）
+   * @param {Object} options
+   * @param {string} [options.title='ファイルサーバーと通信中...']
+   * @param {string} [options.message='差分データを取得・反映しています。画面を閉じずにお待ちください。']
+   * @param {string} [options.icon='🔄']
+   * @param {number} [options.timeoutSec=10] キャンセルボタンを表示するまでの秒数
+   * @param {Function} [options.onCancel=null] キャンセル時コールバック
+   */
+  showLoading(options = {}) {
+    const {
+      title = 'ファイルサーバーと通信中...',
+      message = '差分データを取得・反映しています。画面を閉じずにお待ちください。',
+      icon = '🔄',
+      timeoutSec = 10,
+      onCancel = null
+    } = typeof options === 'string' ? { message: options } : options;
+
+    this._loadingDepth++;
+
+    let overlay = document.getElementById('app-loading-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'app-loading-overlay';
+      overlay.className = 'app-loading-overlay';
+      overlay.innerHTML = `
+        <div class="loading-card">
+          <div class="loading-spinner-wrapper">
+            <div class="loading-spinner-ring"></div>
+            <div class="loading-spinner-inner"></div>
+            <div class="loading-spinner-icon" id="app-loading-icon">${icon}</div>
+          </div>
+          <div class="loading-title" id="app-loading-title">${title}</div>
+          <div class="loading-msg" id="app-loading-msg">${message}</div>
+          <div class="loading-timer" id="app-loading-timer">通信中... (0秒)</div>
+          <div class="loading-cancel-area" id="app-loading-cancel-area">
+            <button class="btn btn-secondary btn-sm" id="btn-app-loading-cancel" style="color: var(--danger-solid); border-color: var(--danger-border, #fca5a5);">
+              ⚠️ 通信を中断して閉じる
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      // キャンセルボタン
+      const cancelBtn = overlay.querySelector('#btn-app-loading-cancel');
+      if (cancelBtn) {
+        cancelBtn.onclick = () => {
+          if (typeof onCancel === 'function') {
+            try { onCancel(); } catch (e) { console.warn(e); }
+          }
+          this.hideLoading(true);
+          this.showToast('通信待機を強制解除しました', 'warning');
+        };
+      }
+    } else {
+      // 既存更新
+      const iconEl = overlay.querySelector('#app-loading-icon');
+      const titleEl = overlay.querySelector('#app-loading-title');
+      const msgEl = overlay.querySelector('#app-loading-msg');
+      if (iconEl) iconEl.textContent = icon;
+      if (titleEl) titleEl.textContent = title;
+      if (msgEl) msgEl.textContent = message;
+    }
+
+    // タイマー開始
+    this._loadingStartTime = Date.now();
+    const timerEl = overlay.querySelector('#app-loading-timer');
+    const cancelArea = overlay.querySelector('#app-loading-cancel-area');
+    if (cancelArea) cancelArea.classList.remove('is-visible');
+
+    if (this._loadingTimerId) clearInterval(this._loadingTimerId);
+    this._loadingTimerId = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - this._loadingStartTime) / 1000);
+      if (timerEl) {
+        timerEl.textContent = `通信中... (${elapsedSec}秒)`;
+      }
+      if (elapsedSec >= timeoutSec && cancelArea) {
+        cancelArea.classList.add('is-visible');
+      }
+    }, 1000);
+
+    // アニメーション表示
+    requestAnimationFrame(() => {
+      overlay.classList.add('is-active');
+    });
+  },
+
+  /**
+   * 全画面ローディングオーバーレイを解除
+   * @param {boolean} [force=false] 多重階層を無視して強制解除するかどうか
+   */
+  hideLoading(force = false) {
+    if (force) {
+      this._loadingDepth = 0;
+    } else {
+      this._loadingDepth = Math.max(0, this._loadingDepth - 1);
+    }
+
+    if (this._loadingDepth === 0) {
+      if (this._loadingTimerId) {
+        clearInterval(this._loadingTimerId);
+        this._loadingTimerId = null;
+      }
+      const overlay = document.getElementById('app-loading-overlay');
+      if (overlay) {
+        overlay.classList.remove('is-active');
+      }
+    }
+  },
+
+  /**
+   * 非同期処理をローディングオーバーレイ & 連打防止付きで実行
+   * @param {Function} asyncFn
+   * @param {Object|string} [options]
+   */
+  async withLoading(asyncFn, options = {}) {
+    this.showLoading(options);
+    try {
+      return await asyncFn();
+    } finally {
+      this.hideLoading();
+    }
+  },
+
+  /**
+   * 個別ボタンのローディング状態・スピナーアニメーション・連打防止制御
+   * @param {HTMLElement} btn
+   * @param {boolean} isLoading
+   * @param {string} [loadingText='処理中...']
+   */
+  setButtonLoading(btn, isLoading, loadingText = '処理中...') {
+    if (!btn) return;
+
+    if (isLoading) {
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      if (!btn.dataset.origHtml) {
+        btn.dataset.origHtml = btn.innerHTML;
+      }
+      btn.innerHTML = `<span class="btn-spinner"></span> <span>${loadingText}</span>`;
+    } else {
+      btn.classList.remove('is-loading');
+      if (btn.dataset.origHtml) {
+        btn.innerHTML = btn.dataset.origHtml;
+        delete btn.dataset.origHtml;
+      }
+      btn.disabled = false;
+    }
+  },
+
   /**
    * 確認モーダルダイアログ
    * @param {string} title

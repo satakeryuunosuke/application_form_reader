@@ -382,6 +382,7 @@ export const ReviewPage = {
     const confirmBtn = this.container.querySelector('#btn-action-confirm');
     if (confirmBtn) {
       confirmBtn.onclick = async () => {
+        UI.setButtonLoading(confirmBtn, true, '確認中...');
         try {
           await DB.updateReviewStatus(currentItem.submissionId, {
             reviewStatus: 'confirmed',
@@ -399,6 +400,7 @@ export const ReviewPage = {
           this.renderUI();
         } catch (err) {
           UI.showToast(`保存エラー: ${err.message}`, 'error');
+          UI.setButtonLoading(confirmBtn, false);
         }
       };
     }
@@ -408,6 +410,7 @@ export const ReviewPage = {
     const mismatchWrap = this.container.querySelector('#mismatch-note-wrap');
     if (mismatchBtn) {
       mismatchBtn.onclick = async () => {
+        UI.setButtonLoading(mismatchBtn, true, '処理中...');
         if (mismatchWrap) mismatchWrap.style.display = 'block';
         try {
           await DB.updateReviewStatus(currentItem.submissionId, {
@@ -421,6 +424,7 @@ export const ReviewPage = {
           this.renderUI();
         } catch (err) {
           UI.showToast(`保存エラー: ${err.message}`, 'error');
+          UI.setButtonLoading(mismatchBtn, false);
         }
       };
     }
@@ -431,6 +435,7 @@ export const ReviewPage = {
     if (saveNoteBtn && noteInput) {
       saveNoteBtn.onclick = async () => {
         const note = noteInput.value.trim();
+        UI.setButtonLoading(saveNoteBtn, true, '保存中...');
         try {
           await DB.updateReviewStatus(currentItem.submissionId, {
             reviewStatus: 'mismatch',
@@ -440,6 +445,8 @@ export const ReviewPage = {
           UI.showToast('不一致メモを保存しました', 'info');
         } catch (err) {
           UI.showToast(`メモ保存エラー: ${err.message}`, 'error');
+        } finally {
+          UI.setButtonLoading(saveNoteBtn, false);
         }
       };
     }
@@ -454,6 +461,7 @@ export const ReviewPage = {
         const enrollmentCourse = this.container.querySelector('#sel-edit-course').value;
         const remarks = this.container.querySelector('#inp-edit-remarks').value.trim();
 
+        UI.setButtonLoading(saveInlineBtn, true, '保存中...');
         try {
           await DB.saveSubmission(currentItem.submissionId, {
             status: '承認済',
@@ -473,6 +481,7 @@ export const ReviewPage = {
           this.renderUI();
         } catch (err) {
           UI.showToast(`修正保存エラー: ${err.message}`, 'error');
+          UI.setButtonLoading(saveInlineBtn, false);
         }
       };
     }

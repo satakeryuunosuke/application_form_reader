@@ -307,6 +307,7 @@ export const SettingsPage = {
     const connectFolderBtn = this.container.querySelector('#btn-connect-folder');
     if (connectFolderBtn) {
       connectFolderBtn.onclick = async () => {
+        UI.setButtonLoading(connectFolderBtn, true, '接続中...');
         try {
           await FolderConnector.connect();
           UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
@@ -315,6 +316,7 @@ export const SettingsPage = {
           await this.render(this.container);
         } catch (err) {
           UI.showToast(err.message, 'warning');
+          UI.setButtonLoading(connectFolderBtn, false);
         }
       };
     }
@@ -341,6 +343,12 @@ export const SettingsPage = {
     const syncSettingsBtn = this.container.querySelector('#btn-sync-settings-now');
     if (syncSettingsBtn) {
       syncSettingsBtn.onclick = async () => {
+        UI.setButtonLoading(syncSettingsBtn, true, '同期中...');
+        UI.showLoading({
+          title: '共有設定を同期中...',
+          message: 'ファイルサーバーの settings.json から職員名・共通既定書式を取得・反映しています。',
+          icon: '⚙️'
+        });
         try {
           const res = await SyncManager.readSharedSettings();
           if (res) {
@@ -351,6 +359,9 @@ export const SettingsPage = {
           await this.render(this.container);
         } catch (err) {
           UI.showToast(`設定同期エラー: ${err.message}`, 'error');
+          UI.setButtonLoading(syncSettingsBtn, false);
+        } finally {
+          UI.hideLoading();
         }
       };
     }
@@ -431,6 +442,7 @@ export const SettingsPage = {
           UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
           return;
         }
+        UI.setButtonLoading(saveDefaultTemplateBtn, true, '保存中...');
         try {
           const templateToSave = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
           const updatedSettings = {
@@ -443,6 +455,8 @@ export const SettingsPage = {
           UI.showToast(`交換票（受講確認票）の共通既定書式を保存しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'success');
         } catch (err) {
           UI.showToast(`保存エラー: ${err.message}`, 'error');
+        } finally {
+          UI.setButtonLoading(saveDefaultTemplateBtn, false);
         }
       };
     }

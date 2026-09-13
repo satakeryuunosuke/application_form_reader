@@ -1260,3 +1260,185 @@ textarea.form-control {
   transform: translateY(-1px);
 }
 
+/* ==========================================================================
+   Loading Animation & Anti-Spam Overlay System
+   ========================================================================== */
+
+/* 全画面ローディングオーバーレイ（操作完全遮断） */
+.app-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s;
+  pointer-events: none;
+  user-select: none;
+}
+
+.app-loading-overlay.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: all;
+}
+
+/* ローディングカード */
+.loading-card {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: var(--radius-xl, 16px);
+  box-shadow: 0 20px 40px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.05);
+  padding: 36px 40px;
+  width: 90%;
+  max-width: 440px;
+  text-align: center;
+  transform: scale(0.92) translateY(8px);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.app-loading-overlay.is-active .loading-card {
+  transform: scale(1) translateY(0);
+}
+
+/* スピナーコンテナ & アニメーション */
+.loading-spinner-wrapper {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 外側グラデーション回転リング */
+.loading-spinner-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3.5px solid transparent;
+  border-top-color: var(--primary-600, #4f46e5);
+  border-right-color: var(--primary-400, #818cf8);
+  border-bottom-color: rgba(79, 70, 229, 0.15);
+  animation: app-spin 1s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* 内側逆回転パルスリング */
+.loading-spinner-inner {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+  border-bottom-color: #06b6d4;
+  border-left-color: rgba(6, 182, 212, 0.3);
+  animation: app-spin-reverse 1.4s linear infinite;
+}
+
+/* 中央アイコン & パルス */
+.loading-spinner-icon {
+  font-size: 1.75rem;
+  z-index: 2;
+  animation: app-pulse 2s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* タイトル & 説明文 */
+.loading-title {
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: var(--gray-900, #0f172a);
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+.loading-msg {
+  font-size: 0.88rem;
+  color: var(--gray-600, #475569);
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+
+.loading-timer {
+  font-size: 0.78rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--primary-700, #4338ca);
+  background: rgba(79, 70, 229, 0.08);
+  padding: 3px 10px;
+  border-radius: var(--radius-full, 9999px);
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* タイムアウト時の安全キャンセルボタン */
+.loading-cancel-area {
+  margin-top: 16px;
+  display: none;
+}
+
+.loading-cancel-area.is-visible {
+  display: block;
+  animation: app-fade-in 0.3s ease-out;
+}
+
+/* ボタン内ローディング用ミニスピナー */
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: app-spin 0.65s linear infinite;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* ボタンのローディング・連打無効化状態 */
+.btn.is-loading {
+  position: relative;
+  pointer-events: none !important;
+  cursor: wait !important;
+  opacity: 0.82;
+}
+
+/* キーフレーム定義 */
+@keyframes app-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes app-spin-reverse {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes app-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.88); opacity: 0.75; }
+}
+
+@keyframes app-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

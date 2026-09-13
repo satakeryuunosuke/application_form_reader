@@ -663,8 +663,14 @@ export const ScanPage = {
       }
     };
 
+    const approveBtn = this.container.querySelector('#btn-approve');
+    const skipBtn = this.container.querySelector('#btn-skip');
+
+    let isApproving = false;
     // 承認処理
     const doApprove = async () => {
+      if (isApproving) return;
+
       if (this.project.status === '完了') {
         UI.showToast('完了プロジェクトのため承認保存できません。「進行中に戻す」を行ってください。', 'warning');
         return;
@@ -704,54 +710,73 @@ export const ScanPage = {
 
       const remarks = this.container.querySelector('#txt-remarks').value.trim();
 
-      // DBの提出レコードを取得
-      const submissions = await DB.getProjectStudentsWithSubmissions(this.project.id);
-      const target = submissions.find(s => s.studentId === student.id);
+      isApproving = true;
+      if (approveBtn) UI.setButtonLoading(approveBtn, true, '保存中...');
 
-      if (!target) {
-        UI.showToast('提出レコードが見つかりません', 'error');
-        return;
+      try {
+        // DBの提出レコードを取得
+        const submissions = await DB.getProjectStudentsWithSubmissions(this.project.id);
+        const target = submissions.find(s => s.studentId === student.id);
+
+        if (!target) {
+          UI.showToast('提出レコードが見つかりません', 'error');
+          if (approveBtn) UI.setButtonLoading(approveBtn, false);
+          isApproving = false;
+          return;
+        }
+
+        const dataToSave = {
+          status: '承認済',
+          hasChange,
+          enrollmentClass,
+          enrollmentCourse,
+          inputMethod: 'スキャン',
+          approvedBy: this.selectedStaff,
+          remarks,
+          scanImageBlob: currentItem.imageDataUrl,
+          submittedAt: new Date().toISOString(),
+          approvedAt: new Date().toISOString()
+        };
+
+        // すでに登録済（承認済）の場合、上書き確認モーダルを表示
+        if (target.status === '承認済') {
+          if (approveBtn) UI.setButtonLoading(approveBtn, false);
+          this.showOverwriteModal({
+            student,
+            target,
+            newData: {
+              hasChange,
+              enrollmentClass,
+              enrollmentCourse,
+              remarks,
+              staff: this.selectedStaff
+            },
+            onOverwrite: async () => {
+              if (approveBtn) UI.setButtonLoading(approveBtn, true, '上書き中...');
+              try {
+                await this.saveAndProceed(target.submissionId, student, dataToSave, true);
+              } finally {
+                isApproving = false;
+              }
+            },
+            onSkip: () => {
+              isApproving = false;
+              UI.showToast(`${student.name} 様の上書きをスキップしました`, 'info', 1800);
+              this.currentIndex++;
+              this.renderApprovalView();
+            }
+          });
+          return;
+        }
+
+        // 未提出の場合は通常承認保存
+        await this.saveAndProceed(target.submissionId, student, dataToSave, false);
+      } catch (err) {
+        UI.showToast(`保存エラー: ${err.message}`, 'error');
+        if (approveBtn) UI.setButtonLoading(approveBtn, false);
+      } finally {
+        isApproving = false;
       }
-
-      const dataToSave = {
-        status: '承認済',
-        hasChange,
-        enrollmentClass,
-        enrollmentCourse,
-        inputMethod: 'スキャン',
-        approvedBy: this.selectedStaff,
-        remarks,
-        scanImageBlob: currentItem.imageDataUrl,
-        submittedAt: new Date().toISOString(),
-        approvedAt: new Date().toISOString()
-      };
-
-      // すでに登録済（承認済）の場合、上書き確認モーダルを表示
-      if (target.status === '承認済') {
-        this.showOverwriteModal({
-          student,
-          target,
-          newData: {
-            hasChange,
-            enrollmentClass,
-            enrollmentCourse,
-            remarks,
-            staff: this.selectedStaff
-          },
-          onOverwrite: async () => {
-            await this.saveAndProceed(target.submissionId, student, dataToSave, true);
-          },
-          onSkip: () => {
-            UI.showToast(`${student.name} 様の上書きをスキップしました`, 'info', 1800);
-            this.currentIndex++;
-            this.renderApprovalView();
-          }
-        });
-        return;
-      }
-
-      // 未提出の場合は通常承認保存
-      await this.saveAndProceed(target.submissionId, student, dataToSave, false);
     };
 
     // スキップ処理
@@ -760,8 +785,8 @@ export const ScanPage = {
       this.renderApprovalView();
     };
 
-    this.container.querySelector('#btn-approve').onclick = doApprove;
-    this.container.querySelector('#btn-skip').onclick = doSkip;
+    if (approveBtn) approveBtn.onclick = doApprove;
+    if (skipBtn) skipBtn.onclick = doSkip;
 
     // キーボードショートカット
     const keyHandler = (e) => {

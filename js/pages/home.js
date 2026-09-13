@@ -311,6 +311,7 @@ export const HomePage = {
     const connectFolderBtn = this.container.querySelector('#btn-home-connect-folder');
     if (connectFolderBtn) {
       connectFolderBtn.onclick = async () => {
+        UI.setButtonLoading(connectFolderBtn, true, '接続中...');
         try {
           await FolderConnector.connect();
           UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
@@ -318,6 +319,7 @@ export const HomePage = {
           await this.render(this.container);
         } catch (e) {
           if (e.name !== 'AbortError') UI.showToast(e.message, 'warning');
+          UI.setButtonLoading(connectFolderBtn, false);
         }
       };
     }
@@ -326,8 +328,21 @@ export const HomePage = {
     const refreshSharedBtn = this.container.querySelector('#btn-home-refresh-shared');
     if (refreshSharedBtn) {
       refreshSharedBtn.onclick = async () => {
-        await this.render(this.container);
-        UI.showToast('共有フォルダのプロジェクト一覧を更新しました', 'info');
+        UI.setButtonLoading(refreshSharedBtn, true, '更新中...');
+        UI.showLoading({
+          title: '共有フォルダを確認中...',
+          message: 'ファイルサーバーのプロジェクト一覧を走査しています。しばらくお待ちください。',
+          icon: '🔄'
+        });
+        try {
+          await this.render(this.container);
+          UI.showToast('共有フォルダのプロジェクト一覧を更新しました', 'info');
+        } catch (e) {
+          UI.showToast(`共有フォルダ読み込みエラー: ${e.message}`, 'error');
+          UI.setButtonLoading(refreshSharedBtn, false);
+        } finally {
+          UI.hideLoading();
+        }
       };
     }
 
@@ -336,16 +351,22 @@ export const HomePage = {
       btn.onclick = async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
-        btn.disabled = true;
-        btn.textContent = '取り込み中...';
+        UI.setButtonLoading(btn, true, '取り込み中...');
+        UI.showLoading({
+          title: 'プロジェクトを取り込み中...',
+          message: 'ファイルサーバーから名簿・設定・履歴をローカルに複製・同期しています。画面を閉じずにお待ちください。',
+          icon: '📥'
+        });
         try {
           await DB.importProjectFromShared(id);
           UI.showToast('共有プロジェクトを取り込みました', 'success');
           await this.render(this.container);
         } catch (err) {
           UI.showToast(`取込エラー: ${err.message}`, 'error');
-          btn.disabled = false;
-          btn.textContent = '📥 このPCに取り込む (同期開始)';
+          UI.setButtonLoading(btn, false);
+          btn.innerHTML = '📥 このPCに取り込む (同期開始)';
+        } finally {
+          UI.hideLoading();
         }
       };
     });
@@ -717,13 +738,20 @@ export const HomePage = {
               customTemplate = calibratorInstance.getTemplate();
             }
             // 作成実行
+            UI.setButtonLoading(nextBtn, true, '作成中...');
             try {
-              const project = await DB.createProject({
-                year: selectedYear,
-                grade: selectedGrade,
-                sessionName: selectedSession,
-                students: parsedStudents,
-                scanTemplate: customTemplate
+              const project = await UI.withLoading(async () => {
+                return await DB.createProject({
+                  year: selectedYear,
+                  grade: selectedGrade,
+                  sessionName: selectedSession,
+                  students: parsedStudents,
+                  scanTemplate: customTemplate
+                });
+              }, {
+                title: 'プロジェクトを作成中...',
+                message: 'ローカルデータベースおよびファイルサーバー（共有フォルダ）にプロジェクト・生徒名簿を登録しています。',
+                icon: '📋'
               });
 
               const syncMsg = FolderConnector.isConnected() ? '（共有フォルダへ書き出しました）' : '';
@@ -732,6 +760,7 @@ export const HomePage = {
               window.location.hash = `#project/${project.id}`;
             } catch (err) {
               UI.showToast(`プロジェクト作成に失敗しました: ${err.message}`, 'error');
+              UI.setButtonLoading(nextBtn, false);
             }
           }
         };

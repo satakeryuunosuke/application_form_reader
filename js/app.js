@@ -89,8 +89,14 @@ class App {
   }
 }
 
-// DOM読み込み完了時に起動
-document.addEventListener('DOMContentLoaded', () => {
+// アプリケーション起動
+const bootstrap = () => {
   const app = new App();
   app.init();
-});
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap);
+} else {
+  bootstrap();
+}

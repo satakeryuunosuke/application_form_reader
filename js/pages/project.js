@@ -166,14 +166,14 @@ export const ProjectPage = {
     const syncBtn = this.container.querySelector('#btn-header-sync');
     const dashSyncBtn = this.container.querySelector('#btn-dash-sync');
 
-    if (syncBtn) {
-      syncBtn.disabled = true;
-      syncBtn.innerHTML = '🔄 更新中...';
-    }
-    if (dashSyncBtn) {
-      dashSyncBtn.disabled = true;
-      dashSyncBtn.innerHTML = '🔄 更新中...';
-    }
+    if (syncBtn) UI.setButtonLoading(syncBtn, true, '更新中...');
+    if (dashSyncBtn) UI.setButtonLoading(dashSyncBtn, true, '更新中...');
+
+    UI.showLoading({
+      title: '最新データと同期中...',
+      message: 'ファイルサーバー（共有フォルダ）の最新データを取得・反映しています。画面を閉じずにお待ちください。',
+      icon: '🔄'
+    });
 
     try {
       await SyncManager.flushPendingQueueInBackground();
@@ -193,13 +193,15 @@ export const ProjectPage = {
       const lastSync = SyncManager.getLastSyncTime(projectId);
       const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
       if (syncBtn) {
-        syncBtn.disabled = false;
+        UI.setButtonLoading(syncBtn, false);
         syncBtn.innerHTML = `🔄 更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
       }
       if (dashSyncBtn) {
-        dashSyncBtn.disabled = false;
+        UI.setButtonLoading(dashSyncBtn, false);
         dashSyncBtn.innerHTML = '🔄 最新データに更新';
       }
+    } finally {
+      UI.hideLoading();
     }
   },
 
@@ -570,12 +572,19 @@ export const ProjectPage = {
           if (!ok) return;
         }
 
+        UI.setButtonLoading(toggleStatusBtn, true, '更新中...');
         try {
-          await DB.updateProjectStatus(projectId, newStatus);
+          await UI.withLoading(async () => {
+            await DB.updateProjectStatus(projectId, newStatus);
+          }, {
+            title: 'ステータスを更新中...',
+            message: 'ファイルサーバー（共有フォルダ）にステータス変更を反映しています。'
+          });
           UI.showToast(newStatus === '完了' ? 'プロジェクトを完了にしました（編集ロック）' : 'プロジェクトを進行中に戻しました（編集可能）', 'success');
           await this.render(this.container, projectId, 'dashboard');
         } catch (err) {
           UI.showToast(`ステータス変更エラー: ${err.message}`, 'error');
+          UI.setButtonLoading(toggleStatusBtn, false);
         }
       };
     }
@@ -675,12 +684,14 @@ export const ProjectPage = {
     modal.querySelector('.btn-close-modal').onclick = closeModal;
     modal.querySelector('#btn-modal-cancel').onclick = closeModal;
 
-    modal.querySelector('#btn-modal-save').onclick = async () => {
+    const saveTemplateBtn = modal.querySelector('#btn-modal-save');
+    saveTemplateBtn.onclick = async () => {
       if (!calibrator.isBarcodeDetected()) {
         UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
         return;
       }
       const templateToSave = calibrator.getTemplate();
+      UI.setButtonLoading(saveTemplateBtn, true, '保存中...');
       try {
         await DB.updateProject(projectId, { scanTemplate: templateToSave });
         this.currentProject.scanTemplate = templateToSave;
@@ -691,6 +702,7 @@ export const ProjectPage = {
         }
       } catch (err) {
         UI.showToast(`保存エラー: ${err.message}`, 'error');
+        UI.setButtonLoading(saveTemplateBtn, false);
       }
     };
   },
@@ -1019,7 +1031,8 @@ export const ProjectPage = {
             editModal.querySelector('#edit-modal-close').onclick = closeEdit;
             editModal.querySelector('#edit-modal-cancel').onclick = closeEdit;
 
-            editModal.querySelector('#edit-modal-save').onclick = async () => {
+            const editSaveBtn = editModal.querySelector('#edit-modal-save');
+            editSaveBtn.onclick = async () => {
               const newName = editModal.querySelector('#edit-inp-name').value.trim();
               const newKana = editModal.querySelector('#edit-inp-kana').value.trim();
               const newClass = editModal.querySelector('#edit-inp-class').value.trim();
@@ -1030,6 +1043,7 @@ export const ProjectPage = {
                 return;
               }
 
+              UI.setButtonLoading(editSaveBtn, true, '更新中...');
               try {
                 await DB.updateStudent(stuId, {
                   name: newName,
@@ -1044,6 +1058,7 @@ export const ProjectPage = {
                 await renderModalContent();
               } catch (err) {
                 UI.showToast(`更新エラー: ${err.message}`, 'error');
+                UI.setButtonLoading(editSaveBtn, false);
               }
             };
           };
