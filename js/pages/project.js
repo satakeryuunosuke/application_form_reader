@@ -662,19 +662,25 @@ export const ProjectPage = {
                 <div class="dashboard-card-header">
                   <div class="dashboard-card-icon">${isCompleted ? '🔄' : '🏁'}</div>
                   <div>
-                    <h4 class="dashboard-card-title">${isCompleted ? 'プロジェクトを進行中に戻す' : 'プロジェクトを完了にする'}</h4>
-                    <span class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}">${isCompleted ? '🏁 完了中' : '🟢 進行中'}</span>
+            <!-- 完了（アーカイブ） -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">🏁</div>
+                  <div>
+                    <h4 class="dashboard-card-title">プロジェクトを完了（アーカイブ）にする</h4>
+                    <span class="badge badge-success">🟢 進行中</span>
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
-                  ${isCompleted 
-                    ? '現在「完了」状態のためデータの新規登録やスキャンがロックされています。「進行中」に戻すと再び編集が可能になります。' 
-                    : '講習業務が終了した際に「完了」に設定します。誤操作によるデータ変更やスキャン受付がロックされます。'}
+                  講習業務が終了した際に「完了（アーカイブ）」に設定します。<br>
+                  共有フォルダの退避フォルダ（archive/）へ移動され、全端末のホーム画面および手元データから取り下げられます。<br>
+                  <span style="font-size: 0.8rem; color: var(--primary-600);">※ 後からホーム画面の「完了済みのプロジェクト」ボタンより、いつでも進行中に戻せます。</span>
                 </p>
               </div>
               <div>
-                <button id="btn-dash-toggle-status" class="btn ${isCompleted ? 'btn-primary' : 'btn-secondary'} btn-block">
-                  ${isCompleted ? '🔄 進行中に戻す（ロック解除）' : '🏁 完了にする（編集ロック）'}
+                <button id="btn-dash-archive" class="btn btn-secondary btn-block">
+                  🏁 完了（アーカイブ）にする
                 </button>
               </div>
             </div>
@@ -690,12 +696,12 @@ export const ProjectPage = {
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
-                  このプロジェクトと、登録されている生徒名簿・受講提出データをすべて完全に削除します。※この操作は元に戻せません。
+                  この端末から、登録されている生徒名簿・受講提出データを削除します。※共有フォルダ上のファイルは削除されません。
                 </p>
               </div>
               <div>
                 <button id="btn-dash-delete" class="btn btn-ghost btn-block" style="color: var(--danger-solid); border: 1px solid var(--danger-solid);">
-                  🗑️ プロジェクトを削除
+                  🗑️ この端末から削除
                 </button>
               </div>
             </div>
@@ -787,35 +793,37 @@ export const ProjectPage = {
       };
     }
 
-    const toggleStatusBtn = content.querySelector('#btn-dash-toggle-status');
-    if (toggleStatusBtn) {
-      toggleStatusBtn.onclick = async () => {
-        const isComp = this.currentProject.status === '完了';
-        const newStatus = isComp ? '進行中' : '完了';
-
-        if (!isComp) {
-          const ok = await UI.confirm(
-            'プロジェクトの完了',
-            `「${this.currentProject.title}」を「完了」にしますか？\n（完了状態になると誤変更防止のためデータ登録・スキャンがロックされます。後からいつでも「進行中」に戻せます）`,
-            '完了にする',
-            'primary'
-          );
-          if (!ok) return;
+    const archiveBtn = content.querySelector('#btn-dash-archive');
+    if (archiveBtn) {
+      archiveBtn.onclick = async () => {
+        if (!FolderConnector.isConnected()) {
+          UI.showToast('完了（アーカイブ）を実行するには共有フォルダの接続が必要です。画面上部または設定画面から共有フォルダを接続してください。', 'warning', 6000);
+          return;
         }
 
-        UI.setButtonLoading(toggleStatusBtn, true, '更新中...');
+        const ok = await UI.confirm(
+          'プロジェクトの完了（アーカイブ）',
+          `「${this.currentProject.title}」を「完了（アーカイブ）」にしますか？\n\n【処理内容】\n・共有フォルダ内の退避フォルダ（archive/）へプロジェクトが退避されます。\n・全端末のホーム画面および端末内データから自動的に取り下げられます。\n\n※ 必要なときは、いつでもホーム画面の「完了済みのプロジェクト」ボタンから「進行中」に戻すことができます。`,
+          '完了（アーカイブ）にする',
+          'primary'
+        );
+        if (!ok) return;
+
+        UI.setButtonLoading(archiveBtn, true, '退避処理中...');
         try {
           await UI.withLoading(async () => {
-            await DB.updateProjectStatus(projectId, newStatus);
+            await DB.archiveProject(projectId);
           }, {
-            title: 'ステータスを更新中...',
-            message: 'ファイルサーバー（共有フォルダ）にステータス変更を反映しています。'
+            title: '完了（アーカイブ）処理中...',
+            message: '共有フォルダの退避フォルダ（archive/）へプロジェクトを移動し、手元データを整理しています。画面を閉じずにお待ちください。',
+            icon: '📦'
           });
-          UI.showToast(newStatus === '完了' ? 'プロジェクトを完了にしました（編集ロック）' : 'プロジェクトを進行中に戻しました（編集可能）', 'success');
-          await this.render(this.container, projectId, 'dashboard');
+          UI.showToast(`「${this.currentProject.title}」を完了（アーカイブ）へ退避しました`, 'success', 5000);
+          window.location.hash = '#home';
         } catch (err) {
-          UI.showToast(`ステータス変更エラー: ${err.message}`, 'error');
-          UI.setButtonLoading(toggleStatusBtn, false);
+          console.error('アーカイブエラー:', err);
+          UI.showToast(`アーカイブ処理エラー: ${err.message}`, 'error', 6000);
+          UI.setButtonLoading(archiveBtn, false);
         }
       };
     }

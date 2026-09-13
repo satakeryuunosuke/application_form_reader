@@ -21,17 +21,38 @@ export const HomePage = {
   async render(container) {
     this.container = container;
     const currentYear = new Date().getFullYear();
-    const projects = await DB.getProjects();
+    let projects = await DB.getProjects();
     const expiredProjects = await DB.getExpiredProjects(3);
 
     const isFolderConnected = FolderConnector.isConnected();
     const isSupported = FolderConnector.isSupported();
     const folderName = FolderConnector.getFolderName();
 
+    // 他端末でアーカイブされたプロジェクトが手元に残っていれば自動削除（クリーンアップ）
+    if (isFolderConnected) {
+      try {
+        const cleaned = await SyncManager.cleanupArchivedFromLocal(projects);
+        if (cleaned > 0) {
+          projects = await DB.getProjects();
+        }
+      } catch (cleanErr) {
+        console.warn('手元アーカイブクリーンアップ例外:', cleanErr);
+      }
+    }
+
     this.sharedProjectsList = isFolderConnected ? await DB.getSharedProjects() : [];
     const unimportedShared = isFolderConnected
       ? this.sharedProjectsList.filter(sp => !projects.some(lp => lp.id === sp.meta.id))
       : [];
+
+    let archivedProjects = [];
+    if (isFolderConnected) {
+      try {
+        archivedProjects = await DB.getArchivedProjects();
+      } catch (arcErr) {
+        console.warn('アーカイブ取得エラー:', arcErr);
+      }
+    }
 
     const activeProjects = projects.filter(p => p.status !== '完了');
     const completedProjects = projects.filter(p => p.status === '完了');
@@ -67,9 +88,17 @@ export const HomePage = {
               ` : ''))}
             </div>
           </div>
-          <button id="btn-new-project" class="btn btn-primary btn-lg">
-            <span>➕</span> 新規プロジェクト作成
-          </button>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            ${isFolderConnected ? `
+              <button id="btn-home-archived" class="btn btn-secondary btn-lg" style="display: inline-flex; align-items: center; gap: 8px;" title="退避された完了プロジェクトの確認・進行中への復元">
+                <span>📁</span> 完了済みのプロジェクト
+                ${archivedProjects.length > 0 ? `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 2px 7px;">${archivedProjects.length}</span>` : ''}
+              </button>
+            ` : ''}
+            <button id="btn-new-project" class="btn btn-primary btn-lg">
+              <span>➕</span> 新規プロジェクト作成
+            </button>
+          </div>
         </div>
     `;
 
@@ -306,6 +335,11 @@ export const HomePage = {
   bindEvents(currentYear) {
     const newBtns = this.container.querySelectorAll('#btn-new-project, #btn-empty-new-project');
     newBtns.forEach(btn => btn?.addEventListener('click', () => this.openNewProjectWizard(currentYear)));
+
+    const homeArchivedBtn = this.container.querySelector('#btn-home-archived');
+    if (homeArchivedBtn) {
+      homeArchivedBtn.addEventListener('click', () => this.openArchivedProjectsModal());
+    }
 
     const archiveBtn = this.container.querySelector('#btn-go-settings-archive');
     if (archiveBtn) {
@@ -862,5 +896,164 @@ export const HomePage = {
 
     document.body.appendChild(modal);
     renderStep();
+  },
+
+  /**
+   * 完了（アーカイブ）済みプロジェクトの一覧・復元モーダル
+   */
+  async openArchivedProjectsModal() {
+    if (!FolderConnector.isConnected()) {
+      UI.showToast('共有フォルダが接続されていません。', 'warning');
+      return;
+    }
+
+    UI.showLoading({
+      title: 'アーカイブを走査中...',
+      message: '共有フォルダの退避フォルダ（archive/）を確認しています。',
+      icon: '📁'
+    });
+
+    let archived = [];
+    try {
+      archived = await DB.getArchivedProjects();
+    } catch (err) {
+      UI.hideLoading();
+      UI.showToast(`アーカイブ読み込みエラー: ${err.message}`, 'error');
+      return;
+    } finally {
+      UI.hideLoading();
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.zIndex = '1050';
+
+    let listHtml = '';
+    if (archived.length === 0) {
+      listHtml = `
+        <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
+          <div style="font-size: 2.5rem; margin-bottom: 8px;">📦</div>
+          <div class="font-bold" style="font-size: 1.1rem; color: var(--gray-700);">完了（アーカイブ）されたプロジェクトはありません</div>
+          <p style="font-size: 0.85rem; margin-top: 4px;">講習業務が終了したプロジェクトを「完了（アーカイブ）」に設定すると、ここに退避されます。</p>
+        </div>
+      `;
+    } else {
+      listHtml = `
+        <div style="margin-bottom: 12px; font-size: 0.85rem; color: var(--gray-600);">
+          完了（アーカイブ）として退避されているプロジェクトです。「<strong>進行中に戻す</strong>」を押すと通常領域へ復帰し、この端末でも再度集計や編集が可能になります。
+        </div>
+        <div class="table-container" style="max-height: 420px; overflow-y: auto;">
+          <table class="table" style="font-size: 0.86rem;">
+            <thead>
+              <tr>
+                <th>年度 / 学年 / 受講期</th>
+                <th>プロジェクト名</th>
+                <th>生徒数</th>
+                <th>完了・退避日</th>
+                <th style="text-align: right;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${archived.map(p => `
+                <tr>
+                  <td>
+                    <span class="badge badge-info">${p.meta.year}年度</span>
+                    <span class="badge badge-purple">${p.meta.grade}年</span>
+                    <span class="badge badge-success">${UI.formatSession(p.meta.sessionName)}</span>
+                  </td>
+                  <td class="font-bold" style="color: var(--gray-800);">${UI.formatProjectTitle(p.meta.title)}</td>
+                  <td class="text-mono">${p.studentCount > 0 ? `${p.studentCount} 名` : '-'}</td>
+                  <td class="text-mono" style="font-size: 0.8rem; color: var(--gray-600);">
+                    ${p.meta.completedAt ? UI.formatDate(p.meta.completedAt) : (p.meta.archivedAt ? UI.formatDate(p.meta.archivedAt) : '-')}
+                  </td>
+                  <td style="text-align: right;">
+                    <button class="btn btn-primary btn-sm btn-restore-project" data-id="${p.id}" data-title="${UI.formatProjectTitle(p.meta.title)}">
+                      🔄 進行中に戻す
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 820px; width: 95%;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.4rem;">📁</span>
+            <div>
+              <h3 style="margin: 0; font-size: 1.15rem;">完了済みのプロジェクト（アーカイブ）</h3>
+              <div style="font-size: 0.8rem; color: var(--gray-500);">共有フォルダの退避フォルダ（archive/）内に保管されているプロジェクト</div>
+            </div>
+          </div>
+          <button class="modal-close" id="btn-close-archived-modal">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 16px 20px;">
+          ${listHtml}
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <a href="#settings" class="btn btn-ghost btn-sm" id="link-to-settings-cleanup" style="color: var(--primary-600);">
+            ⚙️ 設定画面で古いアーカイブを一括削除...
+          </a>
+          <button class="btn btn-secondary" id="btn-cancel-archived-modal">閉じる</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+      if (document.body.contains(modal)) {
+        document.body.removeChild(modal);
+      }
+    };
+
+    modal.querySelector('#btn-close-archived-modal').onclick = closeModal;
+    modal.querySelector('#btn-cancel-archived-modal').onclick = closeModal;
+    const settingsLink = modal.querySelector('#link-to-settings-cleanup');
+    if (settingsLink) {
+      settingsLink.onclick = () => {
+        closeModal();
+      };
+    }
+
+    // 進行中に戻すボタン
+    modal.querySelectorAll('.btn-restore-project').forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.id;
+        const title = btn.dataset.title;
+
+        const ok = await UI.confirm(
+          'プロジェクトの復元',
+          `「${title}」を「進行中」に戻しますか？\n\n【処理内容】\n・共有フォルダの通常領域（ルート）へプロジェクトが戻されます。\n・この端末のIndexedDBにも自動で取り込まれ、ホーム画面の進行中一覧に復活します。\n・他端末からも同期・取り込みが可能になります。`,
+          '進行中に戻す',
+          'primary'
+        );
+        if (!ok) return;
+
+        UI.setButtonLoading(btn, true, '復元中...');
+        closeModal();
+
+        UI.showLoading({
+          title: 'プロジェクトを復元中...',
+          message: '共有フォルダの退避フォルダから通常領域へ戻し、この端末にデータを展開しています。',
+          icon: '🔄'
+        });
+
+        try {
+          await DB.restoreProjectFromArchive(id);
+          UI.showToast(`「${title}」を進行中に戻しました（復元完了）`, 'success', 5000);
+          await this.render(this.container);
+        } catch (err) {
+          console.error('復元エラー:', err);
+          UI.showToast(`復元エラー: ${err.message}`, 'error', 6000);
+        } finally {
+          UI.hideLoading();
+        }
+      };
+    });
   }
 };

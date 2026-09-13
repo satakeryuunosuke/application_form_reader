@@ -34,6 +34,19 @@ export const SettingsPage = {
     const folderName = FolderConnector.getFolderName();
     const pendingCount = await PendingQueue.getPendingCount();
 
+    const currentYear = new Date().getFullYear();
+    const lastYear = currentYear - 1;
+    const twoYearsAgo = currentYear - 2;
+
+    let archivedProjects = [];
+    if (isConnected) {
+      try {
+        archivedProjects = await DB.getArchivedProjects();
+      } catch (e) {
+        console.warn('アーカイブ取得エラー:', e);
+      }
+    }
+
     const staffList = settings.staffNames || [];
     const systemDefaultTemplate = CheckboxEngine.getDefaultTemplate();
     this.currentDefaultTemplate = settings.defaultScanTemplate
@@ -194,7 +207,89 @@ export const SettingsPage = {
           </div>
         </div>
 
-        <!-- 3. 3年超過プロジェクトの管理 -->
+        <!-- 3. 共有フォルダの完了（アーカイブ）プロジェクト整理・一括削除 -->
+        <div class="card" style="margin-bottom: var(--spacing-lg); border-left: 4px solid var(--primary-600);">
+          <div class="card-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h2 class="card-title">🗄️ 共有フォルダの完了（アーカイブ）プロジェクト整理・一括削除</h2>
+              <span class="badge ${archivedProjects.length > 0 ? 'badge-info' : 'badge-gray'}">
+                ${archivedProjects.length} 件
+              </span>
+            </div>
+          </div>
+          <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
+            共有フォルダの退避フォルダ（<code>archive/</code>）に保管されている完了プロジェクトを年度ごとに一括選択し、共有フォルダから完全に消去できます。
+          </p>
+
+          ${!isConnected ? `
+            <div style="background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); padding: var(--spacing-md); text-align: center; color: var(--gray-500); font-size: 0.85rem;">
+              共有フォルダが接続されていません。上部の「共有フォルダ連携」から接続してください。
+            </div>
+          ` : (archivedProjects.length === 0 ? `
+            <div style="font-size: 0.88rem; color: var(--gray-500); padding: 8px 0;">
+              現在、共有フォルダに完了（アーカイブ）されたプロジェクトはありません。
+            </div>
+          ` : `
+            <!-- 一括選択補助バー -->
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; background: var(--gray-50); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--gray-200);">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span class="font-bold" style="font-size: 0.82rem; color: var(--gray-700);">まとめて選択:</span>
+                <button type="button" id="btn-select-last-year" class="btn btn-secondary btn-sm" style="font-size: 0.78rem; padding: 3px 10px;">
+                  📅 昨年度 (${lastYear}年度)
+                </button>
+                <button type="button" id="btn-select-older-years" class="btn btn-secondary btn-sm" style="font-size: 0.78rem; padding: 3px 10px;">
+                  📅 一昨年度以前 (${twoYearsAgo}年度以前)
+                </button>
+                <button type="button" id="btn-toggle-all-archived" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; color: var(--primary-600);">
+                  全選択 / 解除
+                </button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="label-archived-selected-count" style="font-size: 0.84rem; font-weight: 700; color: var(--primary-700);">0 件選択中</span>
+                <button type="button" id="btn-delete-selected-archived" class="btn btn-danger btn-sm" disabled style="font-size: 0.82rem;">
+                  🗑️ 選択したプロジェクトを完全削除
+                </button>
+              </div>
+            </div>
+
+            <div class="table-container" style="max-height: 380px; overflow-y: auto; margin-bottom: var(--spacing-sm);">
+              <table class="table" style="font-size: 0.85rem;">
+                <thead>
+                  <tr>
+                    <th style="width: 44px; text-align: center;">
+                      <input type="checkbox" id="chk-header-select-all" title="すべて選択/解除">
+                    </th>
+                    <th>年度 / 学年 / 受講期</th>
+                    <th>プロジェクト名</th>
+                    <th>生徒数</th>
+                    <th>完了日</th>
+                  </tr>
+                </thead>
+                <tbody id="archived-projects-tbody">
+                  ${archivedProjects.map(p => `
+                    <tr data-id="${p.id}" data-year="${p.meta.year}">
+                      <td style="text-align: center;">
+                        <input type="checkbox" class="chk-archived-item" data-id="${p.id}" data-title="${UI.formatProjectTitle(p.meta.title)}" data-year="${p.meta.year}" data-info="${p.meta.year}年度 ${p.meta.grade}年 ${UI.formatSession(p.meta.sessionName)}">
+                      </td>
+                      <td>
+                        <span class="badge badge-info">${p.meta.year}年度</span>
+                        <span class="badge badge-purple">${p.meta.grade}年</span>
+                        <span class="badge badge-success">${UI.formatSession(p.meta.sessionName)}</span>
+                      </td>
+                      <td class="font-bold" style="color: var(--gray-800);">${UI.formatProjectTitle(p.meta.title)}</td>
+                      <td class="text-mono">${p.studentCount > 0 ? `${p.studentCount} 名` : '-'}</td>
+                      <td class="text-mono" style="font-size: 0.8rem; color: var(--gray-600);">
+                        ${p.meta.completedAt ? UI.formatDate(p.meta.completedAt) : (p.meta.archivedAt ? UI.formatDate(p.meta.archivedAt) : '-')}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `)}
+        </div>
+
+        <!-- 4. 3年超過プロジェクトの管理 -->
         <div class="card" style="margin-bottom: var(--spacing-lg);">
           <div class="card-header">
             <h2 class="card-title">🗄️ データ保持管理（3年超過アーカイブ）</h2>
@@ -516,6 +611,168 @@ export const SettingsPage = {
           this.currentDefaultTemplate = JSON.parse(JSON.stringify(systemDefaultTemplate));
           UI.showToast('システム標準（初期値）に復元しました。「共通既定書式を保存」で確定してください。', 'info');
         }
+      };
+    }
+
+    // 共有フォルダの完了（アーカイブ）プロジェクト整理・一括削除
+    const itemCheckboxes = this.container.querySelectorAll('.chk-archived-item');
+    const headerSelectAll = this.container.querySelector('#chk-header-select-all');
+    const selectLastYearBtn = this.container.querySelector('#btn-select-last-year');
+    const selectOlderYearsBtn = this.container.querySelector('#btn-select-older-years');
+    const toggleAllBtn = this.container.querySelector('#btn-toggle-all-archived');
+    const deleteSelectedBtn = this.container.querySelector('#btn-delete-selected-archived');
+    const selectedCountLabel = this.container.querySelector('#label-archived-selected-count');
+
+    const updateSelectionState = () => {
+      const checkedItems = Array.from(itemCheckboxes).filter(chk => chk.checked);
+      const count = checkedItems.length;
+      if (selectedCountLabel) {
+        selectedCountLabel.textContent = `${count} 件選択中`;
+      }
+      if (deleteSelectedBtn) {
+        deleteSelectedBtn.disabled = count === 0;
+      }
+      if (headerSelectAll) {
+        headerSelectAll.checked = itemCheckboxes.length > 0 && count === itemCheckboxes.length;
+        headerSelectAll.indeterminate = count > 0 && count < itemCheckboxes.length;
+      }
+    };
+
+    itemCheckboxes.forEach(chk => {
+      chk.addEventListener('change', updateSelectionState);
+    });
+
+    if (headerSelectAll) {
+      headerSelectAll.addEventListener('change', () => {
+        const isChecked = headerSelectAll.checked;
+        itemCheckboxes.forEach(chk => { chk.checked = isChecked; });
+        updateSelectionState();
+      });
+    }
+
+    if (toggleAllBtn) {
+      toggleAllBtn.onclick = () => {
+        const anyUnchecked = Array.from(itemCheckboxes).some(chk => !chk.checked);
+        itemCheckboxes.forEach(chk => { chk.checked = anyUnchecked; });
+        updateSelectionState();
+      };
+    }
+
+    if (selectLastYearBtn) {
+      selectLastYearBtn.onclick = () => {
+        const currentYear = new Date().getFullYear();
+        const lastYear = currentYear - 1;
+        itemCheckboxes.forEach(chk => {
+          const y = parseInt(chk.dataset.year, 10);
+          chk.checked = (y === lastYear);
+        });
+        updateSelectionState();
+      };
+    }
+
+    if (selectOlderYearsBtn) {
+      selectOlderYearsBtn.onclick = () => {
+        const currentYear = new Date().getFullYear();
+        const twoYearsAgo = currentYear - 2;
+        itemCheckboxes.forEach(chk => {
+          const y = parseInt(chk.dataset.year, 10);
+          chk.checked = (y <= twoYearsAgo);
+        });
+        updateSelectionState();
+      };
+    }
+
+    if (deleteSelectedBtn) {
+      deleteSelectedBtn.onclick = async () => {
+        const checkedItems = Array.from(itemCheckboxes).filter(chk => chk.checked);
+        if (checkedItems.length === 0) return;
+
+        const selectedList = checkedItems.map(chk => ({
+          id: chk.dataset.id,
+          title: chk.dataset.title,
+          info: chk.dataset.info
+        }));
+
+        // プロジェクト名一覧の確認モーダル
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.zIndex = '1100';
+        modal.innerHTML = `
+          <div class="modal-content" style="max-width: 600px; width: 95%;">
+            <div class="modal-header">
+              <h3 style="margin: 0; color: var(--danger-solid); font-size: 1.15rem;">
+                ⚠️ 共有フォルダからの完全削除の確認
+              </h3>
+              <button class="modal-close" id="btn-close-delete-confirm-modal">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+              <div style="background: #ffebee; border-left: 4px solid var(--danger-solid); padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 14px; color: #b71c1c; font-size: 0.88rem; font-weight: 600;">
+                以下の <strong>${selectedList.length} 件</strong> のプロジェクトを共有フォルダ（<code>archive/</code>）から完全に消去します。<br>
+                この操作を実行するとデータは二度と復元できません。
+              </div>
+
+              <div class="font-bold" style="font-size: 0.86rem; margin-bottom: 6px; color: var(--gray-700);">
+                削除対象のプロジェクト一覧:
+              </div>
+              <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); background: var(--gray-50); padding: 8px 12px; margin-bottom: 14px;">
+                <ul style="margin: 0; padding-left: 18px; font-size: 0.84rem; color: var(--gray-800); line-height: 1.7;">
+                  ${selectedList.map(item => `
+                    <li>
+                      <span class="font-bold">${item.title}</span>
+                      <span style="color: var(--gray-500); font-size: 0.78rem; margin-left: 6px;">(${item.info})</span>
+                    </li>
+                  `).join('')}
+                </ul>
+              </div>
+
+              <p style="font-size: 0.85rem; color: var(--gray-600); margin: 0;">
+                本当にこれらのプロジェクトを共有フォルダから完全削除してもよろしいですか？
+              </p>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+              <button class="btn btn-secondary" id="btn-cancel-delete-confirm">キャンセル</button>
+              <button class="btn btn-danger" id="btn-execute-delete-confirm">
+                🗑️ 完全削除を実行する（元に戻せません）
+              </button>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const closeConfirm = () => {
+          if (document.body.contains(modal)) {
+            document.body.removeChild(modal);
+          }
+        };
+
+        modal.querySelector('#btn-close-delete-confirm-modal').onclick = closeConfirm;
+        modal.querySelector('#btn-cancel-delete-confirm').onclick = closeConfirm;
+
+        modal.querySelector('#btn-execute-delete-confirm').onclick = async () => {
+          closeConfirm();
+          UI.showLoading({
+            title: 'プロジェクトを完全削除中...',
+            message: '共有フォルダ（archive/）から選択されたプロジェクトを消去しています。',
+            icon: '🗑️'
+          });
+
+          try {
+            const projectIds = selectedList.map(item => item.id);
+            const res = await DB.deleteArchivedProjects(projectIds);
+            if (res.failedCount > 0) {
+              UI.showToast(`${res.successCount} 件を削除しました（${res.failedCount} 件失敗）`, 'warning', 6000);
+            } else {
+              UI.showToast(`${res.successCount} 件のプロジェクトを共有フォルダから完全削除しました`, 'success', 5000);
+            }
+            await this.render(this.container);
+          } catch (delErr) {
+            console.error('一括削除例外:', delErr);
+            UI.showToast(`削除エラー: ${delErr.message}`, 'error', 6000);
+          } finally {
+            UI.hideLoading();
+          }
+        };
       };
     }
 

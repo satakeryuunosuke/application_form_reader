@@ -164,6 +164,34 @@ export const DB = {
   },
 
   /**
+   * 共有フォルダの archive/ フォルダ上のプロジェクト一覧をスキャン取得
+   */
+  async getArchivedProjects() {
+    return await SyncManager.scanArchivedProjects();
+  },
+
+  /**
+   * プロジェクトを完了（アーカイブ）にし、共有フォルダの archive/ へ退避＆ローカルIndexedDBから削除
+   */
+  async archiveProject(projectId) {
+    return await SyncManager.archiveProject(projectId);
+  },
+
+  /**
+   * アーカイブされたプロジェクトを進行中に戻す（復元）
+   */
+  async restoreProjectFromArchive(projectId) {
+    return await SyncManager.restoreProjectFromArchive(projectId);
+  },
+
+  /**
+   * アーカイブされたプロジェクトを共有フォルダから一括完全削除
+   */
+  async deleteArchivedProjects(projectIds) {
+    return await SyncManager.deleteArchivedProjects(projectIds);
+  },
+
+  /**
    * 共有フォルダからプロジェクトをローカルに取り込み
    */
   async importProjectFromShared(projectId) {

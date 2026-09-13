@@ -912,5 +912,255 @@ export const SyncManager = {
    */
   getLastSyncTime(projectId) {
     return this.lastSyncTimes.get(projectId) || null;
+  },
+
+  /* ================= アーカイブ（退避・復元・削除・自動クリーンアップ） ================= */
+
+  /**
+   * ディレクトリ内容を再帰的に別のディレクトリハンドル配下へコピー
+   */
+  async copyDirectoryRecursive(srcHandle, destHandle) {
+    for await (const [name, handle] of srcHandle.entries()) {
+      if (handle.kind === 'file') {
+        const file = await handle.getFile();
+        const destFileHandle = await destHandle.getFileHandle(name, { create: true });
+        const writable = await destFileHandle.createWritable({ keepExistingData: false });
+        try {
+          await writable.write(await file.arrayBuffer());
+        } finally {
+          await writable.close();
+        }
+      } else if (handle.kind === 'directory') {
+        const subDestHandle = await destHandle.getDirectoryHandle(name, { create: true });
+        await this.copyDirectoryRecursive(handle, subDestHandle);
+      }
+    }
+  },
+
+  /**
+   * ディレクトリを指定先へ移動（move API または再帰コピー＆元削除フォールバック）
+   */
+  async moveDirectory(parentSrcHandle, dirName, parentDestHandle) {
+    const srcHandle = await parentSrcHandle.getDirectoryHandle(dirName);
+    // move API がサポートされているか試行
+    if (typeof srcHandle.move === 'function') {
+      try {
+        await srcHandle.move(parentDestHandle, dirName);
+        return;
+      } catch (moveErr) {
+        console.warn('handle.move 失敗のため、再帰コピー＆削除フォールバックを実行:', moveErr);
+      }
+    }
+
+    // フォールバック: 再帰コピー
+    const destDirHandle = await parentDestHandle.getDirectoryHandle(dirName, { create: true });
+    await this.copyDirectoryRecursive(srcHandle, destDirHandle);
+
+    // 元ディレクトリの削除
+    await parentSrcHandle.removeEntry(dirName, { recursive: true });
+  },
+
+  /**
+   * プロジェクトを完了（アーカイブ）にし、共有フォルダの archive/ フォルダへ退避
+   * 同時にローカル IndexedDB からも削除する
+   */
+  async archiveProject(projectId) {
+    if (!FolderConnector.isConnected()) {
+      throw new Error('共有フォルダが接続されていません。アーカイブには共有フォルダの接続が必要です。');
+    }
+    const rootHandle = FolderConnector.getDirHandle();
+    if (!rootHandle) {
+      throw new Error('共有フォルダのハンドルが取得できません。');
+    }
+
+    const projDir = await this.getSubdir(rootHandle, projectId);
+    if (!projDir) {
+      throw new Error(`共有フォルダ内にプロジェクト「${projectId}」が見つかりません。`);
+    }
+
+    // 1. meta.json を更新（ステータス: 完了、完了日時、アーカイブ日時）
+    let meta = await this.readJsonFile(projDir, 'meta.json');
+    if (meta) {
+      meta.status = '完了';
+      meta.completedAt = meta.completedAt || new Date().toISOString();
+      meta.archivedAt = new Date().toISOString();
+      await this.writeJsonFileWithRetry(projDir, 'meta.json', meta);
+    }
+
+    // 2. archive ディレクトリを取得または作成
+    const archiveDir = await rootHandle.getDirectoryHandle('archive', { create: true });
+
+    // 3. proj_{projectId} を archive/ 配下へ移動
+    await this.moveDirectory(rootHandle, projectId, archiveDir);
+
+    // 4. ローカル IndexedDB から削除（他PCの手元からも後で削除される）
+    await DB.deleteProject(projectId);
+
+    return true;
+  },
+
+  /**
+   * 完了（アーカイブ）プロジェクトを共有フォルダの archive/ から通常領域へ戻し、進行中に復元する
+   */
+  async restoreProjectFromArchive(projectId) {
+    if (!FolderConnector.isConnected()) {
+      throw new Error('共有フォルダが接続されていません。');
+    }
+    const rootHandle = FolderConnector.getDirHandle();
+    if (!rootHandle) {
+      throw new Error('共有フォルダのハンドルが取得できません。');
+    }
+
+    const archiveDir = await this.getSubdir(rootHandle, 'archive');
+    if (!archiveDir) {
+      throw new Error('archive フォルダが見つかりません。');
+    }
+
+    const archivedProjDir = await this.getSubdir(archiveDir, projectId);
+    if (!archivedProjDir) {
+      throw new Error(`アーカイブ内にプロジェクト「${projectId}」が見つかりません。`);
+    }
+
+    // 1. meta.json を更新（ステータス: 進行中、completedAt: null）
+    let meta = await this.readJsonFile(archivedProjDir, 'meta.json');
+    if (meta) {
+      meta.status = '進行中';
+      meta.completedAt = null;
+      meta.restoredAt = new Date().toISOString();
+      await this.writeJsonFileWithRetry(archivedProjDir, 'meta.json', meta);
+    }
+
+    // 2. archive/ から rootHandle 直下へ移動
+    await this.moveDirectory(archiveDir, projectId, rootHandle);
+
+    // 3. ローカル IndexedDB に取り込み
+    return await this.importProjectFromShared(projectId);
+  },
+
+  /**
+   * 共有フォルダの archive/ フォルダ内のプロジェクト一覧を走査
+   */
+  async scanArchivedProjects() {
+    if (!FolderConnector.isConnected()) return [];
+    const rootHandle = FolderConnector.getDirHandle();
+    if (!rootHandle) return [];
+
+    const archiveDir = await this.getSubdir(rootHandle, 'archive');
+    if (!archiveDir) return [];
+
+    const archivedProjects = [];
+    try {
+      for await (const [name, handle] of archiveDir.entries()) {
+        if (handle.kind === 'directory' && name.startsWith('proj_')) {
+          const meta = await this.readJsonFile(handle, 'meta.json');
+          if (meta) {
+            meta.sessionName = UI.formatSession(meta.sessionName);
+            meta.title = UI.formatProjectTitle(meta.title);
+
+            let studentCount = 0;
+            try {
+              const students = await this.readJsonFile(handle, 'students.json');
+              if (Array.isArray(students)) {
+                studentCount = students.length;
+              }
+            } catch (e) {
+              // 無視
+            }
+
+            archivedProjects.push({
+              dirName: name,
+              id: meta.id || name,
+              meta,
+              studentCount,
+              handle
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('アーカイブ一覧スキャン失敗:', err);
+    }
+
+    // 完了日または作成日の降順でソート
+    archivedProjects.sort((a, b) => {
+      const dateA = new Date(a.meta.completedAt || a.meta.archivedAt || a.meta.createdAt || 0).getTime();
+      const dateB = new Date(b.meta.completedAt || b.meta.archivedAt || b.meta.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    return archivedProjects;
+  },
+
+  /**
+   * 指定した複数のアーカイブプロジェクトを共有フォルダから完全物理削除
+   * @param {string[]} projectIds
+   */
+  async deleteArchivedProjects(projectIds) {
+    if (!FolderConnector.isConnected()) {
+      throw new Error('共有フォルダが接続されていません。');
+    }
+    const rootHandle = FolderConnector.getDirHandle();
+    if (!rootHandle) {
+      throw new Error('共有フォルダのハンドルが取得できません。');
+    }
+
+    const archiveDir = await this.getSubdir(rootHandle, 'archive');
+    if (!archiveDir) {
+      throw new Error('archive フォルダが見つかりません。');
+    }
+
+    const results = { successCount: 0, failedCount: 0, errors: [] };
+
+    for (const pid of projectIds) {
+      try {
+        await archiveDir.removeEntry(pid, { recursive: true });
+        // ローカルに残っていればそれも削除
+        await DB.deleteProject(pid);
+        results.successCount++;
+      } catch (err) {
+        console.error(`アーカイブプロジェクト削除失敗 (${pid}):`, err);
+        results.failedCount++;
+        results.errors.push({ id: pid, error: err.message });
+      }
+    }
+
+    return results;
+  },
+
+  /**
+   * 他の端末によってアーカイブされたプロジェクトが手元IndexedDBに残っている場合、自動で削除する
+   * @param {Array} localProjects
+   */
+  async cleanupArchivedFromLocal(localProjects) {
+    if (!FolderConnector.isConnected() || !Array.isArray(localProjects) || localProjects.length === 0) {
+      return 0;
+    }
+    const rootHandle = FolderConnector.getDirHandle();
+    if (!rootHandle) return 0;
+
+    const archiveDir = await this.getSubdir(rootHandle, 'archive');
+    if (!archiveDir) return 0;
+
+    let cleanedCount = 0;
+    try {
+      const archivedIds = new Set();
+      for await (const [name, handle] of archiveDir.entries()) {
+        if (handle.kind === 'directory' && name.startsWith('proj_')) {
+          archivedIds.add(name);
+        }
+      }
+
+      for (const p of localProjects) {
+        if (archivedIds.has(p.id)) {
+          console.info(`[cleanupArchivedFromLocal] 共有フォルダでアーカイブ済みのプロジェクトを手元から削除: ${p.title} (${p.id})`);
+          await DB.deleteProject(p.id);
+          cleanedCount++;
+        }
+      }
+    } catch (err) {
+      console.warn('アーカイブクリーンアップエラー:', err);
+    }
+
+    return cleanedCount;
   }
 };
