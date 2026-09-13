@@ -366,13 +366,15 @@ export const ListPage = {
 
     // 出力
     this.container.querySelector('#btn-export-csv').onclick = () => {
-      const fileName = `${this.project.title}_提出集計_${new Date().toISOString().slice(0, 10)}.csv`;
+      const cleanTitle = UI.formatProjectTitle(this.project.title);
+      const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.csv`;
       CsvUtil.exportSubmissionsCsv(this.filteredList, fileName);
       UI.showToast(`CSVファイルを出力しました (${this.filteredList.length} 件)`, 'success');
     };
 
     this.container.querySelector('#btn-export-excel').onclick = () => {
-      const fileName = `${this.project.title}_提出集計_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const cleanTitle = UI.formatProjectTitle(this.project.title);
+      const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.xlsx`;
       CsvUtil.exportSubmissionsExcel(this.filteredList, fileName);
       UI.showToast(`Excelファイルを出力しました (${this.filteredList.length} 件)`, 'success');
     };

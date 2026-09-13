@@ -275,15 +275,29 @@ export const UI = {
   },
 
   /**
-   * 講習名・受講期を表示用に整形（例: "夏期" -> "夏期講習", "前期" -> "前期"）
+   * 講習名・受講期を表示用に整形（例: "夏期" -> "夏期講習", "前期" -> "前期", "前期講習" -> "前期"）
    * @param {string} sessionName
    * @returns {string}
    */
   formatSession(sessionName) {
     if (!sessionName) return '';
-    if (sessionName === '前期' || sessionName === '後期') return sessionName;
-    if (sessionName.includes('講習')) return sessionName;
-    return `${sessionName}講習`;
+    const clean = String(sessionName).trim();
+    if (clean === '前期' || clean === '前期講習' || clean.startsWith('前期')) return '前期';
+    if (clean === '後期' || clean === '後期講習' || clean.startsWith('後期')) return '後期';
+    if (clean.includes('講習')) return clean;
+    return `${clean}講習`;
+  },
+
+  /**
+   * プロジェクトタイトルの表示整形（「前期講習」->「前期」、「後期講習」->「後期」）
+   * @param {string} title
+   * @returns {string}
+   */
+  formatProjectTitle(title) {
+    if (!title) return '';
+    return String(title)
+      .replace(/前期講習/g, '前期')
+      .replace(/後期講習/g, '後期');
   },
 
   /**

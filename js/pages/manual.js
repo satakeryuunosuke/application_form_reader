@@ -39,7 +39,7 @@ export const ManualPage = {
           </button>
         </div>
         <div style="font-size: 0.82rem; color: var(--gray-600);">
-          ${this.project.title}
+          ${UI.formatProjectTitle(this.project.title)}
         </div>
       </div>
 

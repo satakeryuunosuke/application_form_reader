@@ -64,7 +64,7 @@ export const ProjectPage = {
                 <span class="badge ${isFolderConnected ? 'badge-success' : (FolderConnector.isPermissionPending() ? 'badge-warning' : 'badge-gray')}" style="font-size: 0.75rem;">
                   ${isFolderConnected ? '🟢 共有同期中' : (FolderConnector.isPermissionPending() ? '🟡 共有再開待ち' : '⚪ ローカル')}
                 </span>
-                <h1 style="font-size: 1.4rem; font-weight: 800; color: var(--gray-900); display: inline; margin-left: 4px;">${project.title}</h1>
+                <h1 style="font-size: 1.4rem; font-weight: 800; color: var(--gray-900); display: inline; margin-left: 4px;">${UI.formatProjectTitle(project.title)}</h1>
               </div>
               <div style="font-size: 0.82rem; color: var(--gray-500);">
                 登録生徒数: <span id="header-stat-total" class="font-bold text-mono">${stats.total}</span> 名 | 
@@ -799,7 +799,7 @@ export const ProjectPage = {
             <div>
               <h3 class="modal-title font-bold">受講確認票 書式・読取位置調整</h3>
               <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
-                対象: ${project.title}
+                対象: ${UI.formatProjectTitle(project.title)}
               </div>
             </div>
           </div>
@@ -930,7 +930,7 @@ export const ProjectPage = {
               <div>
                 <h3 class="modal-title font-bold">生徒管理</h3>
                 <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
-                  対象: ${project.title} | 現在の登録生徒数: <span class="text-mono font-bold" id="modal-student-count">${students.length}</span> 名
+                  対象: ${UI.formatProjectTitle(project.title)} | 現在の登録生徒数: <span class="text-mono font-bold" id="modal-student-count">${students.length}</span> 名
                 </div>
               </div>
             </div>

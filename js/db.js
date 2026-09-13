@@ -115,11 +115,42 @@ export const DB = {
   /* ================= プロジェクト操作 ================= */
 
   /**
+   * プロジェクトレコードの表記正規化（「前期講習」等の旧表記・不整合を「前期」に補正・DB自動マイグレーション）
+   */
+  _normalizeProjectRecord(p) {
+    if (!p) return p;
+    let modified = false;
+    let sessionName = p.sessionName;
+    if (sessionName) {
+      const cleanSession = UI.formatSession(sessionName);
+      if (cleanSession !== sessionName) {
+        sessionName = cleanSession;
+        modified = true;
+      }
+    }
+    let title = p.title;
+    if (title) {
+      const cleanTitle = UI.formatProjectTitle(title);
+      if (cleanTitle !== title) {
+        title = cleanTitle;
+        modified = true;
+      }
+    }
+    if (modified && p.id) {
+      p.sessionName = sessionName;
+      p.title = title;
+      // バックグラウンドでIndexedDBを更新修復
+      db.projects.update(p.id, { sessionName, title }).catch(() => {});
+    }
+    return p;
+  },
+
+  /**
    * 全プロジェクト一覧を取得（新しい順）
    */
   async getProjects() {
     const list = await db.projects.toArray();
-    return list.map(p => ({
+    return list.map(p => this._normalizeProjectRecord({
       ...p,
       status: p.status || '進行中'
     })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -146,6 +177,7 @@ export const DB = {
     const project = await db.projects.get(projectId);
     if (project) {
       project.status = project.status || '進行中';
+      this._normalizeProjectRecord(project);
     }
     return project;
   },
@@ -156,13 +188,14 @@ export const DB = {
   async createProject({ year, grade, sessionName, students, scanTemplate }) {
     const projectId = 'proj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const sessionDisplay = UI.formatSession(sessionName);
+    const normalizedSession = (sessionDisplay === '前期' || sessionDisplay === '後期') ? sessionDisplay : sessionName;
     const title = `${year}年度 ${grade}年 ${sessionDisplay}`;
 
     const project = {
       id: projectId,
       year: parseInt(year, 10),
       grade: parseInt(grade, 10),
-      sessionName,
+      sessionName: normalizedSession,
       title,
       status: '進行中',
       completedAt: null,

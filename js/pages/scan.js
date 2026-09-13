@@ -487,7 +487,7 @@ export const ScanPage = {
                 <div>
                   <h3 class="modal-title font-bold">受講確認票 書式・読取位置調整</h3>
                   <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
-                    対象: ${this.project.title}
+                    対象: ${UI.formatProjectTitle(this.project.title)}
                   </div>
                 </div>
               </div>

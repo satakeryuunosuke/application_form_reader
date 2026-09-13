@@ -116,7 +116,7 @@ export const HomePage = {
                       <span class="badge badge-gray" style="font-size: 0.72rem;">未取り込み</span>
                     </div>
                   </div>
-                  <h3 class="project-title">${sp.meta.title}</h3>
+                  <h3 class="project-title">${UI.formatProjectTitle(sp.meta.title)}</h3>
                   <div style="font-size: 0.8rem; color: var(--gray-500); margin-top: 4px;">
                     作成日: ${UI.formatDate(sp.meta.createdAt)}
                   </div>
@@ -268,7 +268,7 @@ export const HomePage = {
               ${isExpired ? '<span class="badge badge-warning">3年経過</span>' : ''}
             </div>
           </div>
-          <h3 class="project-title">${p.title}</h3>
+          <h3 class="project-title">${UI.formatProjectTitle(p.title)}</h3>
           <div style="font-size: 0.8rem; color: var(--gray-500); margin-top: 4px;">
             作成日: ${UI.formatDate(p.createdAt)}
             ${p.completedAt ? ` | 完了日: ${UI.formatDate(p.completedAt)}` : ''}
@@ -802,7 +802,7 @@ export const HomePage = {
               });
 
               const syncMsg = FolderConnector.isConnected() ? '（共有フォルダへ書き出しました）' : '';
-              UI.showToast(`「${project.title}」を作成しました${syncMsg}`, 'success');
+              UI.showToast(`「${UI.formatProjectTitle(project.title)}」を作成しました${syncMsg}`, 'success');
               modal.remove();
               window.location.hash = `#project/${project.id}`;
             } catch (err) {

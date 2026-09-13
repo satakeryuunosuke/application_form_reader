@@ -75,7 +75,7 @@ async def main():
             await wait_for_selector('#header-app-version')
             version_text = await eval_js("document.querySelector('#header-app-version').textContent")
             print(f"[CHECK 1] Header App Version: {version_text}")
-            assert version_text == 'v1.6.0', f"Expected v1.6.0, got {version_text}"
+            assert version_text == 'v1.6.3', f"Expected v1.6.3, got {version_text}"
 
             # 2. 新規プロジェクトモーダルを開く
             await eval_js("document.querySelector('#btn-new-project').click()")
@@ -104,7 +104,7 @@ async def main():
             await asyncio.sleep(0.5)
 
             # 5. DB.createProject によるプロジェクト生成検証
-            # (A) 前期
+            # (A) 前期（通常）
             proj_zenki = await eval_js("""
                 (async () => {
                     const { DB } = await import('./js/db.js');
@@ -118,6 +118,23 @@ async def main():
             """)
             print(f"[CHECK 3-A] Created Zenki project: title='{proj_zenki.get('title')}', sessionName='{proj_zenki.get('sessionName')}'")
             assert proj_zenki.get('title') == '2026年度 6年 前期', f"Expected '2026年度 6年 前期', got {proj_zenki.get('title')}"
+            assert proj_zenki.get('sessionName') == '前期', f"Expected sessionName '前期', got {proj_zenki.get('sessionName')}"
+
+            # (A-2) 「前期講習」として指定された場合でも「前期」に正規化されることの検証
+            proj_zenki_koushu = await eval_js("""
+                (async () => {
+                    const { DB } = await import('./js/db.js');
+                    return await DB.createProject({
+                        year: 2026,
+                        grade: 6,
+                        sessionName: '前期講習',
+                        students: [{ nichinokenId: '12345677', name: 'テスト前期講習指定', className: 'M2', course: '4科' }]
+                    });
+                })()
+            """)
+            print(f"[CHECK 3-A2] Created Zenki project from '前期講習': title='{proj_zenki_koushu.get('title')}', sessionName='{proj_zenki_koushu.get('sessionName')}'")
+            assert proj_zenki_koushu.get('title') == '2026年度 6年 前期', f"Expected '2026年度 6年 前期', got {proj_zenki_koushu.get('title')}"
+            assert proj_zenki_koushu.get('sessionName') == '前期', f"Expected sessionName '前期', got {proj_zenki_koushu.get('sessionName')}"
 
             # (B) 後期
             proj_kouki = await eval_js("""
@@ -204,6 +221,23 @@ async def main():
             with open('scratch/verify_session_options.png', 'wb') as f:
                 f.write(ss_data)
             print("[CHECK 6] Screenshot saved to scratch/verify_session_options.png")
+
+            # モーダルを閉じてホーム画面全体のスクリーンショット保存
+            await eval_js("document.querySelector('.modal-close').click()")
+            await asyncio.sleep(0.5)
+            ss_home = await send('Page.captureScreenshot', {'format': 'png'})
+            with open('scratch/home_zenki.png', 'wb') as f:
+                f.write(base64.b64decode(ss_home['data']))
+            print("[CHECK 7] Screenshot saved to scratch/home_zenki.png")
+
+            # プロジェクト詳細画面のスクリーンショット保存
+            await eval_js(f"location.hash = '#project/{proj_zenki['id']}';")
+            await wait_for_selector('.project-header-bar')
+            await asyncio.sleep(0.5)
+            ss_proj = await send('Page.captureScreenshot', {'format': 'png'})
+            with open('scratch/project_zenki.png', 'wb') as f:
+                f.write(base64.b64decode(ss_proj['data']))
+            print("[CHECK 8] Screenshot saved to scratch/project_zenki.png")
 
             print("\n🎉 ALL VERIFICATION CHECKS PASSED SUCCESSFULLY!")
 

@@ -4,6 +4,7 @@
  */
 
 import { db, DB } from '../db.js';
+import { UI } from '../utils/ui.js';
 import { FolderConnector } from './folder-connector.js';
 import { PendingQueue } from './pending-queue.js';
 
@@ -305,8 +306,8 @@ export const SyncManager = {
         id: project.id,
         year: project.year,
         grade: project.grade,
-        sessionName: project.sessionName,
-        title: project.title,
+        sessionName: UI.formatSession(project.sessionName),
+        title: UI.formatProjectTitle(project.title),
         status: project.status || '進行中',
         scanTemplate: project.scanTemplate || null,
         createdAt: project.createdAt,
@@ -488,15 +489,21 @@ export const SyncManager = {
           return { newEventsCount: 0, totalEvents: 0, notFound: true };
         }
 
-        // 1. meta.json の確認と更新（ステータス変更等の同期）
+        // 1. meta.json の確認と更新（タイトル・受講期表記正規化およびステータス同期）
         const meta = await this.readJsonFile(projDir, 'meta.json');
         if (meta) {
           const localProj = await db.projects.get(projectId);
-          if (localProj && localProj.status !== meta.status) {
-            await db.projects.update(projectId, {
-              status: meta.status,
-              completedAt: meta.completedAt || null
-            });
+          if (localProj) {
+            const cleanTitle = UI.formatProjectTitle(meta.title || localProj.title);
+            const cleanSession = UI.formatSession(meta.sessionName || localProj.sessionName);
+            const updates = {};
+            if (localProj.title !== cleanTitle) updates.title = cleanTitle;
+            if (localProj.sessionName !== cleanSession) updates.sessionName = cleanSession;
+            if (localProj.status !== meta.status) updates.status = meta.status;
+            if (localProj.completedAt !== (meta.completedAt || null)) updates.completedAt = meta.completedAt || null;
+            if (Object.keys(updates).length > 0) {
+              await db.projects.update(projectId, updates);
+            }
           }
         }
 
@@ -779,6 +786,8 @@ export const SyncManager = {
         if (handle.kind === 'directory' && name.startsWith('proj_')) {
           const meta = await this.readJsonFile(handle, 'meta.json');
           if (meta) {
+            meta.sessionName = UI.formatSession(meta.sessionName);
+            meta.title = UI.formatProjectTitle(meta.title);
             sharedProjects.push({
               dirName: name,
               meta,
@@ -850,8 +859,8 @@ export const SyncManager = {
         id: meta.id,
         year: meta.year,
         grade: meta.grade,
-        sessionName: meta.sessionName,
-        title: meta.title,
+        sessionName: UI.formatSession(meta.sessionName),
+        title: UI.formatProjectTitle(meta.title),
         status: meta.status || '進行中',
         scanTemplate: meta.scanTemplate || null,
         createdAt: meta.createdAt || new Date().toISOString(),
