@@ -14,7 +14,6 @@ import { SyncManager } from '../sync/sync-manager.js';
 
 export const HomePage = {
   container: null,
-  currentFilter: 'all', // 'all' | 'active' | 'completed'
   sharedProjectsList: [],
   _isRefreshing: false,
 
@@ -55,7 +54,6 @@ export const HomePage = {
     }
 
     const activeProjects = projects.filter(p => p.status !== '完了');
-    const completedProjects = projects.filter(p => p.status === '完了');
 
     let html = `
       <div class="view-container">
@@ -162,7 +160,7 @@ export const HomePage = {
       `;
     }
 
-    if (projects.length === 0 && unimportedShared.length === 0) {
+    if (activeProjects.length === 0 && unimportedShared.length === 0) {
       html += `
         <div class="empty-state">
           <div class="empty-state-icon">📋</div>
@@ -173,79 +171,24 @@ export const HomePage = {
           </button>
         </div>
       `;
-    } else if (projects.length > 0) {
-      // フィルターバー
+    } else if (activeProjects.length > 0) {
       html += `
-        <div class="home-filter-bar">
-          <div class="home-filter-tabs">
-            <button class="home-filter-tab ${this.currentFilter === 'all' ? 'active' : ''}" data-filter="all">
-              すべて <span class="badge badge-gray" style="font-size: 0.75rem; padding: 1px 6px;">${projects.length}</span>
-            </button>
-            <button class="home-filter-tab ${this.currentFilter === 'active' ? 'active' : ''}" data-filter="active">
-              🚀 進行中 <span class="badge badge-info" style="font-size: 0.75rem; padding: 1px 6px;">${activeProjects.length}</span>
-            </button>
-            <button class="home-filter-tab ${this.currentFilter === 'completed' ? 'active' : ''}" data-filter="completed">
-              ✅ 完了・終了 <span class="badge badge-gray" style="font-size: 0.75rem; padding: 1px 6px;">${completedProjects.length}</span>
-            </button>
+        <section class="home-section">
+          <div class="home-section-header">
+            <div class="home-section-title">
+              <span>🚀 進行中のプロジェクト</span>
+              <span class="badge badge-success" style="font-size: 0.85rem;">${activeProjects.length} 件</span>
+            </div>
           </div>
-        </div>
+          <div class="project-grid">
       `;
-
-      // 1. 進行中プロジェクトセクション
-      if (this.currentFilter === 'all' || this.currentFilter === 'active') {
-        html += `
-          <section class="home-section">
-            <div class="home-section-header">
-              <div class="home-section-title">
-                <span>🚀 進行中のプロジェクト</span>
-                <span class="badge badge-success" style="font-size: 0.85rem;">${activeProjects.length} 件</span>
-              </div>
-            </div>
-        `;
-
-        if (activeProjects.length === 0) {
-          html += `
-            <div style="background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); padding: var(--spacing-lg); text-align: center; color: var(--gray-500); margin-top: var(--spacing-sm);">
-              現在進行中のプロジェクトはありません。
-            </div>
-          `;
-        } else {
-          html += `<div class="project-grid">`;
-          for (const p of activeProjects) {
-            html += await this.renderProjectCardHtml(p, isFolderConnected);
-          }
-          html += `</div>`;
-        }
-        html += `</section>`;
+      for (const p of activeProjects) {
+        html += await this.renderProjectCardHtml(p, isFolderConnected);
       }
-
-      // 2. 完了・終了プロジェクトセクション
-      if (this.currentFilter === 'all' || this.currentFilter === 'completed') {
-        html += `
-          <section class="home-section">
-            <div class="home-section-header">
-              <div class="home-section-title">
-                <span>✅ 完了・終了したプロジェクト</span>
-                <span class="badge badge-gray" style="font-size: 0.85rem;">${completedProjects.length} 件</span>
-              </div>
-            </div>
-        `;
-
-        if (completedProjects.length === 0) {
-          html += `
-            <div style="background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); padding: var(--spacing-lg); text-align: center; color: var(--gray-500); margin-top: var(--spacing-sm);">
-              完了・終了したプロジェクトはまだありません。
-            </div>
-          `;
-        } else {
-          html += `<div class="project-grid">`;
-          for (const p of completedProjects) {
-            html += await this.renderProjectCardHtml(p, isFolderConnected);
-          }
-          html += `</div>`;
-        }
-        html += `</section>`;
-      }
+      html += `
+          </div>
+        </section>
+      `;
     }
 
     // システム情報・バージョンフッター
@@ -435,15 +378,6 @@ export const HomePage = {
           UI.hideLoading();
         }
       };
-    });
-
-    // フィルタータブ切り替え
-    const filterTabs = this.container.querySelectorAll('.home-filter-tab');
-    filterTabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        this.currentFilter = tab.dataset.filter;
-        this.render(this.container);
-      });
     });
 
     // カードクリックでプロジェクト画面へ遷移
