@@ -557,6 +557,30 @@ export const ProjectPage = {
                 </button>
               </div>
             </div>
+
+            <!-- 提出データ出力（Excel / CSV） -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">📊</div>
+                  <div>
+                    <h4 class="dashboard-card-title">提出状況データ出力</h4>
+                    <span class="badge badge-primary">Excel / CSV</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  登録された全生徒の提出状況・受講変更・確定内容の一覧データを、Excel (.xlsx) または CSV 形式でダウンロードして集計や保管に利用します。
+                </p>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button id="btn-dash-export-excel" class="btn btn-primary" style="flex: 1; min-width: 140px;" title="全生徒の提出状況一覧をExcelダウンロード">
+                  📊 Excel出力 (.xlsx)
+                </button>
+                <button id="btn-dash-export-csv" class="btn btn-secondary" style="flex: 1; min-width: 120px;" title="全生徒の提出状況一覧をCSVダウンロード">
+                  📄 CSV出力
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -703,6 +727,42 @@ export const ProjectPage = {
     if (manageStudentsBtn) {
       manageStudentsBtn.onclick = () => {
         this.openStudentManagementModal(projectId);
+      };
+    }
+
+    const exportExcelBtn = content.querySelector('#btn-dash-export-excel');
+    if (exportExcelBtn) {
+      exportExcelBtn.onclick = async () => {
+        try {
+          UI.setButtonLoading(exportExcelBtn, true, '出力中...');
+          const items = await DB.getProjectStudentsWithSubmissions(projectId);
+          const cleanTitle = UI.formatProjectTitle(project.title);
+          const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          CsvUtil.exportSubmissionsExcel(items, fileName);
+          UI.showToast(`Excelファイルを出力しました (${items.length} 件)`, 'success');
+        } catch (e) {
+          UI.showToast(`Excel出力エラー: ${e.message}`, 'error');
+        } finally {
+          UI.setButtonLoading(exportExcelBtn, false);
+        }
+      };
+    }
+
+    const exportCsvBtn = content.querySelector('#btn-dash-export-csv');
+    if (exportCsvBtn) {
+      exportCsvBtn.onclick = async () => {
+        try {
+          UI.setButtonLoading(exportCsvBtn, true, '出力中...');
+          const items = await DB.getProjectStudentsWithSubmissions(projectId);
+          const cleanTitle = UI.formatProjectTitle(project.title);
+          const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.csv`;
+          CsvUtil.exportSubmissionsCsv(items, fileName);
+          UI.showToast(`CSVファイルを出力しました (${items.length} 件)`, 'success');
+        } catch (e) {
+          UI.showToast(`CSV出力エラー: ${e.message}`, 'error');
+        } finally {
+          UI.setButtonLoading(exportCsvBtn, false);
+        }
       };
     }
 

@@ -3,7 +3,6 @@
  */
 
 import { DB } from '../db.js';
-import { CsvUtil } from '../utils/csv.js';
 import { UI } from '../utils/ui.js';
 import { ProjectPage } from './project.js';
 import { FolderConnector } from '../sync/folder-connector.js';
@@ -22,7 +21,6 @@ export const ListPage = {
   currentSortKey: 'id',
   currentSortOrder: 'asc',
   searchQuery: '',
-  _isSyncing: false,
 
   async render(container, project) {
     this.container = container;
@@ -44,9 +42,6 @@ export const ListPage = {
 
     this.allStudentsWithSubmissions = await DB.getProjectStudentsWithSubmissions(project.id);
     const classes = await DB.getProjectClasses(project.id);
-    const stats = await DB.getProjectStats(project.id);
-    const isFolderConnected = FolderConnector.isConnected();
-    const lastSync = SyncManager.getLastSyncTime(project.id);
 
     // 変更前クラス一覧
     const prevClasses = classes;
@@ -62,49 +57,6 @@ export const ListPage = {
 
     this.container.innerHTML = `
       <div class="view-container">
-        <!-- サマリーカード（クリックでフィルタ連動） -->
-        <div class="summary-cards-grid">
-          <div class="summary-card ${this.currentStatusFilter === 'all' ? 'active-filter' : ''}" data-filter="all" style="cursor: pointer;">
-            <div>
-              <div class="sum-label">全登録生徒</div>
-              <div class="sum-count">${stats.total}</div>
-            </div>
-            <span style="font-size: 1.5rem;">👥</span>
-          </div>
-
-          <div class="summary-card ${this.currentStatusFilter === 'no-change' ? 'active-filter' : ''}" data-filter="no-change" style="cursor: pointer;">
-            <div>
-              <div class="sum-label" style="color: var(--success-text);">変更なし</div>
-              <div class="sum-count" style="color: var(--success-solid);">${stats.noChange}</div>
-            </div>
-            <span style="font-size: 1.5rem;">✅</span>
-          </div>
-
-          <div class="summary-card ${this.currentStatusFilter === 'has-change' ? 'active-filter' : ''}" data-filter="has-change" style="cursor: pointer;">
-            <div>
-              <div class="sum-label" style="color: var(--info-text);">変更あり</div>
-              <div class="sum-count" style="color: var(--secondary);">${stats.hasChange}</div>
-            </div>
-            <span style="font-size: 1.5rem;">🔄</span>
-          </div>
-
-          <div class="summary-card ${this.currentStatusFilter === 'not-enrolled' ? 'active-filter' : ''}" data-filter="not-enrolled" style="cursor: pointer;">
-            <div>
-              <div class="sum-label" style="color: var(--purple-text);">非受講</div>
-              <div class="sum-count" style="color: var(--purple-solid);">${stats.notEnrolled}</div>
-            </div>
-            <span style="font-size: 1.5rem;">🚫</span>
-          </div>
-
-          <div class="summary-card ${this.currentStatusFilter === 'unsubmitted' ? 'active-filter' : ''}" data-filter="unsubmitted" style="cursor: pointer;">
-            <div>
-              <div class="sum-label" style="color: var(--danger-text);">未提出</div>
-              <div class="sum-count" style="color: var(--danger-solid);">${stats.unsubmitted}</div>
-            </div>
-            <span style="font-size: 1.5rem;">⏳</span>
-          </div>
-        </div>
-
         <!-- フィルタ & ソート & エクスポート コントロールカード -->
         <div class="list-filter-container">
           <!-- 上段: 検索・ソート・エクスポート -->
@@ -128,20 +80,6 @@ export const ListPage = {
                   <option value="date-asc" ${this.currentSortKey === 'date' && this.currentSortOrder === 'asc' ? 'selected' : ''}>日時 (古い順)</option>
                 </select>
               </div>
-            </div>
-
-            <div class="filter-export-actions">
-              ${isFolderConnected ? `
-                <button id="btn-list-sync" class="btn btn-secondary btn-sm" title="共有フォルダから最新の差分イベントを取り込んで一覧を更新">
-                  🔄 最新に更新 ${lastSync ? `<span style="font-size: 0.72rem; color: var(--gray-500);">(${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>` : ''}
-                </button>
-              ` : ''}
-              <button id="btn-export-csv" class="btn btn-secondary btn-sm" title="現在の表示一覧をCSVダウンロード">
-                📄 CSV出力
-              </button>
-              <button id="btn-export-excel" class="btn btn-primary btn-sm" title="現在の表示一覧をExcelダウンロード">
-                📊 Excel出力 (.xlsx)
-              </button>
             </div>
           </div>
 
@@ -247,7 +185,6 @@ export const ListPage = {
     const statusSelect = this.container.querySelector('#sel-filter-status');
     statusSelect.onchange = () => {
       this.currentStatusFilter = statusSelect.value;
-      this.updateSummaryCardActive();
       this.updateClassFilterStyles();
       this.applyFiltersAndRenderTable();
     };
@@ -313,71 +250,10 @@ export const ListPage = {
       if (prevCourseSelect) prevCourseSelect.value = 'all';
       if (postCourseSelect) postCourseSelect.value = 'all';
       if (sortSelect) sortSelect.value = 'id-asc';
-      this.updateSummaryCardActive();
       this.updateClassFilterStyles();
       this.applyFiltersAndRenderTable();
     };
 
-    // サマリーカードクリックでのフィルタ切り替え
-    const sumCards = this.container.querySelectorAll('.summary-card');
-    sumCards.forEach(card => {
-      card.onclick = () => {
-        const filter = card.dataset.filter;
-        this.currentStatusFilter = filter;
-        statusSelect.value = filter;
-        this.updateSummaryCardActive();
-        this.updateClassFilterStyles();
-        this.applyFiltersAndRenderTable();
-      };
-    });
-
-    // 共有フォルダ同期ボタン
-    const syncBtn = this.container.querySelector('#btn-list-sync');
-    if (syncBtn) {
-      syncBtn.onclick = async () => {
-        if (this._isSyncing) return;
-        this._isSyncing = true;
-        UI.setButtonLoading(syncBtn, true, '更新中...');
-        UI.showLoading({
-          title: '受講者データを同期中...',
-          message: 'ファイルサーバーから最新の提出・承認データを取得・反映しています。画面を閉じずにお待ちください。',
-          icon: '🔄'
-        });
-
-        try {
-          const res = await SyncManager.syncFromSharedFolder(this.project.id);
-          const parts = [];
-          if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
-          if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
-          if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
-          const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
-          UI.showToast(`最新データを取得しました${detail}`, 'success');
-          await this.render(this.container, this.project);
-        } catch (e) {
-          UI.showToast(`同期エラー: ${e.message}`, 'error');
-        } finally {
-          this._isSyncing = false;
-          UI.hideLoading();
-          UI.setButtonLoading(syncBtn, false);
-          syncBtn.innerHTML = '🔄 最新に更新';
-        }
-      };
-    }
-
-    // 出力
-    this.container.querySelector('#btn-export-csv').onclick = () => {
-      const cleanTitle = UI.formatProjectTitle(this.project.title);
-      const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.csv`;
-      CsvUtil.exportSubmissionsCsv(this.filteredList, fileName);
-      UI.showToast(`CSVファイルを出力しました (${this.filteredList.length} 件)`, 'success');
-    };
-
-    this.container.querySelector('#btn-export-excel').onclick = () => {
-      const cleanTitle = UI.formatProjectTitle(this.project.title);
-      const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      CsvUtil.exportSubmissionsExcel(this.filteredList, fileName);
-      UI.showToast(`Excelファイルを出力しました (${this.filteredList.length} 件)`, 'success');
-    };
   },
 
   updateClassFilterStyles() {
@@ -438,17 +314,6 @@ export const ListPage = {
       const hasAnyNonDefault = activeFilterCount > 0 || isCustomSort;
       resetBtn.classList.toggle('is-highlighted', hasAnyNonDefault);
     }
-  },
-
-  updateSummaryCardActive() {
-    const sumCards = this.container.querySelectorAll('.summary-card');
-    sumCards.forEach(card => {
-      if (card.dataset.filter === this.currentStatusFilter) {
-        card.classList.add('active-filter');
-      } else {
-        card.classList.remove('active-filter');
-      }
-    });
   },
 
   getSortHeaderHtml(label, sortKey, colClass, subLabel = '') {

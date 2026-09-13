@@ -871,41 +871,6 @@
   border-color: var(--danger-border);
 }
 
-.summary-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-}
-
-.summary-card {
-  background: #fff;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: var(--shadow-xs);
-}
-
-.summary-card.active-filter {
-  border-color: var(--primary-500);
-  background-color: var(--primary-50);
-}
-
-.summary-card .sum-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--gray-600);
-}
-
-.summary-card .sum-count {
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: var(--gray-900);
-}
-
 /* --- Interactive Template Canvas --- */
 .template-setup-container {
   display: flex;
