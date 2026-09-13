@@ -26,7 +26,6 @@ export const SettingsPage = {
     }
 
     const settings = await DB.getSettings();
-    const expiredProjects = await DB.getExpiredProjects(3);
     const clientId = await SyncManager.getClientId();
     const isSupported = FolderConnector.isSupported();
     const isConnected = FolderConnector.isConnected();
@@ -287,50 +286,6 @@ export const SettingsPage = {
               </table>
             </div>
           `)}
-        </div>
-
-        <!-- 4. 3年超過プロジェクトの管理 -->
-        <div class="card" style="margin-bottom: var(--spacing-lg);">
-          <div class="card-header">
-            <h2 class="card-title">🗄️ データ保持管理（3年超過アーカイブ）</h2>
-            <span class="badge ${expiredProjects.length > 0 ? 'badge-warning' : 'badge-success'}">
-              ${expiredProjects.length} 件
-            </span>
-          </div>
-          <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
-            作成から3年以上経過したプロジェクトを検出し、整理・削除できます。
-          </p>
-
-          ${expiredProjects.length === 0 ? `
-            <div style="font-size: 0.88rem; color: var(--gray-500); padding: 8px 0;">
-              現在、3年以上経過したプロジェクトはありません。
-            </div>
-          ` : `
-            <div class="table-container" style="margin-bottom: var(--spacing-md);">
-              <table class="table" style="font-size: 0.85rem;">
-                <thead>
-                  <tr>
-                    <th>プロジェクト名</th>
-                    <th>作成日時</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${expiredProjects.map(p => `
-                    <tr>
-                      <td class="font-bold">${p.title}</td>
-                      <td class="text-mono">${UI.formatDate(p.createdAt)}</td>
-                      <td>
-                        <button class="btn btn-danger btn-sm btn-delete-expired" data-id="${p.id}" data-title="${p.title}">
-                          🗑️ 削除
-                        </button>
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          `}
         </div>
 
         <!-- 4. バックアップ & 復元 -->
@@ -775,25 +730,6 @@ export const SettingsPage = {
         };
       };
     }
-
-    // 3年超過プロジェクト削除
-    this.container.querySelectorAll('.btn-delete-expired').forEach(btn => {
-      btn.onclick = async () => {
-        const pid = btn.dataset.id;
-        const ptitle = btn.dataset.title;
-        const ok = await UI.confirm(
-          '古いプロジェクトの削除',
-          `「${ptitle}」を完全に削除しますか？`,
-          '削除する',
-          'danger'
-        );
-        if (ok) {
-          await DB.deleteProject(pid);
-          UI.showToast('プロジェクトを削除しました', 'info');
-          this.render(this.container);
-        }
-      };
-    });
 
     // JSONバックアップ出力
     this.container.querySelector('#btn-export-backup').onclick = async () => {

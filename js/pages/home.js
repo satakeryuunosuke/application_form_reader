@@ -21,7 +21,6 @@ export const HomePage = {
     this.container = container;
     const currentYear = new Date().getFullYear();
     let projects = await DB.getProjects();
-    const expiredProjects = await DB.getExpiredProjects(3);
 
     const isFolderConnected = FolderConnector.isConnected();
     const isSupported = FolderConnector.isSupported();
@@ -99,23 +98,6 @@ export const HomePage = {
           </div>
         </div>
     `;
-
-    // 3年超過プロジェクトの警告バナー
-    if (expiredProjects.length > 0) {
-      html += `
-        <div class="card" style="border-left: 4px solid var(--warning-solid); background: var(--warning-bg); margin-bottom: var(--spacing-lg);">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <div class="font-bold" style="color: var(--warning-text); font-size: 1rem;">⚠️ 保管期間（3年）を超過したプロジェクトがあります</div>
-              <div style="color: var(--warning-text); font-size: 0.85rem; margin-top: 4px;">
-                ${expiredProjects.map(p => `「${p.title}」`).join('、')} は作成から3年以上経過しています。設定画面からアーカイブ・整理を行えます。
-              </div>
-            </div>
-            <button id="btn-go-settings-archive" class="btn btn-secondary btn-sm">設定で確認</button>
-          </div>
-        </div>
-      `;
-    }
 
     // 共有フォルダ上の未取込プロジェクト案内セクション
     if (unimportedShared.length > 0) {
@@ -220,7 +202,6 @@ export const HomePage = {
   async renderProjectCardHtml(p, isFolderConnected) {
     const stats = await DB.getProjectStats(p.id);
     const percent = stats.total > 0 ? Math.round((stats.submitted / stats.total) * 100) : 0;
-    const isExpired = (new Date() - new Date(p.createdAt)) / (1000 * 60 * 60 * 24 * 365.25) >= 3;
     const isCompleted = p.status === '完了';
     const isShared = isFolderConnected && this.sharedProjectsList.some(sp => sp.meta.id === p.id);
 
@@ -237,7 +218,6 @@ export const HomePage = {
                 : '<span class="badge badge-success" style="font-weight: 700; background: #e8f5e9; color: #2e7d32;">🟢 進行中</span>'
               }
               ${isShared ? '<span class="badge badge-info" style="font-size: 0.72rem; padding: 2px 6px;">📁 共有同期</span>' : ''}
-              ${isExpired ? '<span class="badge badge-warning">3年経過</span>' : ''}
             </div>
           </div>
           <h3 class="project-title">${UI.formatProjectTitle(p.title)}</h3>
@@ -282,13 +262,6 @@ export const HomePage = {
     const homeArchivedBtn = this.container.querySelector('#btn-home-archived');
     if (homeArchivedBtn) {
       homeArchivedBtn.addEventListener('click', () => this.openArchivedProjectsModal());
-    }
-
-    const archiveBtn = this.container.querySelector('#btn-go-settings-archive');
-    if (archiveBtn) {
-      archiveBtn.addEventListener('click', () => {
-        window.location.hash = '#settings';
-      });
     }
 
     // 共有フォルダ接続ボタン
