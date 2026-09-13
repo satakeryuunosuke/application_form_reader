@@ -105,7 +105,7 @@ export const HomePage = {
                     <div class="project-meta-badges">
                       <span class="badge badge-info">${sp.meta.year}年度</span>
                       <span class="badge badge-purple">${sp.meta.grade}年生</span>
-                      <span class="badge badge-success">${sp.meta.sessionName}講習</span>
+                      <span class="badge badge-success">${UI.formatSession(sp.meta.sessionName)}</span>
                       <span class="badge badge-gray" style="font-size: 0.72rem;">未取り込み</span>
                     </div>
                   </div>
@@ -252,7 +252,7 @@ export const HomePage = {
             <div class="project-meta-badges">
               <span class="badge badge-info">${p.year}年度</span>
               <span class="badge badge-purple">${p.grade}年生</span>
-              <span class="badge badge-success">${p.sessionName}講習</span>
+              <span class="badge badge-success">${UI.formatSession(p.sessionName)}</span>
               ${isCompleted
                 ? '<span class="badge badge-gray" style="font-weight: 700;">🏁 完了</span>'
                 : '<span class="badge badge-success" style="font-weight: 700; background: #e8f5e9; color: #2e7d32;">🟢 進行中</span>'
@@ -526,11 +526,13 @@ export const HomePage = {
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">講習名 <span class="required">*</span></label>
+              <label class="form-label">講習・受講期 <span class="required">*</span></label>
               <select id="wiz-session" class="form-control font-bold">
                 <option value="夏期" ${selectedSession === '夏期' ? 'selected' : ''}>夏期講習</option>
-                <option value="春期" ${selectedSession === '春期' ? 'selected' : ''}>春期講習</option>
                 <option value="冬期" ${selectedSession === '冬期' ? 'selected' : ''}>冬期講習</option>
+                <option value="春期" ${selectedSession === '春期' ? 'selected' : ''}>春期講習</option>
+                <option value="前期" ${selectedSession === '前期' ? 'selected' : ''}>前期</option>
+                <option value="後期" ${selectedSession === '後期' ? 'selected' : ''}>後期</option>
               </select>
             </div>
           </div>
@@ -587,7 +589,7 @@ export const HomePage = {
               <div>
                 <span class="badge badge-info">${selectedYear}年度</span>
                 <span class="badge badge-purple">${selectedGrade}年生</span>
-                <span class="badge badge-success">${selectedSession}講習</span>
+                <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
                 <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
                   受講確認票の書式・スキャン読取位置設定
                 </span>

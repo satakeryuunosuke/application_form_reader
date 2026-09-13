@@ -155,7 +155,8 @@ export const DB = {
    */
   async createProject({ year, grade, sessionName, students, scanTemplate }) {
     const projectId = 'proj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-    const title = `${year}年度 ${grade}年 ${sessionName}講習`;
+    const sessionDisplay = UI.formatSession(sessionName);
+    const title = `${year}年度 ${grade}年 ${sessionDisplay}`;
 
     const project = {
       id: projectId,

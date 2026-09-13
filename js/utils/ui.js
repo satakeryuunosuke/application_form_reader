@@ -256,6 +256,18 @@ export const UI = {
   },
 
   /**
+   * 講習名・受講期を表示用に整形（例: "夏期" -> "夏期講習", "前期" -> "前期"）
+   * @param {string} sessionName
+   * @returns {string}
+   */
+  formatSession(sessionName) {
+    if (!sessionName) return '';
+    if (sessionName === '前期' || sessionName === '後期') return sessionName;
+    if (sessionName.includes('講習')) return sessionName;
+    return `${sessionName}講習`;
+  },
+
+  /**
    * スキャン確認票などの高精細拡大ライトボックスモーダル
    * ホイールズーム・ドラッグパン・リセット対応
    * @param {string} imgSrc 画像のデータURLまたはパス

@@ -57,7 +57,7 @@ export const ProjectPage = {
               <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;">
                 <span class="badge badge-info">${project.year}年度</span>
                 <span class="badge badge-purple">${project.grade}年生</span>
-                <span class="badge badge-success">${project.sessionName}講習</span>
+                <span class="badge badge-success">${UI.formatSession(project.sessionName)}</span>
                 <span id="header-status-badge" class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}" style="${isCompleted ? 'font-weight: 700;' : 'font-weight: 700; background: #e8f5e9; color: #2e7d32;'}">
                   ${isCompleted ? '🏁 完了' : '🟢 進行中'}
                 </span>
