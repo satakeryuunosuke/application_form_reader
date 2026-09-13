@@ -312,6 +312,10 @@ textarea.form-control {
   animation: modalFadeIn 0.2s ease-out;
 }
 
+.modal-confirm-overlay {
+  z-index: 3000 !important;
+}
+
 .modal-content,
 .modal {
   background: #fff;

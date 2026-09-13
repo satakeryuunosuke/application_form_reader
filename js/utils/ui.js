@@ -224,7 +224,8 @@ export const UI = {
   confirm(title, message, confirmText = '実行する', confirmType = 'primary') {
     return new Promise(resolve => {
       const modal = document.createElement('div');
-      modal.className = 'modal-overlay';
+      modal.className = 'modal-overlay modal-confirm-overlay';
+      modal.style.zIndex = '3000';
       modal.innerHTML = `
         <div class="modal-content" style="max-width: 440px;">
           <div class="modal-header">
