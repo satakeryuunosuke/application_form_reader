@@ -22,6 +22,7 @@ export const ListPage = {
   currentSortKey: 'id',
   currentSortOrder: 'asc',
   searchQuery: '',
+  _isSyncing: false,
 
   async render(container, project) {
     this.container = container;
@@ -334,6 +335,8 @@ export const ListPage = {
     const syncBtn = this.container.querySelector('#btn-list-sync');
     if (syncBtn) {
       syncBtn.onclick = async () => {
+        if (this._isSyncing) return;
+        this._isSyncing = true;
         UI.setButtonLoading(syncBtn, true, '更新中...');
         UI.showLoading({
           title: '受講者データを同期中...',
@@ -352,10 +355,11 @@ export const ListPage = {
           await this.render(this.container, this.project);
         } catch (e) {
           UI.showToast(`同期エラー: ${e.message}`, 'error');
+        } finally {
+          this._isSyncing = false;
+          UI.hideLoading();
           UI.setButtonLoading(syncBtn, false);
           syncBtn.innerHTML = '🔄 最新に更新';
-        } finally {
-          UI.hideLoading();
         }
       };
     }

@@ -134,83 +134,96 @@ export const ProjectPage = {
     }
   },
 
+  _isSyncing: false,
+
   /**
    * 共有フォルダとの手動同期・データ更新を実行
    */
   async handleSync(projectId) {
-    if (!FolderConnector.isSupported()) {
-      UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
+    if (this._isSyncing) {
+      console.warn('同期処理が既に実行中です');
       return;
     }
 
-    if (!FolderConnector.isConnected()) {
-      if (FolderConnector.hasSavedFolder()) {
-        const reauth = await UI.confirm(
-          '共有フォルダのアクセス再開',
-          `共有フォルダ「${FolderConnector.getFolderName()}」へのアクセス権限が一時停止しています。\nアクセスを再開して最新データを取り込みますか？`,
-          'アクセスを許可して更新',
-          'primary'
-        );
-        if (!reauth) return;
+    const syncBtn = this.container ? this.container.querySelector('#btn-header-sync') : null;
+    const dashSyncBtn = this.container ? this.container.querySelector('#btn-dash-sync') : null;
 
-        const permitted = await FolderConnector.ensurePermission(true);
-        if (!permitted) {
-          UI.showToast('共有フォルダへの読み書き権限が許可されませんでした。', 'warning');
-          return;
-        }
-      } else {
-        const connectNow = await UI.confirm(
-          '共有フォルダの接続',
-          '現在共有フォルダに未接続です。最新データを取り込むために共有フォルダ（社内LANまたはローカルフォルダ）を選択して接続しますか？',
-          'フォルダを選択して接続',
-          'primary'
-        );
-        if (!connectNow) return;
-
-        try {
-          await FolderConnector.connect();
-          UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
-          await SyncManager.readSharedSettings();
-        } catch (connErr) {
-          if (connErr.name !== 'AbortError') {
-            UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
-          }
-          return;
-        }
-      }
-    } else {
-      // 接続済みでも権限を再確認
-      const hasPerm = await FolderConnector.ensurePermission(true);
-      if (!hasPerm) {
-        UI.showToast('共有フォルダへのアクセス権限が確認できませんでした。設定画面から再接続してください。', 'warning');
-        return;
-      }
-    }
-
-    const syncBtn = this.container.querySelector('#btn-header-sync');
-    const dashSyncBtn = this.container.querySelector('#btn-dash-sync');
-
+    // クリック直後に即座にボタンを無効化して多重実行を完全遮断
     if (syncBtn) UI.setButtonLoading(syncBtn, true, '更新中...');
     if (dashSyncBtn) UI.setButtonLoading(dashSyncBtn, true, '更新中...');
-
-    UI.showLoading({
-      title: '最新データと同期中...',
-      message: 'ファイルサーバー（共有フォルダ）の最新データを取得・反映しています。画面を閉じずにお待ちください。',
-      icon: '🔄'
-    });
+    this._isSyncing = true;
 
     try {
-      await SyncManager.flushPendingQueueInBackground();
-      const res = await SyncManager.syncFromSharedFolder(projectId);
-      const parts = [];
-      if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
-      if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
-      if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
-      const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
-      UI.showToast(`最新データに更新しました${detail}`, 'success');
+      if (!FolderConnector.isSupported()) {
+        UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
+        return;
+      }
 
-      // 画面全体を再描画して最新データを反映
-      await this.render(this.container, projectId, this.currentTab);
+      if (!FolderConnector.isConnected()) {
+        if (FolderConnector.hasSavedFolder()) {
+          const reauth = await UI.confirm(
+            '共有フォルダのアクセス再開',
+            `共有フォルダ「${FolderConnector.getFolderName()}」へのアクセス権限が一時停止しています。\nアクセスを再開して最新データを取り込みますか？`,
+            'アクセスを許可して更新',
+            'primary'
+          );
+          if (!reauth) return;
+
+          const permitted = await FolderConnector.ensurePermission(true);
+          if (!permitted) {
+            UI.showToast('共有フォルダへの読み書き権限が許可されませんでした。', 'warning');
+            return;
+          }
+        } else {
+          const connectNow = await UI.confirm(
+            '共有フォルダの接続',
+            '現在共有フォルダに未接続です。最新データを取り込むために共有フォルダ（社内LANまたはローカルフォルダ）を選択して接続しますか？',
+            'フォルダを選択して接続',
+            'primary'
+          );
+          if (!connectNow) return;
+
+          try {
+            await FolderConnector.connect();
+            UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
+            await SyncManager.readSharedSettings();
+          } catch (connErr) {
+            if (connErr.name !== 'AbortError') {
+              UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
+            }
+            return;
+          }
+        }
+      } else {
+        // 接続済みでも権限を再確認
+        const hasPerm = await FolderConnector.ensurePermission(true);
+        if (!hasPerm) {
+          UI.showToast('共有フォルダへのアクセス権限が確認できませんでした。設定画面から再接続してください。', 'warning');
+          return;
+        }
+      }
+
+      UI.showLoading({
+        title: '最新データと同期中...',
+        message: 'ファイルサーバー（共有フォルダ）の最新データを取得・反映しています。画面を閉じずにお待ちください。',
+        icon: '🔄'
+      });
+
+      try {
+        await SyncManager.flushPendingQueueInBackground();
+        const res = await SyncManager.syncFromSharedFolder(projectId);
+        const parts = [];
+        if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
+        if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
+        if (res.newEventsCount > 0) parts.push(`新規イベント: ${res.newEventsCount}件`);
+        const detail = parts.length > 0 ? `（${parts.join(', ')}）` : '（最新の状態です）';
+        UI.showToast(`最新データに更新しました${detail}`, 'success');
+
+        // 画面全体を再描画して最新データを反映
+        await this.render(this.container, projectId, this.currentTab);
+      } finally {
+        UI.hideLoading();
+      }
     } catch (err) {
       console.error('更新エラー:', err);
       let userMsg = err.message;
@@ -218,6 +231,8 @@ export const ProjectPage = {
         userMsg = '共有フォルダへのアクセス権限が拒否されたか、無効になっています。画面上部の共有インジケーターから再認可を行ってください。';
       }
       UI.showToast(`更新エラー: ${userMsg}`, 'error');
+    } finally {
+      this._isSyncing = false;
       const lastSync = SyncManager.getLastSyncTime(projectId);
       const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
       if (syncBtn) {
@@ -228,8 +243,6 @@ export const ProjectPage = {
         UI.setButtonLoading(dashSyncBtn, false);
         dashSyncBtn.innerHTML = '🔄 最新データに更新';
       }
-    } finally {
-      UI.hideLoading();
     }
   },
 

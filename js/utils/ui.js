@@ -42,6 +42,7 @@ export const UI = {
   _loadingDepth: 0,
   _loadingTimerId: null,
   _loadingStartTime: 0,
+  _loadingRafId: null,
 
   /**
    * 全画面ローディングオーバーレイを表示（画面操作を完全遮断して連打を防止）
@@ -111,10 +112,16 @@ export const UI = {
     // タイマー開始
     this._loadingStartTime = Date.now();
     const timerEl = overlay.querySelector('#app-loading-timer');
+    if (timerEl) {
+      timerEl.textContent = '通信中... (0秒)';
+    }
     const cancelArea = overlay.querySelector('#app-loading-cancel-area');
     if (cancelArea) cancelArea.classList.remove('is-visible');
 
-    if (this._loadingTimerId) clearInterval(this._loadingTimerId);
+    if (this._loadingTimerId) {
+      clearInterval(this._loadingTimerId);
+      this._loadingTimerId = null;
+    }
     this._loadingTimerId = setInterval(() => {
       const elapsedSec = Math.floor((Date.now() - this._loadingStartTime) / 1000);
       if (timerEl) {
@@ -125,10 +132,16 @@ export const UI = {
       }
     }, 1000);
 
-    // アニメーション表示
-    requestAnimationFrame(() => {
-      overlay.classList.add('is-active');
-    });
+    // 未消化の遅延アニメーションフレームがあればキャンセル
+    if (this._loadingRafId) {
+      cancelAnimationFrame(this._loadingRafId);
+      this._loadingRafId = null;
+    }
+
+    // 強制リフローを起こして同期的に is-active を付与
+    // （requestAnimationFrame の遅延による hideLoading との順序逆転を完全に防止）
+    void overlay.offsetWidth;
+    overlay.classList.add('is-active');
   },
 
   /**
@@ -140,6 +153,12 @@ export const UI = {
       this._loadingDepth = 0;
     } else {
       this._loadingDepth = Math.max(0, this._loadingDepth - 1);
+    }
+
+    // 予約されている requestAnimationFrame があれば確実にキャンセル
+    if (this._loadingRafId) {
+      cancelAnimationFrame(this._loadingRafId);
+      this._loadingRafId = null;
     }
 
     if (this._loadingDepth === 0) {

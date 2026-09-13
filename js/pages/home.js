@@ -16,6 +16,7 @@ export const HomePage = {
   container: null,
   currentFilter: 'all', // 'all' | 'active' | 'completed'
   sharedProjectsList: [],
+  _isRefreshing: false,
 
   async render(container) {
     this.container = container;
@@ -356,6 +357,8 @@ export const HomePage = {
     const refreshSharedBtn = this.container.querySelector('#btn-home-refresh-shared');
     if (refreshSharedBtn) {
       refreshSharedBtn.onclick = async () => {
+        if (this._isRefreshing) return;
+        this._isRefreshing = true;
         UI.setButtonLoading(refreshSharedBtn, true, '更新中...');
         UI.showLoading({
           title: '共有フォルダを確認中...',
@@ -367,9 +370,10 @@ export const HomePage = {
           UI.showToast('共有フォルダのプロジェクト一覧を更新しました', 'info');
         } catch (e) {
           UI.showToast(`共有フォルダ読み込みエラー: ${e.message}`, 'error');
-          UI.setButtonLoading(refreshSharedBtn, false);
         } finally {
+          this._isRefreshing = false;
           UI.hideLoading();
+          UI.setButtonLoading(refreshSharedBtn, false);
         }
       };
     }
