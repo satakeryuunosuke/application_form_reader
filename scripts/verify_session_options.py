@@ -75,7 +75,7 @@ async def main():
             await wait_for_selector('#header-app-version')
             version_text = await eval_js("document.querySelector('#header-app-version').textContent")
             print(f"[CHECK 1] Header App Version: {version_text}")
-            assert version_text == 'v1.6.3', f"Expected v1.6.3, got {version_text}"
+            assert version_text == 'v1.6.4', f"Expected v1.6.4, got {version_text}"
 
             # 2. 新規プロジェクトモーダルを開く
             await eval_js("document.querySelector('#btn-new-project').click()")

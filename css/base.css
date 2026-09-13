@@ -40,7 +40,8 @@ body {
   box-shadow: var(--shadow-xs);
 }
 
-.header-brand {
+.header-brand,
+.brand {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
@@ -50,6 +51,7 @@ body {
 }
 
 .brand-icon {
+  flex-shrink: 0;
   width: 36px;
   height: 36px;
   background: linear-gradient(135deg, var(--primary-600), var(--secondary));
