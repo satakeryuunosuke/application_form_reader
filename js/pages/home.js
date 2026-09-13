@@ -53,11 +53,17 @@ export const HomePage = {
                   <span class="font-bold text-mono" style="color: var(--gray-800);">${folderName}</span>
                   <button id="btn-home-refresh-shared" class="btn btn-ghost btn-sm" style="padding: 1px 6px; font-size: 0.76rem; color: var(--primary-600);" title="最新のプロジェクト・イベントを再確認">🔄 更新</button>
                 </div>
+              ` : (FolderConnector.isPermissionPending() ? `
+                <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: var(--radius-full); padding: 4px 12px; font-size: 0.82rem;">
+                  <span style="color: #b45309; font-weight: 700;">🟡 共有フォルダのアクセス許可が一時停止しています:</span>
+                  <span class="font-bold text-mono" style="color: var(--gray-800);">${folderName}</span>
+                  <button id="btn-home-resume-folder" class="btn btn-primary btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" title="アクセス権限を再開して共有プロジェクトを同期">🔑 共有を再開</button>
+                </div>
               ` : (isSupported ? `
                 <button id="btn-home-connect-folder" class="btn btn-secondary btn-sm" style="font-size: 0.82rem; padding: 5px 12px;" title="社内LANのファイル共有フォルダを接続して複数PC間で連携">
                   📁 共有フォルダを接続（複数PC連携）
                 </button>
-              ` : '')}
+              ` : ''))}
             </div>
           </div>
           <button id="btn-new-project" class="btn btn-primary btn-lg">
@@ -320,6 +326,28 @@ export const HomePage = {
         } catch (e) {
           if (e.name !== 'AbortError') UI.showToast(e.message, 'warning');
           UI.setButtonLoading(connectFolderBtn, false);
+        }
+      };
+    }
+
+    // 共有フォルダアクセス再開ボタン（ブラウザ再起動後のパーミッション再認可）
+    const resumeFolderBtn = this.container.querySelector('#btn-home-resume-folder');
+    if (resumeFolderBtn) {
+      resumeFolderBtn.onclick = async () => {
+        UI.setButtonLoading(resumeFolderBtn, true, '再開中...');
+        try {
+          const permitted = await FolderConnector.ensurePermission(true);
+          if (permitted) {
+            UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」へのアクセスを再開しました`, 'success');
+            await SyncManager.readSharedSettings();
+            await this.render(this.container);
+          } else {
+            UI.showToast('共有フォルダへのアクセス権限が許可されませんでした。設定画面から再接続してください。', 'warning');
+            UI.setButtonLoading(resumeFolderBtn, false);
+          }
+        } catch (e) {
+          UI.showToast(`再開エラー: ${e.message}`, 'error');
+          UI.setButtonLoading(resumeFolderBtn, false);
         }
       };
     }

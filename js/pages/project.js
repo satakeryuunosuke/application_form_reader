@@ -61,8 +61,8 @@ export const ProjectPage = {
                 <span id="header-status-badge" class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}" style="${isCompleted ? 'font-weight: 700;' : 'font-weight: 700; background: #e8f5e9; color: #2e7d32;'}">
                   ${isCompleted ? '🏁 完了' : '🟢 進行中'}
                 </span>
-                <span class="badge ${isFolderConnected ? 'badge-success' : 'badge-gray'}" style="font-size: 0.75rem;">
-                  ${isFolderConnected ? '🟢 共有同期中' : '⚪ ローカル'}
+                <span class="badge ${isFolderConnected ? 'badge-success' : (FolderConnector.isPermissionPending() ? 'badge-warning' : 'badge-gray')}" style="font-size: 0.75rem;">
+                  ${isFolderConnected ? '🟢 共有同期中' : (FolderConnector.isPermissionPending() ? '🟡 共有再開待ち' : '⚪ ローカル')}
                 </span>
                 <h1 style="font-size: 1.4rem; font-weight: 800; color: var(--gray-900); display: inline; margin-left: 4px;">${project.title}</h1>
               </div>
@@ -138,27 +138,51 @@ export const ProjectPage = {
    * 共有フォルダとの手動同期・データ更新を実行
    */
   async handleSync(projectId) {
-    if (!FolderConnector.isConnected()) {
-      if (!FolderConnector.isSupported()) {
-        UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
-        return;
-      }
-      const connectNow = await UI.confirm(
-        '共有フォルダの接続',
-        '現在共有フォルダに未接続です。最新データを取り込むために共有フォルダ（社内LANまたはローカルフォルダ）を選択して接続しますか？',
-        'フォルダを選択して接続',
-        'primary'
-      );
-      if (!connectNow) return;
+    if (!FolderConnector.isSupported()) {
+      UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
+      return;
+    }
 
-      try {
-        await FolderConnector.connect();
-        UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
-        await SyncManager.readSharedSettings();
-      } catch (connErr) {
-        if (connErr.name !== 'AbortError') {
-          UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
+    if (!FolderConnector.isConnected()) {
+      if (FolderConnector.hasSavedFolder()) {
+        const reauth = await UI.confirm(
+          '共有フォルダのアクセス再開',
+          `共有フォルダ「${FolderConnector.getFolderName()}」へのアクセス権限が一時停止しています。\nアクセスを再開して最新データを取り込みますか？`,
+          'アクセスを許可して更新',
+          'primary'
+        );
+        if (!reauth) return;
+
+        const permitted = await FolderConnector.ensurePermission(true);
+        if (!permitted) {
+          UI.showToast('共有フォルダへの読み書き権限が許可されませんでした。', 'warning');
+          return;
         }
+      } else {
+        const connectNow = await UI.confirm(
+          '共有フォルダの接続',
+          '現在共有フォルダに未接続です。最新データを取り込むために共有フォルダ（社内LANまたはローカルフォルダ）を選択して接続しますか？',
+          'フォルダを選択して接続',
+          'primary'
+        );
+        if (!connectNow) return;
+
+        try {
+          await FolderConnector.connect();
+          UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
+          await SyncManager.readSharedSettings();
+        } catch (connErr) {
+          if (connErr.name !== 'AbortError') {
+            UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
+          }
+          return;
+        }
+      }
+    } else {
+      // 接続済みでも権限を再確認
+      const hasPerm = await FolderConnector.ensurePermission(true);
+      if (!hasPerm) {
+        UI.showToast('共有フォルダへのアクセス権限が確認できませんでした。設定画面から再接続してください。', 'warning');
         return;
       }
     }
@@ -189,7 +213,11 @@ export const ProjectPage = {
       await this.render(this.container, projectId, this.currentTab);
     } catch (err) {
       console.error('更新エラー:', err);
-      UI.showToast(`更新エラー: ${err.message}`, 'error');
+      let userMsg = err.message;
+      if (err.name === 'NotAllowedError' || (err.message && (err.message.includes('not allowed') || err.message.includes('Permission')))) {
+        userMsg = '共有フォルダへのアクセス権限が拒否されたか、無効になっています。画面上部の共有インジケーターから再認可を行ってください。';
+      }
+      UI.showToast(`更新エラー: ${userMsg}`, 'error');
       const lastSync = SyncManager.getLastSyncTime(projectId);
       const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
       if (syncBtn) {
@@ -210,27 +238,44 @@ export const ProjectPage = {
    * （他PCで取り込めない場合や、空ファイル破損時の復旧・修復用）
    */
   async handleForceExport(projectId) {
-    if (!FolderConnector.isConnected()) {
-      if (!FolderConnector.isSupported()) {
-        UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
-        return;
-      }
-      const connectNow = await UI.confirm(
-        '共有フォルダの接続',
-        '現在共有フォルダに未接続です。再書き出しを行うために共有フォルダを選択して接続しますか？',
-        'フォルダを選択して接続',
-        'primary'
-      );
-      if (!connectNow) return;
+    if (!FolderConnector.isSupported()) {
+      UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
+      return;
+    }
 
-      try {
-        await FolderConnector.connect();
-        UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
-      } catch (connErr) {
-        if (connErr.name !== 'AbortError') {
-          UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
+    if (!FolderConnector.isConnected()) {
+      if (FolderConnector.hasSavedFolder()) {
+        const reauth = await UI.confirm(
+          '共有フォルダのアクセス再開',
+          `共有フォルダ「${FolderConnector.getFolderName()}」へのアクセス権限が一時停止しています。\nアクセスを再開して再書き出しを実行しますか？`,
+          'アクセスを許可して実行',
+          'primary'
+        );
+        if (!reauth) return;
+
+        const permitted = await FolderConnector.ensurePermission(true);
+        if (!permitted) {
+          UI.showToast('共有フォルダへの書き込み権限が許可されませんでした。設定画面でフォルダを再選択してください。', 'warning');
+          return;
         }
-        return;
+      } else {
+        const connectNow = await UI.confirm(
+          '共有フォルダの接続',
+          '現在共有フォルダに未接続です。再書き出しを行うために共有フォルダを選択して接続しますか？',
+          'フォルダを選択して接続',
+          'primary'
+        );
+        if (!connectNow) return;
+
+        try {
+          await FolderConnector.connect();
+          UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
+        } catch (connErr) {
+          if (connErr.name !== 'AbortError') {
+            UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
+          }
+          return;
+        }
       }
     }
 
@@ -241,6 +286,13 @@ export const ProjectPage = {
       'primary'
     );
     if (!confirmed) return;
+
+    // モーダル確定直後（ユーザーアクティベーション有効時）で確実に書き込み権限を検証・昇格
+    const hasPerm = await FolderConnector.ensurePermission(true);
+    if (!hasPerm) {
+      UI.showToast('共有フォルダへの書き込み権限が許可されませんでした。再書き出しを中止します。', 'warning');
+      return;
+    }
 
     const exportBtn = this.container.querySelector('#btn-dash-force-export');
     if (exportBtn) UI.setButtonLoading(exportBtn, true, '書き出し中...');
@@ -267,7 +319,11 @@ export const ProjectPage = {
       await this.render(this.container, projectId, this.currentTab);
     } catch (err) {
       console.error('再書き出しエラー:', err);
-      UI.showToast(`再書き出しエラー: ${err.message}`, 'error', 5000);
+      let userMsg = err.message;
+      if (err.name === 'NotAllowedError' || (err.message && (err.message.includes('not allowed') || err.message.includes('Permission')))) {
+        userMsg = '共有フォルダへのアクセス権限が拒否されたか、無効になっています。画面上部の共有インジケーターから再認可を行うか、設定画面でフォルダを再接続してください。';
+      }
+      UI.showToast(`再書き出しエラー: ${userMsg}`, 'error', 6000);
       if (exportBtn) {
         UI.setButtonLoading(exportBtn, false);
         exportBtn.innerHTML = '📤 共有フォルダへ再書き出し';
@@ -526,7 +582,9 @@ export const ProjectPage = {
                   <div class="dashboard-card-icon">🔄</div>
                   <div>
                     <h4 class="dashboard-card-title">共有フォルダ最新同期</h4>
-                    <span class="badge ${isFolderConnected ? 'badge-success' : 'badge-gray'}">${isFolderConnected ? '🟢 接続中' : '⚪ 未接続'}</span>
+                    <span class="badge ${isFolderConnected ? 'badge-success' : (FolderConnector.isPermissionPending() ? 'badge-warning' : 'badge-gray')}">
+                      ${isFolderConnected ? '🟢 接続中' : (FolderConnector.isPermissionPending() ? '🟡 要再認可' : '⚪ 未接続')}
+                    </span>
                   </div>
                 </div>
                 <p class="dashboard-card-desc">

@@ -8,6 +8,7 @@ import { db } from '../db.js';
 export const FolderConnector = {
   currentHandle: null,
   folderName: '',
+  permissionGranted: false,
 
   /**
    * File System Access API がサポートされているか判定
@@ -38,6 +39,7 @@ export const FolderConnector = {
 
       this.currentHandle = handle;
       this.folderName = handle.name;
+      this.permissionGranted = true;
 
       // IndexedDB の appState テーブルに保存（ブラウザ再起動後の復元用）
       await this.saveHandleToStorage(handle);
@@ -52,48 +54,80 @@ export const FolderConnector = {
   },
 
   /**
-   * 保存済みハンドルから接続を復元する
-   * @returns {Promise<boolean>} 復元に成功したかどうか
+   * 保存済みハンドルから接続を復元する（起動時・ページロード時）
+   * @returns {Promise<boolean>} 復元および書き込み権限の確認に成功したかどうか
    */
   async restore() {
     if (!this.isSupported()) return false;
 
     try {
       const stored = await db.appState.get('sharedFolderHandle');
-      if (!stored || !stored.handle) return false;
+      if (!stored || !stored.handle) {
+        this.currentHandle = null;
+        this.folderName = '';
+        this.permissionGranted = false;
+        return false;
+      }
 
       const handle = stored.handle;
+      this.currentHandle = handle;
+      this.folderName = stored.name || handle.name;
+
       // パーミッションの確認（ユーザー操作なしでは queryPermission のみ実行）
       const state = await handle.queryPermission({ mode: 'readwrite' });
       if (state === 'granted') {
-        this.currentHandle = handle;
-        this.folderName = handle.name;
+        this.permissionGranted = true;
         return true;
       }
 
-      // 'prompt' の場合は requestPermission が必要（ユーザーのクリック操作時に呼ぶ）
-      this.currentHandle = handle;
-      this.folderName = handle.name;
+      // 'prompt' または 'denied' の場合はユーザー操作による再認可（ensurePermission）が必要
+      this.permissionGranted = false;
       return false; // 要ユーザー認可
     } catch (err) {
       console.warn('フォルダハンドルの復元に失敗しました:', err);
+      this.currentHandle = null;
+      this.folderName = '';
+      this.permissionGranted = false;
       return false;
     }
   },
 
   /**
-   * ユーザーのクリック操作を伴ってパーミッションを再要求する
+   * ユーザーのクリック操作を伴ってパーミッションを確実に要求・昇格する
+   * （ブラウザ再起動後の 'prompt' 状態の復旧や書き込み直前チェック用）
+   * @param {boolean} withWrite
    * @returns {Promise<boolean>}
    */
-  async requestPermission() {
+  async ensurePermission(withWrite = true) {
     if (!this.currentHandle) return false;
     try {
-      const state = await this.currentHandle.requestPermission({ mode: 'readwrite' });
-      return state === 'granted';
+      const opts = { mode: withWrite ? 'readwrite' : 'read' };
+      const current = await this.currentHandle.queryPermission(opts);
+      if (current === 'granted') {
+        this.permissionGranted = true;
+        return true;
+      }
+
+      const requestResult = await this.currentHandle.requestPermission(opts);
+      if (requestResult === 'granted') {
+        this.permissionGranted = true;
+        return true;
+      }
+
+      this.permissionGranted = false;
+      return false;
     } catch (err) {
-      console.error('パーミッション要求エラー:', err);
+      console.warn('パーミッション確認/要求エラー:', err);
+      this.permissionGranted = false;
       return false;
     }
+  },
+
+  /**
+   * 互換用エイリアス
+   */
+  async requestPermission() {
+    return await this.ensurePermission(true);
   },
 
   /**
@@ -116,6 +150,7 @@ export const FolderConnector = {
   async disconnect() {
     this.currentHandle = null;
     this.folderName = '';
+    this.permissionGranted = false;
     try {
       await db.appState.delete('sharedFolderHandle');
     } catch (err) {
@@ -124,10 +159,24 @@ export const FolderConnector = {
   },
 
   /**
-   * 現在接続中かどうか
+   * 現在、共有フォルダに正常にアクセス（読み書き権限が付与）可能かどうか
    */
   isConnected() {
+    return this.currentHandle !== null && this.permissionGranted === true;
+  },
+
+  /**
+   * 以前接続したフォルダがIndexedDBまたはメモリ上に保存されているか（権限保留中含む）
+   */
+  hasSavedFolder() {
     return this.currentHandle !== null;
+  },
+
+  /**
+   * フォルダハンドルは保存されているが、ブラウザ再起動等によりアクセス許可が保留（prompt）状態か
+   */
+  isPermissionPending() {
+    return this.currentHandle !== null && !this.permissionGranted;
   },
 
   /**

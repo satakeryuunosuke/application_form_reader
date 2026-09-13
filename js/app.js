@@ -8,6 +8,8 @@ import { HomePage } from './pages/home.js';
 import { ProjectPage } from './pages/project.js';
 import { SettingsPage } from './pages/settings.js';
 import { FolderConnector } from './sync/folder-connector.js';
+import { SyncManager } from './sync/sync-manager.js';
+import { UI } from './utils/ui.js';
 
 class App {
   constructor() {
@@ -22,15 +24,41 @@ class App {
       indicator.textContent = `🟢 共有中: ${FolderConnector.getFolderName()}`;
       indicator.className = 'badge badge-success';
       indicator.title = `共有フォルダ「${FolderConnector.getFolderName()}」に接続中（クリックで設定へ）`;
+      indicator.onclick = (e) => {
+        e.preventDefault();
+        window.location.hash = '#settings';
+      };
+    } else if (FolderConnector.isPermissionPending()) {
+      indicator.textContent = `🟡 共有再開: ${FolderConnector.getFolderName()}`;
+      indicator.className = 'badge badge-warning';
+      indicator.title = `共有フォルダ「${FolderConnector.getFolderName()}」へのアクセス許可が一時停止しています。クリックしてアクセスを再開してください。`;
+      indicator.onclick = async (e) => {
+        e.preventDefault();
+        indicator.textContent = '⏳ 再開中...';
+        const permitted = await FolderConnector.ensurePermission(true);
+        if (permitted) {
+          UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」へのアクセスを再開しました`, 'success');
+          try {
+            await SyncManager.readSharedSettings();
+          } catch (syncErr) {
+            console.warn('再開時共有設定同期スキップ:', syncErr);
+          }
+          this.updateSyncIndicator();
+          await this.handleRoute();
+        } else {
+          UI.showToast('共有フォルダへのアクセス権限が許可されませんでした。設定画面から再接続してください。', 'warning');
+          window.location.hash = '#settings';
+        }
+      };
     } else {
       indicator.textContent = '⚪ ローカル';
       indicator.className = 'badge badge-gray';
       indicator.title = '共有フォルダ未接続（クリックで設定へ）';
+      indicator.onclick = (e) => {
+        e.preventDefault();
+        window.location.hash = '#settings';
+      };
     }
-    indicator.onclick = (e) => {
-      e.preventDefault();
-      window.location.hash = '#settings';
-    };
   }
 
   async init() {

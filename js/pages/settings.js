@@ -30,6 +30,7 @@ export const SettingsPage = {
     const clientId = await SyncManager.getClientId();
     const isSupported = FolderConnector.isSupported();
     const isConnected = FolderConnector.isConnected();
+    const isPending = FolderConnector.isPermissionPending();
     const folderName = FolderConnector.getFolderName();
     const pendingCount = await PendingQueue.getPendingCount();
 
@@ -51,8 +52,8 @@ export const SettingsPage = {
           <div class="card-header">
             <div style="display: flex; align-items: center; gap: 8px;">
               <h2 class="card-title">📁 共有フォルダ連携（サーバーレス複数PC共有）</h2>
-              <span class="badge ${isConnected ? 'badge-success' : 'badge-gray'}">
-                ${isConnected ? '🟢 接続中' : '⚪ 未接続 (ローカル専用)'}
+              <span class="badge ${isConnected ? 'badge-success' : (isPending ? 'badge-warning' : 'badge-gray')}">
+                ${isConnected ? '🟢 接続中' : (isPending ? '🟡 要再認可 (一時停止中)' : '⚪ 未接続 (ローカル専用)')}
               </span>
             </div>
             ${isConnected ? `<button id="btn-sync-settings-now" class="btn btn-secondary btn-sm" title="共有フォルダから最新の職員名・共通書式を再取得">🔄 共有設定を同期</button>` : ''}
@@ -60,6 +61,13 @@ export const SettingsPage = {
           <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
             社内LANのファイルサーバーや共有フォルダを指定することで、外部サーバーを介さずに複数台のPC間で受講確認状況の閲覧・手動登録・職員名・共通書式を共有できます（File System Access API）。
           </p>
+
+          ${isPending ? `
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: var(--spacing-md); font-size: 0.85rem; color: #b45309;">
+              ⚠️ <strong>共有フォルダへのアクセス許可が一時停止しています</strong><br>
+              ブラウザのセキュリティ仕様により、ブラウザの再起動・リロード後はファイルアクセスの再認可が必要です。「アクセスを再開」をクリックしてください。
+            </div>
+          ` : ''}
 
           ${!isSupported ? `
             <div class="card" style="background: var(--warning-bg); border: 1px solid var(--warning-border); padding: 12px 16px; margin-bottom: var(--spacing-md);">
@@ -75,15 +83,23 @@ export const SettingsPage = {
                 <div>
                   <div style="font-size: 0.78rem; color: var(--gray-500);">接続先フォルダ</div>
                   <div style="font-size: 0.95rem; font-weight: 700; color: var(--gray-800); word-break: break-all;">
-                    ${isConnected ? `📂 ${folderName}` : '未接続（ローカル IndexedDB のみで動作中）'}
+                    ${isConnected
+                      ? `📂 ${folderName}`
+                      : (isPending
+                          ? `📂 ${folderName} <span class="badge badge-warning" style="font-size: 0.72rem; margin-left: 6px;">権限停止中</span>`
+                          : '未接続（ローカル IndexedDB のみで動作中）')}
                   </div>
                 </div>
                 <div style="display: flex; gap: 8px;">
                   ${isConnected ? `
                     <button id="btn-disconnect-folder" class="btn btn-secondary btn-sm">🔌 接続解除</button>
+                  ` : (isPending ? `
+                    <button id="btn-resume-folder-settings" class="btn btn-primary btn-sm">🔑 アクセスを再開</button>
+                    <button id="btn-connect-folder" class="btn btn-secondary btn-sm">📁 別のフォルダを選択</button>
+                    <button id="btn-disconnect-folder" class="btn btn-ghost btn-sm text-muted">解除</button>
                   ` : `
                     <button id="btn-connect-folder" class="btn btn-primary btn-sm">📁 共有フォルダを接続</button>
-                  `}
+                  `)}
                 </div>
               </div>
 
@@ -317,6 +333,28 @@ export const SettingsPage = {
         } catch (err) {
           UI.showToast(err.message, 'warning');
           UI.setButtonLoading(connectFolderBtn, false);
+        }
+      };
+    }
+
+    // 共有フォルダアクセス再開
+    const resumeFolderBtn = this.container.querySelector('#btn-resume-folder-settings');
+    if (resumeFolderBtn) {
+      resumeFolderBtn.onclick = async () => {
+        UI.setButtonLoading(resumeFolderBtn, true, '再開中...');
+        try {
+          const permitted = await FolderConnector.ensurePermission(true);
+          if (permitted) {
+            UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」へのアクセスを再開しました`, 'success');
+            await SyncManager.readSharedSettings();
+            await this.render(this.container);
+          } else {
+            UI.showToast('共有フォルダへのアクセス権限が許可されませんでした。', 'warning');
+            UI.setButtonLoading(resumeFolderBtn, false);
+          }
+        } catch (err) {
+          UI.showToast(`再開エラー: ${err.message}`, 'error');
+          UI.setButtonLoading(resumeFolderBtn, false);
         }
       };
     }
