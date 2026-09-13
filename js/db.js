@@ -6,6 +6,7 @@
 import { CheckboxEngine } from './checkbox.js';
 import { FolderConnector } from './sync/folder-connector.js';
 import { SyncManager } from './sync/sync-manager.js';
+import { UI } from './utils/ui.js';
 
 // グローバル Dexie インスタンスの取得
 const Dexie = window.Dexie;
@@ -106,6 +107,7 @@ export const DB = {
         await SyncManager.writeSharedSettings(settingsData);
       } catch (err) {
         console.warn('共有フォルダへの settings.json 書き出し失敗:', err);
+        UI.showToast('共有フォルダへの設定反映に失敗しました（ローカルには保存済）。', 'warning');
       }
     }
   },
@@ -214,7 +216,8 @@ export const DB = {
         await SyncManager.writeProjectMeta(project);
         await SyncManager.writeStudentList(projectId, studentRecords);
       } catch (syncErr) {
-        console.warn('新規プロジェクトの共有フォルダ書き出し失敗:', syncErr);
+        console.error('新規プロジェクトの共有フォルダ書き出し失敗:', syncErr);
+        UI.showToast('共有フォルダへの書き出しに失敗しました。プロジェクトはローカルに保存されています。プロジェクト管理画面から「共有フォルダへ再書き出し」を実行してください。', 'warning', 6000);
       }
     }
 
@@ -243,6 +246,7 @@ export const DB = {
         });
       } catch (syncErr) {
         console.warn('ステータス変更の共有反映失敗:', syncErr);
+        UI.showToast('共有フォルダへのステータス同期に失敗しました（ローカルは更新済）', 'warning');
       }
     }
   },
@@ -262,6 +266,7 @@ export const DB = {
         await SyncManager.writeProjectMeta(updated);
       } catch (syncErr) {
         console.warn('プロジェクト更新の共有反映失敗:', syncErr);
+        UI.showToast('共有フォルダへのプロジェクト情報同期に失敗しました（ローカルは更新済）', 'warning');
       }
     }
   },
@@ -513,6 +518,7 @@ export const DB = {
         await SyncManager.writeStudentList(projectId, allStudents);
       } catch (syncErr) {
         console.warn('生徒追加後の共有フォルダ反映失敗:', syncErr);
+        UI.showToast('生徒を追加しましたが、共有フォルダへの反映に失敗しました（ローカルには保存済）。管理ダッシュボードから「共有フォルダへ再書き出し」を行ってください。', 'warning');
       }
     }
 
@@ -640,6 +646,7 @@ export const DB = {
         await SyncManager.writeStudentList(projectId, allStudents);
       } catch (syncErr) {
         console.warn('一括生徒追加後の共有フォルダ反映失敗:', syncErr);
+        UI.showToast('生徒を一括追加しましたが、共有フォルダへの反映に失敗しました（ローカルには保存済）。管理ダッシュボードから「共有フォルダへ再書き出し」を行ってください。', 'warning');
       }
     }
 
@@ -683,6 +690,7 @@ export const DB = {
         await SyncManager.writeStudentList(student.projectId, allStudents);
       } catch (syncErr) {
         console.warn('生徒更新後の共有フォルダ反映失敗:', syncErr);
+        UI.showToast('生徒情報を更新しましたが、共有フォルダへの反映に失敗しました（ローカルには保存済）。管理ダッシュボードから「共有フォルダへ再書き出し」を行ってください。', 'warning');
       }
     }
 

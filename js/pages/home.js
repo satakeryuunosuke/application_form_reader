@@ -737,6 +737,19 @@ export const HomePage = {
               }
               customTemplate = calibratorInstance.getTemplate();
             }
+            // 共有フォルダ未接続時の注意喚起確認
+            if (!FolderConnector.isConnected()) {
+              const proceedWithoutShared = await UI.confirm(
+                '共有フォルダ未接続の確認',
+                '現在、共有フォルダに接続されていません。\nこのプロジェクトは現在のPCにのみ保存され、他のPCからはアクセス・閲覧ができません。\n\n共有フォルダに接続せずに作成を続行しますか？\n（※後からプロジェクト管理画面で「共有フォルダへ再書き出し」を行うことも可能です）',
+                'このまま作成を続行',
+                'primary'
+              );
+              if (!proceedWithoutShared) {
+                return;
+              }
+            }
+
             // 作成実行
             UI.setButtonLoading(nextBtn, true, '作成中...');
             try {

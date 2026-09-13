@@ -2,7 +2,7 @@
  * プロジェクト画面コントローラー（ヘッダー・タブ管理）
  */
 
-import { DB } from '../db.js';
+import { DB, db } from '../db.js';
 import { UI } from '../utils/ui.js';
 import { CsvUtil } from '../utils/csv.js';
 import { Validator } from '../utils/validator.js';
@@ -199,6 +199,78 @@ export const ProjectPage = {
       if (dashSyncBtn) {
         UI.setButtonLoading(dashSyncBtn, false);
         dashSyncBtn.innerHTML = '🔄 最新データに更新';
+      }
+    } finally {
+      UI.hideLoading();
+    }
+  },
+
+  /**
+   * 共有フォルダへプロジェクト情報（meta.json）と生徒名簿（students.json）を強制再書き出し
+   * （他PCで取り込めない場合や、空ファイル破損時の復旧・修復用）
+   */
+  async handleForceExport(projectId) {
+    if (!FolderConnector.isConnected()) {
+      if (!FolderConnector.isSupported()) {
+        UI.showToast('お使いのブラウザは共有フォルダ機能に対応していません。Google Chrome または Microsoft Edge をご利用ください。', 'warning');
+        return;
+      }
+      const connectNow = await UI.confirm(
+        '共有フォルダの接続',
+        '現在共有フォルダに未接続です。再書き出しを行うために共有フォルダを選択して接続しますか？',
+        'フォルダを選択して接続',
+        'primary'
+      );
+      if (!connectNow) return;
+
+      try {
+        await FolderConnector.connect();
+        UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
+      } catch (connErr) {
+        if (connErr.name !== 'AbortError') {
+          UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
+        }
+        return;
+      }
+    }
+
+    const confirmed = await UI.confirm(
+      '共有フォルダへ再書き出し（修復・同期）',
+      'このPCに保存されているプロジェクト情報（meta.json）および全生徒名簿（students.json）を共有フォルダへ再書き出しします。\n\n他のPCがプロジェクトを取り込めない場合や、共有フォルダのデータ破損時の修復に使用できます。実行しますか？',
+      '再書き出しを実行',
+      'primary'
+    );
+    if (!confirmed) return;
+
+    const exportBtn = this.container.querySelector('#btn-dash-force-export');
+    if (exportBtn) UI.setButtonLoading(exportBtn, true, '書き出し中...');
+
+    UI.showLoading({
+      title: '共有フォルダへ書き出し中...',
+      message: 'プロジェクト情報および生徒名簿をアトミック書き込み・検証しています。画面を閉じずにお待ちください。',
+      icon: '📤'
+    });
+
+    try {
+      const project = await DB.getProject(projectId);
+      if (!project) throw new Error('プロジェクトが見つかりません');
+
+      const students = await db.students.where('projectId').equals(projectId).toArray();
+      if (!students || students.length === 0) {
+        throw new Error('ローカルに生徒データが存在しません');
+      }
+
+      await SyncManager.writeProjectMeta(project);
+      await SyncManager.writeStudentList(projectId, students);
+
+      UI.showToast(`共有フォルダへ再書き出し完了（生徒 ${students.length} 名・検証済）`, 'success', 4000);
+      await this.render(this.container, projectId, this.currentTab);
+    } catch (err) {
+      console.error('再書き出しエラー:', err);
+      UI.showToast(`再書き出しエラー: ${err.message}`, 'error', 5000);
+      if (exportBtn) {
+        UI.setButtonLoading(exportBtn, false);
+        exportBtn.innerHTML = '📤 共有フォルダへ再書き出し';
       }
     } finally {
       UI.hideLoading();
@@ -468,6 +540,27 @@ export const ProjectPage = {
               </div>
             </div>
 
+            <!-- 共有フォルダへ再書き出し（障害復旧・再配置） -->
+            <div class="dashboard-card">
+              <div>
+                <div class="dashboard-card-header">
+                  <div class="dashboard-card-icon">📤</div>
+                  <div>
+                    <h4 class="dashboard-card-title">共有フォルダへ再書き出し</h4>
+                    <span class="badge badge-gray">修復・再配置</span>
+                  </div>
+                </div>
+                <p class="dashboard-card-desc">
+                  このPCのローカルデータを正として、共有フォルダのプロジェクト情報（meta.json）および生徒名簿（students.json）を強制的に再出力・検証します。他PCで取り込めない場合の修復に使用します。
+                </p>
+              </div>
+              <div>
+                <button id="btn-dash-force-export" class="btn btn-secondary btn-block">
+                  📤 共有フォルダへ再書き出し
+                </button>
+              </div>
+            </div>
+
             <!-- ステータス切替（完了／進行中） -->
             <div class="dashboard-card">
               <div>
@@ -553,6 +646,13 @@ export const ProjectPage = {
     if (syncBtn) {
       syncBtn.onclick = () => {
         this.handleSync(projectId);
+      };
+    }
+
+    const forceExportBtn = content.querySelector('#btn-dash-force-export');
+    if (forceExportBtn) {
+      forceExportBtn.onclick = () => {
+        this.handleForceExport(projectId);
       };
     }
 

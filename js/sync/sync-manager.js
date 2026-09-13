@@ -124,17 +124,94 @@ export const SyncManager = {
   },
 
   /**
-   * 文字列・JSONをファイルにアトミック書き出し
+   * 文字列・JSONをファイルにアトミック書き出し（一時ファイル経由＋検証）
+   * 途中で通信が切断されても正規ファイルが0バイトになる事故を防ぎます
    */
   async writeJsonFile(dirHandle, fileName, data) {
-    const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
-    const writable = await fileHandle.createWritable();
+    if (!dirHandle) {
+      throw new Error(`ディレクトリハンドルが無効です: ${fileName}`);
+    }
+
+    const jsonStr = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    if (!jsonStr || jsonStr.trim().length === 0) {
+      throw new Error(`書き込みデータが空です: ${fileName}`);
+    }
+
+    // Step 1: 一時ファイル（_tmp_${fileName}）に書き込み
+    const tmpName = `_tmp_${fileName}`;
+    const tmpHandle = await dirHandle.getFileHandle(tmpName, { create: true });
+    const tmpWritable = await tmpHandle.createWritable({ keepExistingData: false });
     try {
-      const jsonStr = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-      await writable.write(jsonStr);
+      await tmpWritable.write(jsonStr);
+    } finally {
+      await tmpWritable.close();
+    }
+
+    // Step 2: 一時ファイルの内容検証（空でないこと＋JSONパース可能であること）
+    const tmpFile = await tmpHandle.getFile();
+    const tmpText = await tmpFile.text();
+    if (!tmpText || tmpText.trim().length === 0) {
+      throw new Error(`一時ファイル書き込み検証失敗: ${tmpName} が空（0バイト）です`);
+    }
+    try {
+      JSON.parse(tmpText);
+    } catch (parseErr) {
+      throw new Error(`一時ファイルのJSON検証に失敗しました: ${tmpName} (${parseErr.message})`);
+    }
+
+    // Step 3: 正規ファイルへ書き込み（keepExistingData: false で確実に上書き）
+    const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable({ keepExistingData: false });
+    try {
+      await writable.write(tmpText);
     } finally {
       await writable.close();
     }
+
+    // Step 4: 正規ファイルの読み戻し検証（空でないこと＋JSON検証）
+    const finalFile = await fileHandle.getFile();
+    const finalText = await finalFile.text();
+    if (!finalText || finalText.trim().length === 0) {
+      throw new Error(`正規ファイル書き込み検証失敗: ${fileName} が空（0バイト）です`);
+    }
+    try {
+      JSON.parse(finalText);
+    } catch (parseErr) {
+      throw new Error(`正規ファイルのJSON検証に失敗しました: ${fileName} (${parseErr.message})`);
+    }
+
+    // Step 5: 一時ファイルのクリーンアップ（失敗しても本処理には影響させない）
+    try {
+      await dirHandle.removeEntry(tmpName);
+    } catch (removeErr) {
+      // ネットワークドライブ等の遅延ロックで削除失敗しても無視
+    }
+  },
+
+  /**
+   * リトライ付き JSON 書き込み（ネットワーク遅延・一時的IOロック対策）
+   * @param {FileSystemDirectoryHandle} dirHandle
+   * @param {string} fileName
+   * @param {any} data
+   * @param {number} maxRetries 最大試行回数 (デフォルト: 3)
+   * @param {number} baseDelayMs 基本待機ミリ秒 (デフォルト: 500ms)
+   */
+  async writeJsonFileWithRetry(dirHandle, fileName, data, maxRetries = 3, baseDelayMs = 500) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.writeJsonFile(dirHandle, fileName, data);
+        return true;
+      } catch (err) {
+        lastError = err;
+        console.warn(`[writeJsonFileWithRetry] ${fileName} の書き込み失敗 (試行 ${attempt}/${maxRetries}):`, err);
+        if (attempt < maxRetries) {
+          const delay = baseDelayMs * Math.pow(2, attempt - 1); // 500ms -> 1000ms -> 2000ms
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    throw new Error(`${fileName} の書き込みが ${maxRetries} 回試行後も失敗しました: ${lastError?.message || lastError}`);
   },
 
   /* ================= 共有設定 (settings.json) ================= */
@@ -156,11 +233,11 @@ export const SyncManager = {
         updatedBy: clientId
       };
 
-      await this.writeJsonFile(rootHandle, 'settings.json', sharedData);
+      await this.writeJsonFileWithRetry(rootHandle, 'settings.json', sharedData);
       return true;
     } catch (err) {
       console.error('settings.json 書き込みエラー:', err);
-      return false;
+      throw err;
     }
   },
 
@@ -236,11 +313,17 @@ export const SyncManager = {
         completedAt: project.completedAt || null,
         updatedAt: new Date().toISOString()
       };
-      await this.writeJsonFile(projDir, 'meta.json', meta);
+      await this.writeJsonFileWithRetry(projDir, 'meta.json', meta);
+
+      // 書き込み後のベリファイ確認
+      const verify = await this.readJsonFile(projDir, 'meta.json');
+      if (!verify || verify.id !== project.id) {
+        throw new Error('meta.json の書き込み検証に失敗しました（データ不一致または読み取り不可）');
+      }
       return true;
     } catch (err) {
       console.error(`meta.json 書き込みエラー (${project.id}):`, err);
-      return false;
+      throw err;
     }
   },
 
@@ -254,7 +337,7 @@ export const SyncManager = {
 
     try {
       const projDir = await this.getOrCreateSubdir(rootHandle, projectId);
-      const stuList = students.map(s => ({
+      const stuList = (students || []).map(s => ({
         id: s.id,
         nichinokenId: s.nichinokenId,
         name: s.name,
@@ -262,11 +345,20 @@ export const SyncManager = {
         className: s.className,
         course: s.course || '4科'
       }));
-      await this.writeJsonFile(projDir, 'students.json', stuList);
+      await this.writeJsonFileWithRetry(projDir, 'students.json', stuList);
+
+      // 書き込み後のベリファイ確認
+      const verify = await this.readJsonFile(projDir, 'students.json');
+      if (!verify || !Array.isArray(verify)) {
+        throw new Error('students.json の書き込み検証に失敗しました（データ破損または読み取り不能）');
+      }
+      if (stuList.length > 0 && verify.length === 0) {
+        throw new Error('students.json の書き込み検証に失敗しました（生徒データが空）');
+      }
       return true;
     } catch (err) {
       console.error(`students.json 書き込みエラー (${projectId}):`, err);
-      return false;
+      throw err;
     }
   },
 
@@ -716,14 +808,32 @@ export const SyncManager = {
       throw new Error(`共有フォルダ内にプロジェクト「${projectId}」が見つかりません。`);
     }
 
-    const meta = await this.readJsonFile(projDir, 'meta.json');
+    let meta = await this.readJsonFile(projDir, 'meta.json');
     if (!meta) {
-      throw new Error('meta.json が見つかりません。');
+      // 一時ファイルのフォールバック確認
+      meta = await this.readJsonFile(projDir, '_tmp_meta.json');
+    }
+    if (!meta) {
+      throw new Error('共有フォルダ内の「meta.json」が見つからないか破損しています。プロジェクトを作成したPCで該当プロジェクトを開き、「共有フォルダへ再書き出し」を実行してから再度取り込んでください。');
     }
 
-    const students = await this.readJsonFile(projDir, 'students.json');
+    let students = await this.readJsonFile(projDir, 'students.json');
     if (!Array.isArray(students) || students.length === 0) {
-      throw new Error('students.json が見つからないか、生徒データが空です。');
+      // 一時ファイル _tmp_students.json が残っているかフォールバック確認
+      const tmpStudents = await this.readJsonFile(projDir, '_tmp_students.json');
+      if (Array.isArray(tmpStudents) && tmpStudents.length > 0) {
+        console.info('students.json が空のため、一時ファイル _tmp_students.json から復元します');
+        students = tmpStudents;
+        try {
+          await this.writeJsonFileWithRetry(projDir, 'students.json', students);
+        } catch (recoverErr) {
+          console.warn('students.json 一時ファイルからの正規復元書き込み例外:', recoverErr);
+        }
+      }
+    }
+
+    if (!Array.isArray(students) || students.length === 0) {
+      throw new Error('共有フォルダ内の「students.json」が空または破損しています。プロジェクトを作成したPCで該当プロジェクトを開き、「共有フォルダへ再書き出し」を実行してから再度取り込んでください。');
     }
 
     // 既存プロジェクトがあるか確認
