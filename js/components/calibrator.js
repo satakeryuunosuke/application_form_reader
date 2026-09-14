@@ -20,9 +20,12 @@ export class TemplateCalibrator {
     this.options = options || {};
     this.defaultResetTemplate = this.options.defaultResetTemplate || CheckboxEngine.getDefaultTemplate();
     this.template = initialTemplate ? JSON.parse(JSON.stringify(initialTemplate)) : JSON.parse(JSON.stringify(this.defaultResetTemplate));
+    if (!this.template.customBoxes) {
+      this.template.customBoxes = [];
+    }
     this.onChange = onChange;
     
-    this.activeTab = 'noChange'; // 'noChange' | 'hasChange'
+    this.activeTab = 'noChange'; // 'noChange' | 'hasChange' | customBoxId
     this.canvas = null;
     this.sourceCanvas = null; // 原寸大画像Canvas
     this.barcodeBox = null;
@@ -48,6 +51,10 @@ export class TemplateCalibrator {
   setTemplate(newTemplate) {
     if (!newTemplate) return;
     this.template = JSON.parse(JSON.stringify(newTemplate));
+    if (!this.template.customBoxes) {
+      this.template.customBoxes = [];
+    }
+    this.updateTabsUI();
     this.syncSlidersFromTemplate();
     this.drawOverlay();
     if (this.onChange) {
@@ -107,6 +114,7 @@ export class TemplateCalibrator {
               <span class="legend-item"><span class="legend-box legend-barcode"></span> バーコード（基準点）</span>
               <span class="legend-item"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>
               <span class="legend-item"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>
+              <span class="legend-item"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>
             </div>
           </div>
 
@@ -122,13 +130,8 @@ export class TemplateCalibrator {
             </div>
 
             <!-- タブ切り替え -->
-            <div class="calibrator-tabs">
-              <button type="button" class="calib-tab-btn ${this.activeTab === 'noChange' ? 'active' : ''}" data-tab="noChange">
-                🟩 「変更なし」枠
-              </button>
-              <button type="button" class="calib-tab-btn ${this.activeTab === 'hasChange' ? 'active' : ''}" data-tab="hasChange">
-                🟧 「変更あり」枠
-              </button>
+            <div class="calibrator-tabs" id="calib-tabs-container">
+              ${this.renderTabsHtml()}
             </div>
 
             <!-- リアルタイム判定カード -->
@@ -143,6 +146,7 @@ export class TemplateCalibrator {
                 <span id="eval-has-change-status" class="badge badge-gray">-</span>
                 <span class="text-mono eval-ratio" id="eval-has-change-ratio">黒画素: 0%</span>
               </div>
+              <div id="eval-custom-rows"></div>
             </div>
 
             <!-- スライダーグループ -->
@@ -217,21 +221,68 @@ export class TemplateCalibrator {
     this.bindEvents();
   }
 
+  getTargetBox() {
+    if (this.activeTab === 'noChange') return this.template.noChangeBox;
+    if (this.activeTab === 'hasChange') return this.template.hasChangeBox;
+    const found = (this.template.customBoxes || []).find(b => b.id === this.activeTab);
+    return found || this.template.noChangeBox;
+  }
+
+  renderTabsHtml() {
+    const customTabs = (this.template.customBoxes || []).map(box => `
+      <button type="button" class="calib-tab-btn ${this.activeTab === box.id ? 'active' : ''}" data-tab="${box.id}" style="${this.activeTab === box.id ? 'border-color: #8b5cf6; background: rgba(139, 92, 246, 0.12);' : ''}">
+        🟪 ${box.label}
+      </button>
+    `).join('');
+
+    return `
+      <button type="button" class="calib-tab-btn ${this.activeTab === 'noChange' ? 'active' : ''}" data-tab="noChange">
+        🟩 「変更なし」枠
+      </button>
+      <button type="button" class="calib-tab-btn ${this.activeTab === 'hasChange' ? 'active' : ''}" data-tab="hasChange">
+        🟧 「変更あり」枠
+      </button>
+      ${customTabs}
+    `;
+  }
+
+  updateTabsUI() {
+    const container = this.container.querySelector('#calib-tabs-container');
+    if (container) {
+      container.innerHTML = this.renderTabsHtml();
+      this.bindTabEvents();
+    }
+  }
+
+  bindTabEvents() {
+    const tabs = this.container.querySelectorAll('.calib-tab-btn');
+    tabs.forEach(t => {
+      t.onclick = () => {
+        tabs.forEach(b => {
+          b.classList.remove('active');
+          if (b.dataset.tab !== 'noChange' && b.dataset.tab !== 'hasChange') {
+            b.style.background = '';
+            b.style.borderColor = '';
+          }
+        });
+        t.classList.add('active');
+        this.activeTab = t.dataset.tab;
+        if (this.activeTab !== 'noChange' && this.activeTab !== 'hasChange') {
+          t.style.borderColor = '#8b5cf6';
+          t.style.background = 'rgba(139, 92, 246, 0.12)';
+        }
+        this.syncSlidersFromTemplate();
+        this.drawOverlay();
+      };
+    });
+  }
+
   /**
    * イベントバインド
    */
   bindEvents() {
     // タブ切り替え
-    const tabs = this.container.querySelectorAll('.calib-tab-btn');
-    tabs.forEach(t => {
-      t.onclick = () => {
-        tabs.forEach(b => b.classList.remove('active'));
-        t.classList.add('active');
-        this.activeTab = t.dataset.tab;
-        this.syncSlidersFromTemplate();
-        this.drawOverlay();
-      };
-    });
+    this.bindTabEvents();
 
     // スライダー変更
     const rngDx = this.container.querySelector('#rng-dx');
@@ -240,7 +291,7 @@ export class TemplateCalibrator {
     const rngTh = this.container.querySelector('#rng-threshold');
 
     const handleSliderInput = () => {
-      const targetBox = this.activeTab === 'noChange' ? this.template.noChangeBox : this.template.hasChangeBox;
+      const targetBox = this.getTargetBox();
       targetBox.dx = parseFloat(rngDx.value);
       targetBox.dy = parseFloat(rngDy.value);
       targetBox.size = parseFloat(rngSize.value);
@@ -274,7 +325,7 @@ export class TemplateCalibrator {
           if (this.onChange) this.onChange(this.template);
           return;
         }
-        const targetBox = this.activeTab === 'noChange' ? this.template.noChangeBox : this.template.hasChangeBox;
+        const targetBox = this.getTargetBox();
         const currentVal = target === 'size' ? (targetBox.size || targetBox.w || 0.022) : targetBox[target];
         targetBox[target] = Math.round((currentVal + delta) * 1000) / 1000;
         if (target === 'size') {
@@ -458,7 +509,7 @@ export class TemplateCalibrator {
     const cvH = this.sourceCanvas.height;
     const bc = this.barcodeBox;
 
-    const targetBox = this.activeTab === 'noChange' ? this.template.noChangeBox : this.template.hasChangeBox;
+    const targetBox = this.getTargetBox();
     const targetX = bc.centerX + (targetBox.dx || 0) * cvW;
     const targetY = bc.centerY + (targetBox.dy || 0) * cvH;
 
@@ -489,7 +540,7 @@ export class TemplateCalibrator {
    * テンプレートからスライダー値を同期
    */
   syncSlidersFromTemplate() {
-    const targetBox = this.activeTab === 'noChange' ? this.template.noChangeBox : this.template.hasChangeBox;
+    const targetBox = this.getTargetBox();
     
     const rngDx = this.container.querySelector('#rng-dx');
     const rngDy = this.container.querySelector('#rng-dy');
@@ -505,7 +556,7 @@ export class TemplateCalibrator {
   }
 
   updateValueLabels() {
-    const targetBox = this.activeTab === 'noChange' ? this.template.noChangeBox : this.template.hasChangeBox;
+    const targetBox = this.getTargetBox();
     
     const valDx = this.container.querySelector('#val-dx');
     const valDy = this.container.querySelector('#val-dy');
@@ -941,8 +992,24 @@ export class TemplateCalibrator {
     const isHasChangeActive = this.activeTab === 'hasChange';
     this.drawTargetBox(ctx, rects.hasChangeRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', '変更あり (正方形)', isHasChangeActive);
 
-    // 7. 判定UIの更新
-    this.updateEvalStatus(noChangeEval, hasChangeEval, isDetected);
+    // 7. カスタム追加枠（紫）
+    const customEvals = [];
+    if (rects.customRects && rects.customRects.length > 0) {
+      for (const item of rects.customRects) {
+        const ev = CheckboxEngine.evaluateCheckbox(this.sourceCanvas, item.rect, threshold);
+        const isCustomActive = this.activeTab === item.id;
+        this.drawTargetBox(ctx, item.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${item.label} (正方形)`, isCustomActive);
+        customEvals.push({
+          id: item.id,
+          label: item.label,
+          eval: ev,
+          isActive: isCustomActive
+        });
+      }
+    }
+
+    // 8. 判定UIの更新
+    this.updateEvalStatus(noChangeEval, hasChangeEval, customEvals, isDetected);
 
     // トランスフォーム（ズーム・パン）の再適用
     this.applyCanvasTransform();
@@ -984,11 +1051,12 @@ export class TemplateCalibrator {
     ctx.restore();
   }
 
-  updateEvalStatus(noChangeEval, hasChangeEval, isDetected = true) {
+  updateEvalStatus(noChangeEval, hasChangeEval, customEvals = [], isDetected = true) {
     const noStatusEl = this.container.querySelector('#eval-no-change-status');
     const noRatioEl = this.container.querySelector('#eval-no-change-ratio');
     const hasStatusEl = this.container.querySelector('#eval-has-change-status');
     const hasRatioEl = this.container.querySelector('#eval-has-change-ratio');
+    const customRowsEl = this.container.querySelector('#eval-custom-rows');
 
     if (!isDetected) {
       if (noStatusEl) {
@@ -1001,6 +1069,7 @@ export class TemplateCalibrator {
         hasStatusEl.textContent = '未検出';
       }
       if (hasRatioEl) hasRatioEl.textContent = '黒画素: -';
+      if (customRowsEl) customRowsEl.innerHTML = '';
       return;
     }
 
@@ -1025,6 +1094,29 @@ export class TemplateCalibrator {
       } else {
         hasStatusEl.className = 'badge badge-gray';
         hasStatusEl.textContent = '⬜ なし';
+      }
+    }
+
+    if (customRowsEl) {
+      if (customEvals.length === 0) {
+        customRowsEl.innerHTML = '';
+      } else {
+        customRowsEl.innerHTML = customEvals.map(item => {
+          const pct = Math.round(item.eval.darkRatio * 100);
+          const isChk = item.eval.isChecked;
+          const statusBadge = isChk
+            ? `<span class="badge badge-purple font-bold" style="background:#8b5cf6; color:#fff;">✅ あり</span>`
+            : `<span class="badge badge-gray">⬜ なし</span>`;
+          return `
+            <div class="eval-row" style="${item.isActive ? 'background: rgba(139, 92, 246, 0.08); border-radius: 4px; padding: 2px 4px;' : ''}">
+              <span class="eval-label" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.label}">
+                🟪 ${item.label}:
+              </span>
+              ${statusBadge}
+              <span class="text-mono eval-ratio">黒画素: ${pct}%</span>
+            </div>
+          `;
+        }).join('');
       }
     }
   }

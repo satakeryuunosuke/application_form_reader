@@ -106,7 +106,7 @@ export const ScannerEngine = {
       const barcodeResult = await this.detectBarcode(canvas);
 
       // 2. チェックボックス判定
-      let checkResult = { hasChange: false, noChangeChecked: false, hasChangeChecked: false };
+      let checkResult = { hasChange: false, noChangeChecked: false, hasChangeChecked: false, customChecks: {} };
       let templateApplied = false;
 
       let targetRects = null;
@@ -115,13 +115,27 @@ export const ScannerEngine = {
         const noChangeEval = CheckboxEngine.evaluateCheckbox(canvas, targetRects.noChangeRect, targetRects.threshold);
         const hasChangeEval = CheckboxEngine.evaluateCheckbox(canvas, targetRects.hasChangeRect, targetRects.threshold);
 
+        const customChecks = {};
+        if (targetRects.customRects && targetRects.customRects.length > 0) {
+          for (const item of targetRects.customRects) {
+            const ev = CheckboxEngine.evaluateCheckbox(canvas, item.rect, targetRects.threshold);
+            customChecks[item.id] = {
+              id: item.id,
+              label: item.label,
+              isChecked: ev.isChecked,
+              darkRatio: ev.darkRatio
+            };
+          }
+        }
+
         checkResult = {
           noChangeChecked: noChangeEval.isChecked,
           hasChangeChecked: hasChangeEval.isChecked,
           noChangeRatio: noChangeEval.darkRatio,
           hasChangeRatio: hasChangeEval.darkRatio,
           // 「変更あり」にチェックがあれば変更あり、そうでなければ変更なし
-          hasChange: hasChangeEval.isChecked && !noChangeEval.isChecked
+          hasChange: hasChangeEval.isChecked && !noChangeEval.isChecked,
+          customChecks
         };
         templateApplied = true;
       }

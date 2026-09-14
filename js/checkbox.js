@@ -22,6 +22,8 @@ export const CheckboxEngine = {
         dy: 0.292,
         size: 0.032
       },
+      // 志望校別対策講座等の追加カスタムチェックボックス定義 [{ id, label, dx, dy, size }]
+      customBoxes: [],
       threshold: 0.25 // 黒画素率 25% 以上でチェック有りと判定（枠線全体の黒画素を含むため高めに設定）
     };
   },
@@ -150,9 +152,16 @@ export const CheckboxEngine = {
       };
     };
 
+    const customRects = (t.customBoxes || []).map(box => ({
+      id: box.id,
+      label: box.label,
+      rect: getPixelRect(box)
+    }));
+
     return {
       noChangeRect: getPixelRect(t.noChangeBox),
       hasChangeRect: getPixelRect(t.hasChangeBox),
+      customRects,
       threshold: t.threshold !== undefined ? t.threshold : 0.20,
       angle
     };

@@ -849,7 +849,10 @@ export const ProjectPage = {
 
     const settings = await DB.getSettings();
     const defaultTemplate = settings.defaultScanTemplate || CheckboxEngine.getDefaultTemplate();
-    let currentTemplate = project.scanTemplate || defaultTemplate;
+    let currentTemplate = JSON.parse(JSON.stringify(project.scanTemplate || defaultTemplate));
+    if (!currentTemplate.customBoxes) currentTemplate.customBoxes = [];
+    const coursePresets = settings.coursePresets || [];
+    const methodPresets = settings.methodPresets || [];
 
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
@@ -871,6 +874,51 @@ export const ProjectPage = {
           </div>
         </div>
         <div class="modal-body" style="padding: 10px var(--spacing-lg); max-height: 86vh;">
+          <!-- 志望校別対策講座・追加チェックボックス管理パネル -->
+          <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
+            <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              <span>🎯 志望校別対策講座・追加チェックボックス管理</span>
+              <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト個別設定</span>
+            </div>
+            <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
+              このプロジェクトで読み取る「志望校別対策講座（講座名×受講方法）」や自由項目チェックボックスを追加・調整できます。
+            </p>
+
+            <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; align-items: end;">
+              <div>
+                <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
+                <select id="proj-sel-course" class="form-control" style="font-size: 0.85rem;">
+                  <option value="">-- 講座名を選択 --</option>
+                  ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
+                <select id="proj-sel-method" class="form-control" style="font-size: 0.85rem;">
+                  <option value="">-- 受講方法を選択 --</option>
+                  ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <button type="button" id="proj-btn-add-course" class="btn btn-primary btn-sm" style="width: 100%; height: 38px;">
+                  ➕ 志望校別講座を追加
+                </button>
+              </div>
+            </div>
+
+            <!-- 自由記述追加フォーム -->
+            <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center;">
+              <input type="text" id="proj-inp-custom-name" class="form-control" placeholder="自由記述で項目名を入力（例: 特別講習A、Zoom振替希望 など）" style="font-size: 0.85rem;">
+              <button type="button" id="proj-btn-add-free" class="btn btn-secondary btn-sm" style="white-space: nowrap; height: 38px;">
+                ➕ 自由項目を追加
+              </button>
+            </div>
+
+            <!-- 登録中カスタムボックス一覧 -->
+            <div id="proj-custom-boxes-container"></div>
+          </div>
+
           <div id="project-calib-container"></div>
         </div>
         <div class="modal-footer">
@@ -912,6 +960,148 @@ export const ProjectPage = {
         resetToastMsg: '共通既定書式の位置に復元しました'
       }
     );
+
+    // カスタムボックス一覧描画 & 操作
+    const renderProjCustomBoxes = () => {
+      const container = modal.querySelector('#proj-custom-boxes-container');
+      if (!container) return;
+      const boxes = currentTemplate.customBoxes || [];
+      if (boxes.length === 0) {
+        container.innerHTML = `
+          <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center;">
+            現在、追加チェックボックスはありません（上のフォームから講座名×受講方法を選択して追加してください）
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px;">
+          登録中の追加チェックボックス（全 ${boxes.length} 個）:
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          ${boxes.map(box => `
+            <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
+              <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                🎯 調整
+              </button>
+              <button type="button" class="btn-ghost proj-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+                ✕
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      container.querySelectorAll('.proj-btn-del-box').forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.dataset.id;
+          const target = (currentTemplate.customBoxes || []).find(b => b.id === id);
+          const label = target ? target.label : '';
+          currentTemplate.customBoxes = (currentTemplate.customBoxes || []).filter(b => b.id !== id);
+          if (calibrator) {
+            if (calibrator.activeTab === id) {
+              calibrator.activeTab = 'noChange';
+            }
+            calibrator.setTemplate(currentTemplate);
+            calibrator.updateTabsUI();
+            calibrator.syncSlidersFromTemplate();
+            calibrator.drawOverlay();
+          }
+          renderProjCustomBoxes();
+          UI.showToast(`「${label}」を削除しました`, 'info');
+        };
+      });
+
+      container.querySelectorAll('.proj-btn-focus-box').forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.dataset.id;
+          if (calibrator) {
+            calibrator.activeTab = id;
+            calibrator.updateTabsUI();
+            calibrator.syncSlidersFromTemplate();
+            calibrator.drawOverlay();
+            calibrator.focusTargetArea();
+          }
+        };
+      });
+    };
+
+    const addProjCustomBox = (label) => {
+      if (!currentTemplate.customBoxes) currentTemplate.customBoxes = [];
+      if (currentTemplate.customBoxes.some(b => b.label === label)) {
+        UI.showToast(`「${label}」は既に追加されています`, 'warning');
+        return;
+      }
+      const id = 'cbox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      const count = currentTemplate.customBoxes.length;
+      const newBox = {
+        id,
+        label,
+        dx: -0.058,
+        dy: Math.round((0.360 + count * 0.050) * 1000) / 1000,
+        size: 0.032
+      };
+      currentTemplate.customBoxes.push(newBox);
+      if (calibrator) {
+        calibrator.activeTab = id;
+        calibrator.setTemplate(currentTemplate);
+        calibrator.updateTabsUI();
+        calibrator.syncSlidersFromTemplate();
+        calibrator.drawOverlay();
+        calibrator.focusTargetArea();
+      }
+      renderProjCustomBoxes();
+      UI.showToast(`「${label}」を追加しました。枠線の位置を調整してください。`, 'success');
+    };
+
+    renderProjCustomBoxes();
+
+    // 講座名×受講方法追加
+    const addCourseBtn = modal.querySelector('#proj-btn-add-course');
+    const selCourse = modal.querySelector('#proj-sel-course');
+    const selMethod = modal.querySelector('#proj-sel-method');
+
+    if (addCourseBtn) {
+      addCourseBtn.onclick = () => {
+        const course = (selCourse?.value || '').trim();
+        const method = (selMethod?.value || '').trim();
+        if (!course) {
+          UI.showToast('講座名を選択してください', 'warning');
+          return;
+        }
+        if (!method) {
+          UI.showToast('受講方法を選択してください', 'warning');
+          return;
+        }
+        const label = `${course}（${method}）`;
+        addProjCustomBox(label);
+        selCourse.value = '';
+        selMethod.value = '';
+      };
+    }
+
+    // 自由項目追加
+    const addFreeBtn = modal.querySelector('#proj-btn-add-free');
+    const freeInput = modal.querySelector('#proj-inp-custom-name');
+
+    const handleFreeAdd = () => {
+      const label = (freeInput?.value || '').trim();
+      if (!label) {
+        UI.showToast('項目名を入力してください', 'warning');
+        return;
+      }
+      addProjCustomBox(label);
+      freeInput.value = '';
+    };
+
+    if (addFreeBtn) addFreeBtn.onclick = handleFreeAdd;
+    if (freeInput) {
+      freeInput.onkeydown = (e) => {
+        if (e.key === 'Enter') handleFreeAdd();
+      };
+    }
 
     const closeModal = () => modal.remove();
     modal.querySelector('.btn-close-modal').onclick = closeModal;

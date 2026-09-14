@@ -47,6 +47,8 @@ export const SettingsPage = {
     }
 
     const staffList = settings.staffNames || [];
+    const coursePresets = settings.coursePresets || [];
+    const methodPresets = settings.methodPresets || [];
     const systemDefaultTemplate = CheckboxEngine.getDefaultTemplate();
     this.currentDefaultTemplate = settings.defaultScanTemplate
       ? JSON.parse(JSON.stringify(settings.defaultScanTemplate))
@@ -177,7 +179,67 @@ export const SettingsPage = {
           </div>
         </div>
 
-        <!-- 2. 交換票（受講確認票）の共通既定書式設定 -->
+        <!-- 2. 志望校別対策講座マスタ設定 -->
+        <div class="card" style="margin-bottom: var(--spacing-lg);">
+          <div class="card-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h2 class="card-title">📚 志望校別対策講座マスタ設定</h2>
+              <span class="badge ${isConnected ? 'badge-info' : 'badge-gray'}" style="font-size: 0.75rem;">
+                ${isConnected ? '全PC共有' : 'ローカル'}
+              </span>
+            </div>
+            <span class="badge badge-purple">講座名 ${coursePresets.length}件 / 受講方法 ${methodPresets.length}件</span>
+          </div>
+          <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
+            志望校別対策講座用の「講座名」および「受講方法（校舎・形式）」の選択肢マスタを設定します。<br>
+            ここで登録した項目は、プロジェクト作成時や共通書式設定のチェックボックス追加プルダウンで選択できるようになります。
+            ${isConnected ? '（共有フォルダ接続中は全PC間で共有・同期されます）' : ''}
+          </p>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+            <!-- 講座名マスタ -->
+            <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px;">
+              <div style="font-weight: 700; font-size: 0.92rem; color: var(--gray-800); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                <span>🏫 講座名マスタ</span>
+                <span class="badge badge-gray" style="font-size: 0.75rem;">${coursePresets.length} 件</span>
+              </div>
+              <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+                <input type="text" id="inp-new-course" class="form-control" placeholder="新しい講座名（例: 東海Ⅱ）" style="font-size: 0.85rem;">
+                <button id="btn-add-course-preset" class="btn btn-primary btn-sm" style="white-space: nowrap;">➕ 追加</button>
+              </div>
+              <div id="course-tags-list" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px;">
+                ${coursePresets.map((name, index) => `
+                  <div class="badge badge-purple" style="font-size: 0.84rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>${name}</span>
+                    <button class="btn-ghost btn-del-course" data-index="${index}" style="padding: 0; color: #dc2626; font-size: 13px; line-height: 1; cursor: pointer;" title="削除">✕</button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- 受講方法マスタ -->
+            <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px;">
+              <div style="font-weight: 700; font-size: 0.92rem; color: var(--gray-800); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                <span>💻 受講方法マスタ</span>
+                <span class="badge badge-gray" style="font-size: 0.75rem;">${methodPresets.length} 件</span>
+              </div>
+              <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+                <input type="text" id="inp-new-method" class="form-control" placeholder="新しい受講方法（例: 名駅校）" style="font-size: 0.85rem;">
+                <button id="btn-add-method-preset" class="btn btn-primary btn-sm" style="white-space: nowrap;">➕ 追加</button>
+              </div>
+              <div id="method-tags-list" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px;">
+                ${methodPresets.map((name, index) => `
+                  <div class="badge badge-info" style="font-size: 0.84rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>${name}</span>
+                    <button class="btn-ghost btn-del-method" data-index="${index}" style="padding: 0; color: #dc2626; font-size: 13px; line-height: 1; cursor: pointer;" title="削除">✕</button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 交換票（受講確認票）の共通既定書式設定 -->
         <div class="card" style="margin-bottom: var(--spacing-lg);">
           <div class="card-header">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -193,6 +255,51 @@ export const SettingsPage = {
             ※ サンプル帳票やお手元のPDF/画像を読み込んで位置を合わせ、右下の「<strong>💾 共通既定書式を保存</strong>」を押してください。
             ${isConnected ? '（共有フォルダ接続中は全PCに共有されます）' : ''}
           </p>
+
+          <!-- 志望校別対策講座・追加チェックボックス管理パネル -->
+          <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
+            <div style="font-weight: bold; font-size: 0.95rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              <span>🎯 志望校別対策講座・追加チェックボックス管理</span>
+              <span class="badge badge-purple" style="font-size: 0.75rem;">共通初期枠</span>
+            </div>
+            <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 12px;">
+              志望校別対策講座や特殊受講枠など、標準の「変更なし」「変更あり」以外のチェックボックスを定義して自動読み取り対象に追加できます。
+            </p>
+
+            <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; align-items: end;">
+              <div>
+                <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
+                <select id="sel-course-preset" class="form-control" style="font-size: 0.85rem;">
+                  <option value="">-- 講座名を選択 --</option>
+                  ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
+                <select id="sel-method-preset" class="form-control" style="font-size: 0.85rem;">
+                  <option value="">-- 受講方法を選択 --</option>
+                  ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <button type="button" id="btn-add-course-checkbox" class="btn btn-primary btn-sm" style="width: 100%; height: 38px;">
+                  ➕ 志望校別講座を追加
+                </button>
+              </div>
+            </div>
+
+            <!-- 自由記述追加フォーム -->
+            <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+              <input type="text" id="inp-custom-box-name" class="form-control" placeholder="自由記述で項目名を入力（例: 特別講習A、Zoom振替希望 など）" style="font-size: 0.85rem;">
+              <button type="button" id="btn-add-custom-free-checkbox" class="btn btn-secondary btn-sm" style="white-space: nowrap; height: 38px;">
+                ➕ 自由項目を追加
+              </button>
+            </div>
+
+            <!-- 登録中カスタムボックス一覧 -->
+            <div id="custom-boxes-list-container"></div>
+          </div>
 
           <div id="settings-calib-mount" style="margin-bottom: var(--spacing-md);"></div>
 
@@ -365,10 +472,11 @@ export const SettingsPage = {
       );
     }
 
-    this.bindEvents(settings, staffList, systemDefaultTemplate);
+    this.renderCustomBoxesList();
+    this.bindEvents(settings, staffList, coursePresets, methodPresets, systemDefaultTemplate);
   },
 
-  bindEvents(settings, staffList, systemDefaultTemplate) {
+  bindEvents(settings, staffList, coursePresets, methodPresets, systemDefaultTemplate) {
     // 共有フォルダ接続
     const connectFolderBtn = this.container.querySelector('#btn-connect-folder');
     if (connectFolderBtn) {
@@ -516,8 +624,80 @@ export const SettingsPage = {
         const idx = parseInt(btn.dataset.index, 10);
         const delName = staffList[idx];
         staffList.splice(idx, 1);
-        await DB.saveSettings({ ...settings, staffNames: staffList });
+        await DB.saveSettings({ ...settings, staffNames: staffList, coursePresets, methodPresets });
         UI.showToast(`「${delName}」を削除しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'info');
+        this.render(this.container);
+      };
+    });
+
+    // 講座名マスタ追加
+    const courseInput = this.container.querySelector('#inp-new-course');
+    const addCoursePresetBtn = this.container.querySelector('#btn-add-course-preset');
+
+    const handleAddCoursePreset = async () => {
+      const name = courseInput?.value.trim();
+      if (!name) return;
+      if (coursePresets.includes(name)) {
+        UI.showToast('すでに登録されている講座名です', 'warning');
+        return;
+      }
+      coursePresets.push(name);
+      await DB.saveSettings({ ...settings, staffNames: staffList, coursePresets, methodPresets });
+      UI.showToast(`講座名「${name}」を追加しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'success');
+      this.render(this.container);
+    };
+
+    if (addCoursePresetBtn) addCoursePresetBtn.onclick = handleAddCoursePreset;
+    if (courseInput) {
+      courseInput.onkeydown = (e) => {
+        if (e.key === 'Enter') handleAddCoursePreset();
+      };
+    }
+
+    // 講座名マスタ削除
+    this.container.querySelectorAll('.btn-del-course').forEach(btn => {
+      btn.onclick = async () => {
+        const idx = parseInt(btn.dataset.index, 10);
+        const delName = coursePresets[idx];
+        coursePresets.splice(idx, 1);
+        await DB.saveSettings({ ...settings, staffNames: staffList, coursePresets, methodPresets });
+        UI.showToast(`講座名「${delName}」を削除しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'info');
+        this.render(this.container);
+      };
+    });
+
+    // 受講方法マスタ追加
+    const methodInput = this.container.querySelector('#inp-new-method');
+    const addMethodPresetBtn = this.container.querySelector('#btn-add-method-preset');
+
+    const handleAddMethodPreset = async () => {
+      const name = methodInput?.value.trim();
+      if (!name) return;
+      if (methodPresets.includes(name)) {
+        UI.showToast('すでに登録されている受講方法です', 'warning');
+        return;
+      }
+      methodPresets.push(name);
+      await DB.saveSettings({ ...settings, staffNames: staffList, coursePresets, methodPresets });
+      UI.showToast(`受講方法「${name}」を追加しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'success');
+      this.render(this.container);
+    };
+
+    if (addMethodPresetBtn) addMethodPresetBtn.onclick = handleAddMethodPreset;
+    if (methodInput) {
+      methodInput.onkeydown = (e) => {
+        if (e.key === 'Enter') handleAddMethodPreset();
+      };
+    }
+
+    // 受講方法マスタ削除
+    this.container.querySelectorAll('.btn-del-method').forEach(btn => {
+      btn.onclick = async () => {
+        const idx = parseInt(btn.dataset.index, 10);
+        const delName = methodPresets[idx];
+        methodPresets.splice(idx, 1);
+        await DB.saveSettings({ ...settings, staffNames: staffList, coursePresets, methodPresets });
+        UI.showToast(`受講方法「${delName}」を削除しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'info');
         this.render(this.container);
       };
     });
@@ -536,6 +716,8 @@ export const SettingsPage = {
           const updatedSettings = {
             ...settings,
             staffNames: staffList,
+            coursePresets,
+            methodPresets,
             defaultScanTemplate: templateToSave,
             checkThreshold: templateToSave.threshold !== undefined ? templateToSave.threshold : 0.25
           };
@@ -564,6 +746,7 @@ export const SettingsPage = {
         if (this.calibrator) {
           this.calibrator.setTemplate(systemDefaultTemplate);
           this.currentDefaultTemplate = JSON.parse(JSON.stringify(systemDefaultTemplate));
+          this.renderCustomBoxesList();
           UI.showToast('システム標準（初期値）に復元しました。「共通既定書式を保存」で確定してください。', 'info');
         }
       };
@@ -778,5 +961,169 @@ export const SettingsPage = {
       };
       reader.readAsText(file, 'UTF-8');
     };
+
+    // --- 志望校別対策講座・追加チェックボックス管理のイベント ---
+    const addCourseBtn = this.container.querySelector('#btn-add-course-checkbox');
+    const selCourse = this.container.querySelector('#sel-course-preset');
+    const selMethod = this.container.querySelector('#sel-method-preset');
+
+    const handleAddPreset = () => {
+      const course = (selCourse?.value || '').trim();
+      const method = (selMethod?.value || '').trim();
+      if (!course) {
+        UI.showToast('講座名を選択してください', 'warning');
+        return;
+      }
+      if (!method) {
+        UI.showToast('受講方法を選択してください', 'warning');
+        return;
+      }
+      const label = `${course}（${method}）`;
+      this.addNewCustomBox(label);
+      selCourse.value = '';
+      selMethod.value = '';
+    };
+
+    if (addCourseBtn) {
+      addCourseBtn.onclick = handleAddPreset;
+    }
+
+    // 自由記述追加
+    const addFreeBtn = this.container.querySelector('#btn-add-custom-free-checkbox');
+    const freeInput = this.container.querySelector('#inp-custom-box-name');
+
+    const handleAddFree = () => {
+      const label = (freeInput?.value || '').trim();
+      if (!label) {
+        UI.showToast('チェックボックスの項目名を入力してください', 'warning');
+        return;
+      }
+      this.addNewCustomBox(label);
+      freeInput.value = '';
+    };
+
+    if (addFreeBtn) {
+      addFreeBtn.onclick = handleAddFree;
+    }
+    if (freeInput) {
+      freeInput.onkeydown = (e) => {
+        if (e.key === 'Enter') handleAddFree();
+      };
+    }
+  },
+
+  /**
+   * 新しいカスタムチェックボックスをテンプレートに追加
+   */
+  addNewCustomBox(label) {
+    const cur = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
+    if (!cur.customBoxes) cur.customBoxes = [];
+
+    if (cur.customBoxes.some(b => b.label === label)) {
+      UI.showToast(`「${label}」は既に追加されています`, 'warning');
+      return;
+    }
+
+    const id = 'cbox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const count = cur.customBoxes.length;
+    const newBox = {
+      id,
+      label,
+      dx: -0.058,
+      dy: Math.round((0.360 + count * 0.050) * 1000) / 1000,
+      size: 0.032
+    };
+
+    cur.customBoxes.push(newBox);
+    this.currentDefaultTemplate = cur;
+
+    if (this.calibrator) {
+      this.calibrator.activeTab = id;
+      this.calibrator.setTemplate(cur);
+      this.calibrator.updateTabsUI();
+      this.calibrator.syncSlidersFromTemplate();
+      this.calibrator.drawOverlay();
+      this.calibrator.focusTargetArea();
+    }
+
+    this.renderCustomBoxesList();
+    UI.showToast(`「${label}」を追加しました。プレビューで枠線の位置を合わせて「共通既定書式を保存」を押してください。`, 'success', 4500);
+  },
+
+  /**
+   * 登録中カスタムチェックボックスの一覧を描画
+   */
+  renderCustomBoxesList() {
+    const listContainer = this.container.querySelector('#custom-boxes-list-container');
+    if (!listContainer) return;
+
+    const currentTemplate = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
+    const customBoxes = currentTemplate.customBoxes || [];
+
+    if (customBoxes.length === 0) {
+      listContainer.innerHTML = `
+        <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center;">
+          現在、追加チェックボックスはありません（上のフォームから「志望校別講座」または「自由項目」を追加してください）
+        </div>
+      `;
+      return;
+    }
+
+    listContainer.innerHTML = `
+      <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px;">
+        登録中の追加チェックボックス（全 ${customBoxes.length} 個）:
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        ${customBoxes.map(box => `
+          <div class="custom-box-tag" style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 6px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
+            <button type="button" class="btn btn-secondary btn-sm btn-focus-custom-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+              🎯 調整
+            </button>
+            <button type="button" class="btn-ghost btn-del-custom-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+              ✕
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    // 削除ボタン
+    listContainer.querySelectorAll('.btn-del-custom-box').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.id;
+        const cur = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
+        if (!cur.customBoxes) return;
+        const target = cur.customBoxes.find(b => b.id === id);
+        const label = target ? target.label : '';
+        cur.customBoxes = cur.customBoxes.filter(b => b.id !== id);
+        this.currentDefaultTemplate = cur;
+        if (this.calibrator) {
+          if (this.calibrator.activeTab === id) {
+            this.calibrator.activeTab = 'noChange';
+          }
+          this.calibrator.setTemplate(cur);
+          this.calibrator.updateTabsUI();
+          this.calibrator.syncSlidersFromTemplate();
+          this.calibrator.drawOverlay();
+        }
+        this.renderCustomBoxesList();
+        UI.showToast(`「${label}」を削除しました（「共通既定書式を保存」で確定してください）`, 'info');
+      };
+    });
+
+    // 調整フォーカスボタン
+    listContainer.querySelectorAll('.btn-focus-custom-box').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.id;
+        if (this.calibrator) {
+          this.calibrator.activeTab = id;
+          this.calibrator.updateTabsUI();
+          this.calibrator.syncSlidersFromTemplate();
+          this.calibrator.drawOverlay();
+          this.calibrator.focusTargetArea();
+        }
+      };
+    });
   }
 };

@@ -229,6 +229,8 @@ export const SyncManager = {
       const clientId = await this.getClientId();
       const sharedData = {
         staffNames: settings.staffNames || [],
+        coursePresets: settings.coursePresets || [],
+        methodPresets: settings.methodPresets || [],
         defaultScanTemplate: settings.defaultScanTemplate || null,
         updatedAt: new Date().toISOString(),
         updatedBy: clientId
@@ -244,7 +246,7 @@ export const SyncManager = {
 
   /**
    * 共有フォルダから settings.json を読み込み、ローカルDBにマージ
-   * （職員名と共通書式を全PCで同期）
+   * （職員名と共通書式、講座名・受講方法マスタを全PCで同期）
    */
   async readSharedSettings() {
     if (!FolderConnector.isConnected()) return null;
@@ -264,6 +266,24 @@ export const SyncManager = {
         const mergedStaff = Array.from(new Set([...sharedSettings.staffNames]));
         if (JSON.stringify(mergedStaff) !== JSON.stringify(localSettings.staffNames)) {
           localSettings.staffNames = mergedStaff;
+          hasChanges = true;
+        }
+      }
+
+      // 講座名マスタのマージ
+      if (Array.isArray(sharedSettings.coursePresets) && sharedSettings.coursePresets.length > 0) {
+        const mergedCourses = Array.from(new Set([...sharedSettings.coursePresets]));
+        if (JSON.stringify(mergedCourses) !== JSON.stringify(localSettings.coursePresets)) {
+          localSettings.coursePresets = mergedCourses;
+          hasChanges = true;
+        }
+      }
+
+      // 受講方法マスタのマージ
+      if (Array.isArray(sharedSettings.methodPresets) && sharedSettings.methodPresets.length > 0) {
+        const mergedMethods = Array.from(new Set([...sharedSettings.methodPresets]));
+        if (JSON.stringify(mergedMethods) !== JSON.stringify(localSettings.methodPresets)) {
+          localSettings.methodPresets = mergedMethods;
           hasChanges = true;
         }
       }

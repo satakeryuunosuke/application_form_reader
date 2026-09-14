@@ -238,6 +238,20 @@ export const ReviewPage = {
                 備考: ${item.remarks}
               </div>
             ` : ''}
+
+            <!-- 志望校別講座・追加チェック項目表示 -->
+            ${Object.keys(item.customChecks || {}).length > 0 ? `
+              <div style="margin-top: 6px; padding: 6px 10px; background: rgba(139, 92, 246, 0.08); border: 1px solid #ddd6fe; border-radius: var(--radius-sm); font-size: 0.8rem;">
+                <div style="font-weight: 700; color: #6d28d9; margin-bottom: 4px;">🎯 追加チェック項目:</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                  ${Object.values(item.customChecks).map(c => `
+                    <span class="badge ${c.isChecked ? 'badge-purple font-bold' : 'badge-gray'}" style="${c.isChecked ? 'background:#8b5cf6; color:#fff;' : ''} font-size: 0.76rem;">
+                      ${c.isChecked ? '✅' : '⬜'} ${c.label}
+                    </span>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
           </div>
         </div>
 
@@ -303,6 +317,28 @@ export const ReviewPage = {
                 </select>
               </div>
             </div>
+
+            <!-- 追加カスタムチェックボックスの修正UI -->
+            ${((this.project.scanTemplate?.customBoxes || []).length > 0 || Object.keys(item.customChecks || {}).length > 0) ? `
+              <div style="background: rgba(139, 92, 246, 0.05); border: 1px solid #c4b5fd; border-radius: var(--radius-sm); padding: 8px 10px;">
+                <div style="font-size: 0.78rem; font-weight: bold; color: #6d28d9; margin-bottom: 4px;">🎯 追加チェック項目:</div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  ${((this.project.scanTemplate?.customBoxes || []).length > 0
+                      ? this.project.scanTemplate.customBoxes
+                      : Object.values(item.customChecks || {})
+                    ).map(box => {
+                      const cur = item.customChecks?.[box.id];
+                      const isChk = cur ? cur.isChecked : false;
+                      return `
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
+                          <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''}>
+                          <span>${box.label}</span>
+                        </label>
+                      `;
+                    }).join('')}
+                </div>
+              </div>
+            ` : ''}
 
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label" style="font-size: 0.78rem;">備考・修正理由</label>
@@ -461,6 +497,18 @@ export const ReviewPage = {
         const enrollmentCourse = this.container.querySelector('#sel-edit-course').value;
         const remarks = this.container.querySelector('#inp-edit-remarks').value.trim();
 
+        // カスタムチェックボックスの修正状態を収集
+        const customChecks = {};
+        this.container.querySelectorAll('.chk-rev-custom-box-item').forEach(chk => {
+          const id = chk.dataset.id;
+          const label = chk.dataset.label;
+          customChecks[id] = {
+            id,
+            label,
+            isChecked: chk.checked
+          };
+        });
+
         UI.setButtonLoading(saveInlineBtn, true, '保存中...');
         try {
           await DB.saveSubmission(currentItem.submissionId, {
@@ -469,6 +517,7 @@ export const ReviewPage = {
             enrollmentClass,
             enrollmentCourse: enrollmentClass === '非受講' ? '非受講' : enrollmentCourse,
             remarks,
+            customChecks,
             reviewStatus: 'confirmed', // 修正後は確認済みに設定
             reviewedAt: new Date().toISOString(),
             reviewedBy: currentItem.approvedBy || '',

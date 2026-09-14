@@ -526,7 +526,16 @@ export const ListPage = {
           <td class="col-approver">${row.approvedBy || '-'}</td>
           <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
           <td class="col-remarks" title="${row.remarks || ''}">
-            ${row.remarks || '-'}
+            ${row.customChecks && Object.values(row.customChecks).some(c => c.isChecked) ? `
+              <div style="display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 2px;">
+                ${Object.values(row.customChecks).filter(c => c.isChecked).map(c => `
+                  <span class="badge badge-purple" style="font-size: 0.72rem; padding: 1px 5px; font-weight: bold; background: #8b5cf6; color: #fff;">
+                    🟪 ${c.label}
+                  </span>
+                `).join('')}
+              </div>
+            ` : ''}
+            <span>${row.remarks || (row.customChecks && Object.values(row.customChecks).some(c => c.isChecked) ? '' : '-')}</span>
           </td>
           <td class="col-history" style="text-align: center;">
             <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
@@ -726,6 +735,19 @@ export const ListPage = {
                             </div>
                           </div>
                         </div>
+
+                        ${item.customChecks && Object.values(item.customChecks).some(c => c.isChecked) ? `
+                          <div style="margin-top: 6px; padding: 6px 10px; background: rgba(139, 92, 246, 0.08); border: 1px solid #ddd6fe; border-radius: var(--radius-sm); font-size: 0.8rem;">
+                            <div style="font-size: 0.72rem; font-weight: bold; color: #6d28d9; margin-bottom: 3px;">🎯 志望校別講座・追加チェック項目:</div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                              ${Object.values(item.customChecks).filter(c => c.isChecked).map(c => `
+                                <span class="badge badge-purple font-bold" style="background:#8b5cf6; color:#fff; font-size: 0.74rem;">
+                                  ✅ ${c.label}
+                                </span>
+                              `).join('')}
+                            </div>
+                          </div>
+                        ` : ''}
 
                         ${item.remarks ? `
                           <div class="history-remarks-box">

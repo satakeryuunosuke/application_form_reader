@@ -43,6 +43,14 @@ class AppDatabase extends Dexie {
   }
 }
 
+export const DEFAULT_COURSE_PRESETS = [
+  '名古屋Ⅰ', '愛知淑徳Ⅰ', '滝Ⅰ', '金城学院', '東海Ⅰ', '名古屋Ⅱ', '全国Ⅰ'
+];
+
+export const DEFAULT_METHOD_PRESETS = [
+  'Zoom授業', '動画のみ', '御器所校', '千種校'
+];
+
 export const db = new AppDatabase();
 
 export const DB = {
@@ -57,15 +65,27 @@ export const DB = {
       await db.settings.put({
         key: 'app_settings',
         staffNames: ['山田 太郎', '佐藤 花子', '鈴木 一郎'],
+        coursePresets: [...DEFAULT_COURSE_PRESETS],
+        methodPresets: [...DEFAULT_METHOD_PRESETS],
         checkThreshold: 0.25,
         defaultScanTemplate: defaultTemplate,
         updatedAt: new Date().toISOString()
       });
-    } else if (!settings.defaultScanTemplate) {
-      await db.settings.update('app_settings', {
-        defaultScanTemplate: defaultTemplate,
-        updatedAt: new Date().toISOString()
-      });
+    } else {
+      const updates = {};
+      if (!settings.defaultScanTemplate) {
+        updates.defaultScanTemplate = defaultTemplate;
+      }
+      if (!Array.isArray(settings.coursePresets) || settings.coursePresets.length === 0) {
+        updates.coursePresets = [...DEFAULT_COURSE_PRESETS];
+      }
+      if (!Array.isArray(settings.methodPresets) || settings.methodPresets.length === 0) {
+        updates.methodPresets = [...DEFAULT_METHOD_PRESETS];
+      }
+      if (Object.keys(updates).length > 0) {
+        updates.updatedAt = new Date().toISOString();
+        await db.settings.update('app_settings', updates);
+      }
     }
 
     // 共有フォルダ接続ハンドルの復元試行
@@ -261,6 +281,7 @@ export const DB = {
         inputMethod: '',
         approvedBy: '',
         remarks: '',
+        customChecks: {},
         submittedAt: null,
         approvedAt: null,
         history: [],
@@ -425,6 +446,7 @@ export const DB = {
           enrollmentClass: sub.enrollmentClass || s.className,
           enrollmentCourse: sub.enrollmentCourse || (sub.enrollmentClass === '非受講' ? '非受講' : course),
           remarks: sub.remarks || '',
+          customChecks: sub.customChecks || {},
           scanImageBlob: sub.scanImageBlob || null
         });
       }
@@ -455,6 +477,7 @@ export const DB = {
         inputMethod: sub.inputMethod,
         approvedBy: sub.approvedBy,
         remarks: sub.remarks,
+        customChecks: sub.customChecks || {},
         scanImageBlob: sub.scanImageBlob,
         history,
         submittedAt: sub.submittedAt,
@@ -560,6 +583,7 @@ export const DB = {
       inputMethod: '',
       approvedBy: '',
       remarks: '',
+      customChecks: {},
       history: [],
       submittedAt: null,
       approvedAt: null,
@@ -673,6 +697,7 @@ export const DB = {
         inputMethod: '',
         approvedBy: '',
         remarks: '',
+        customChecks: {},
         history: [],
         submittedAt: null,
         approvedAt: null,
@@ -821,6 +846,7 @@ export const DB = {
       enrollmentClass: submissionData.enrollmentClass || existing.enrollmentClass || '',
       enrollmentCourse: submissionData.enrollmentCourse || existing.enrollmentCourse || '',
       remarks: submissionData.remarks !== undefined ? submissionData.remarks : (existing.remarks || ''),
+      customChecks: submissionData.customChecks !== undefined ? submissionData.customChecks : (existing.customChecks || {}),
       scanImageBlob: submissionData.scanImageBlob !== undefined ? submissionData.scanImageBlob : (existing.scanImageBlob || null)
     };
 
@@ -877,6 +903,7 @@ export const DB = {
           inputMethod: finalSubmission.inputMethod,
           approvedBy: finalSubmission.approvedBy,
           remarks: finalSubmission.remarks,
+          customChecks: finalSubmission.customChecks || {},
           submittedAt: finalSubmission.submittedAt,
           approvedAt: finalSubmission.approvedAt,
           reviewStatus,
