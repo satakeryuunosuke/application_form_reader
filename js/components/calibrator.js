@@ -57,6 +57,7 @@ export class TemplateCalibrator {
     this.updateTabsUI();
     this.syncSlidersFromTemplate();
     this.drawOverlay();
+    this.updateLegend();
     if (this.onChange) {
       this.onChange(this.template);
     }
@@ -110,11 +111,11 @@ export class TemplateCalibrator {
             <div class="calibrator-canvas-container" id="calib-canvas-container" title="ホイールで拡大縮小 / ドラッグで移動 / ダブルクリックで判定枠へズーム">
               <canvas id="calib-canvas"></canvas>
             </div>
-            <div class="calibrator-overlay-legend">
+            <div class="calibrator-overlay-legend" id="calib-overlay-legend">
               <span class="legend-item"><span class="legend-box legend-barcode"></span> バーコード（基準点）</span>
-              <span class="legend-item"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>
-              <span class="legend-item"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>
-              <span class="legend-item"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>
+              <span class="legend-item" id="legend-item-no-change"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>
+              <span class="legend-item" id="legend-item-has-change"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>
+              <span class="legend-item" id="legend-item-custom"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>
             </div>
           </div>
 
@@ -125,81 +126,100 @@ export class TemplateCalibrator {
               <div class="hint-title">💡 領域設定のポイント</div>
               <div class="hint-body">
                 チェックボックスの<strong>【枠線全体が判定領域（正方形）の中に完全に収まる】</strong>ように設定してください。<br>
-                ※ 枠線の黒画素が含まれるため、判定閾値は高め（推奨: <strong>25%〜30%</strong>、デフォルト: 25%）に設定されています。
+                ※ 枠線の黒画素が含まれるため、判定閾値は高め（推奨: <strong>25%〜30%</strong>、デフォルト: 25%）に設定されています。<br>
+                ※ 「変更なし」「変更あり」が不要な帳票では、枠を<strong>✕ボタン</strong>で削除できます。
               </div>
             </div>
 
-            <!-- タブ切り替え -->
+            <!-- タブ切り替え & 削除・再追加 -->
             <div class="calibrator-tabs" id="calib-tabs-container">
               ${this.renderTabsHtml()}
             </div>
 
             <!-- リアルタイム判定カード -->
             <div class="calibrator-eval-card">
-              <div class="eval-row">
+              <div class="eval-row" id="eval-no-change-row" style="${this.template.noChangeBox ? '' : 'display: none;'}">
                 <span class="eval-label">変更なし判定:</span>
                 <span id="eval-no-change-status" class="badge badge-gray">-</span>
                 <span class="text-mono eval-ratio" id="eval-no-change-ratio">黒画素: 0%</span>
               </div>
-              <div class="eval-row">
+              <div class="eval-row" id="eval-has-change-row" style="${this.template.hasChangeBox ? '' : 'display: none;'}">
                 <span class="eval-label">変更あり判定:</span>
                 <span id="eval-has-change-status" class="badge badge-gray">-</span>
                 <span class="text-mono eval-ratio" id="eval-has-change-ratio">黒画素: 0%</span>
               </div>
               <div id="eval-custom-rows"></div>
+              <div id="eval-empty-row" style="${!this.template.noChangeBox && !this.template.hasChangeBox && (!this.template.customBoxes || this.template.customBoxes.length === 0) ? '' : 'display: none;'} font-size: 0.8rem; color: var(--gray-500); text-align: center; padding: 4px;">
+                読取枠がありません
+              </div>
             </div>
 
             <!-- スライダーグループ -->
             <div class="calibrator-sliders-card">
-              <div class="calib-field">
-                <div class="calib-field-header">
-                  <label class="form-label">左右位置（Xオフセット）</label>
-                  <span class="calib-val-badge text-mono" id="val-dx">0.0%</span>
-                </div>
-                <div class="calib-input-row">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dx" data-delta="-0.002">◀</button>
-                  <input type="range" id="rng-dx" min="-0.30" max="0.30" step="0.001" class="form-range">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dx" data-delta="0.002">▶</button>
-                </div>
+              <div id="calib-no-target-msg" style="${this.getTargetBox() ? 'display: none;' : 'display: block;'} padding: 18px 12px; text-align: center; color: var(--gray-500); font-size: 0.85rem;">
+                ⚠️ 読取対象の枠がありません。<br>
+                上の「➕ 枠を追加」ボタン、または管理パネルから追加してください。
               </div>
 
-              <div class="calib-field">
-                <div class="calib-field-header">
-                  <label class="form-label">上下位置（Yオフセット）</label>
-                  <span class="calib-val-badge text-mono" id="val-dy">0.0%</span>
+              <div id="calib-sliders-body" style="${this.getTargetBox() ? 'display: block;' : 'display: none;'}">
+                <div class="calib-field">
+                  <div class="calib-field-header">
+                    <label class="form-label">左右位置（Xオフセット）</label>
+                    <span class="calib-val-badge text-mono" id="val-dx">0.0%</span>
+                  </div>
+                  <div class="calib-input-row">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dx" data-delta="-0.002">◀</button>
+                    <input type="range" id="rng-dx" min="-0.30" max="0.30" step="0.001" class="form-range">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dx" data-delta="0.002">▶</button>
+                  </div>
                 </div>
-                <div class="calib-input-row">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dy" data-delta="-0.002">▲</button>
-                  <input type="range" id="rng-dy" min="0.05" max="0.60" step="0.001" class="form-range">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dy" data-delta="0.002">▼</button>
-                </div>
-              </div>
 
-              <!-- 正方形サイズ 1パラメータ -->
-              <div class="calib-field">
-                <div class="calib-field-header">
-                  <label class="form-label">正方形サイズ（一辺の長さ）</label>
-                  <span class="calib-val-badge text-mono" id="val-size">3.2%</span>
+                <div class="calib-field">
+                  <div class="calib-field-header">
+                    <label class="form-label">上下位置（Yオフセット）</label>
+                    <span class="calib-val-badge text-mono" id="val-dy">0.0%</span>
+                  </div>
+                  <div class="calib-input-row">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dy" data-delta="-0.002">▲</button>
+                    <input type="range" id="rng-dy" min="0.05" max="0.60" step="0.001" class="form-range">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dy" data-delta="0.002">▼</button>
+                  </div>
                 </div>
-                <div class="calib-input-row">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="-0.001">➖</button>
-                  <input type="range" id="rng-size" min="0.015" max="0.070" step="0.001" class="form-range">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="0.001">➕</button>
-                </div>
-              </div>
 
-              <div class="calib-field" style="margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--gray-200);">
-                <div class="calib-field-header">
-                  <label class="form-label">判定感度（黒画素率 閾値）</label>
-                  <span class="calib-val-badge text-mono" id="val-threshold">25%</span>
+                <!-- 正方形サイズ 1パラメータ -->
+                <div class="calib-field">
+                  <div class="calib-field-header">
+                    <label class="form-label">正方形サイズ（一辺の長さ）</label>
+                    <span class="calib-val-badge text-mono" id="val-size">3.2%</span>
+                  </div>
+                  <div class="calib-input-row">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="-0.001">➖</button>
+                    <input type="range" id="rng-size" min="0.015" max="0.070" step="0.001" class="form-range">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="0.001">➕</button>
+                  </div>
                 </div>
-                <div class="calib-input-row">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="-0.01">➖</button>
-                  <input type="range" id="rng-threshold" min="0.00" max="0.60" step="0.01" class="form-range">
-                  <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="0.01">➕</button>
+
+                <div class="calib-field" style="margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--gray-200);">
+                  <div class="calib-field-header">
+                    <label class="form-label">判定感度（黒画素率 閾値）</label>
+                    <span class="calib-val-badge text-mono" id="val-threshold">25%</span>
+                  </div>
+                  <div class="calib-input-row">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="-0.01">➖</button>
+                    <input type="range" id="rng-threshold" min="0.00" max="0.60" step="0.01" class="form-range">
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="0.01">➕</button>
+                  </div>
+                  <div style="font-size: 0.72rem; color: var(--gray-500); margin-top: 2px;">
+                    ※ 枠線全体の黒画素を含むため、通常は 25%〜30% が推奨です
+                  </div>
                 </div>
-                <div style="font-size: 0.72rem; color: var(--gray-500); margin-top: 2px;">
-                  ※ 枠線全体の黒画素を含むため、通常は 25%〜30% が推奨です
+
+                <!-- 選択中の枠の削除アクションバー -->
+                <div id="calib-box-action-bar" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--gray-200); padding-top: 8px;">
+                  <span style="font-size: 0.78rem; color: var(--gray-600);">調整中: <strong id="calib-active-box-name">-</strong></span>
+                  <button type="button" id="btn-calib-del-active" class="btn btn-ghost btn-sm" style="color: var(--danger-solid); font-size: 0.78rem; padding: 2px 8px;" title="選択中の読取枠を削除">
+                    🗑️ この枠を削除
+                  </button>
                 </div>
               </div>
             </div>
@@ -222,27 +242,93 @@ export class TemplateCalibrator {
   }
 
   getTargetBox() {
-    if (this.activeTab === 'noChange') return this.template.noChangeBox;
-    if (this.activeTab === 'hasChange') return this.template.hasChangeBox;
-    const found = (this.template.customBoxes || []).find(b => b.id === this.activeTab);
-    return found || this.template.noChangeBox;
+    if (this.activeTab === 'noChange' && this.template.noChangeBox) return this.template.noChangeBox;
+    if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return this.template.hasChangeBox;
+    if (this.template.customBoxes && this.template.customBoxes.length > 0) {
+      const found = this.template.customBoxes.find(b => b.id === this.activeTab);
+      if (found) return found;
+    }
+    // activeTabが見つからない場合、存在する最初の枠をフォールバック
+    if (this.template.noChangeBox) {
+      this.activeTab = 'noChange';
+      return this.template.noChangeBox;
+    }
+    if (this.template.hasChangeBox) {
+      this.activeTab = 'hasChange';
+      return this.template.hasChangeBox;
+    }
+    if (this.template.customBoxes && this.template.customBoxes.length > 0) {
+      this.activeTab = this.template.customBoxes[0].id;
+      return this.template.customBoxes[0];
+    }
+    this.activeTab = null;
+    return null;
+  }
+
+  getActiveBoxLabel() {
+    if (this.activeTab === 'noChange' && this.template.noChangeBox) return '🟩 「変更なし」枠';
+    if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return '🟧 「変更あり」枠';
+    if (this.template.customBoxes) {
+      const found = this.template.customBoxes.find(b => b.id === this.activeTab);
+      if (found) return `🟪 「${found.label}」枠`;
+    }
+    return '';
   }
 
   renderTabsHtml() {
-    const customTabs = (this.template.customBoxes || []).map(box => `
-      <button type="button" class="calib-tab-btn ${this.activeTab === box.id ? 'active' : ''}" data-tab="${box.id}" style="${this.activeTab === box.id ? 'border-color: #8b5cf6; background: rgba(139, 92, 246, 0.12);' : ''}">
-        🟪 ${box.label}
-      </button>
+    const hasNoChange = !!this.template.noChangeBox;
+    const hasHasChange = !!this.template.hasChangeBox;
+    const customBoxes = this.template.customBoxes || [];
+
+    let tabsHtml = '';
+    if (hasNoChange) {
+      tabsHtml += `
+        <div class="calib-tab-item ${this.activeTab === 'noChange' ? 'active' : ''}" style="${this.activeTab === 'noChange' ? 'border-color: #16a34a;' : ''}">
+          <button type="button" class="calib-tab-btn" data-tab="noChange">🟩 「変更なし」枠</button>
+          <button type="button" class="calib-tab-del-btn" data-del="noChange" title="「変更なし」読取枠を削除">✕</button>
+        </div>
+      `;
+    }
+    if (hasHasChange) {
+      tabsHtml += `
+        <div class="calib-tab-item ${this.activeTab === 'hasChange' ? 'active' : ''}" style="${this.activeTab === 'hasChange' ? 'border-color: #ea580c;' : ''}">
+          <button type="button" class="calib-tab-btn" data-tab="hasChange">🟧 「変更あり」枠</button>
+          <button type="button" class="calib-tab-del-btn" data-del="hasChange" title="「変更あり」読取枠を削除">✕</button>
+        </div>
+      `;
+    }
+    tabsHtml += customBoxes.map(box => `
+      <div class="calib-tab-item ${this.activeTab === box.id ? 'active' : ''}" style="${this.activeTab === box.id ? 'border-color: #8b5cf6;' : ''}">
+        <button type="button" class="calib-tab-btn" data-tab="${box.id}">🟪 ${box.label}</button>
+        <button type="button" class="calib-tab-del-btn" data-del="${box.id}" title="「${box.label}」読取枠を削除">✕</button>
+      </div>
     `).join('');
 
+    if (!hasNoChange && !hasHasChange && customBoxes.length === 0) {
+      tabsHtml = `<div style="font-size: 0.8rem; color: var(--gray-500); padding: 4px 8px;">読取枠が登録されていません</div>`;
+    }
+
+    let actionsHtml = '';
+    if (!hasNoChange) {
+      actionsHtml += `
+        <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="noChange" style="font-size: 0.72rem; padding: 2px 8px; color: #16a34a; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
+          ➕ 「変更なし」枠を追加
+        </button>
+      `;
+    }
+    if (!hasHasChange) {
+      actionsHtml += `
+        <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="hasChange" style="font-size: 0.72rem; padding: 2px 8px; color: #ea580c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
+          ➕ 「変更あり」枠を追加
+        </button>
+      `;
+    }
+
     return `
-      <button type="button" class="calib-tab-btn ${this.activeTab === 'noChange' ? 'active' : ''}" data-tab="noChange">
-        🟩 「変更なし」枠
-      </button>
-      <button type="button" class="calib-tab-btn ${this.activeTab === 'hasChange' ? 'active' : ''}" data-tab="hasChange">
-        🟧 「変更あり」枠
-      </button>
-      ${customTabs}
+      <div class="calib-tabs-list">
+        ${tabsHtml}
+      </div>
+      ${actionsHtml ? `<div class="calib-tabs-actions">${actionsHtml}</div>` : ''}
     `;
   }
 
@@ -255,26 +341,113 @@ export class TemplateCalibrator {
   }
 
   bindTabEvents() {
-    const tabs = this.container.querySelectorAll('.calib-tab-btn');
-    tabs.forEach(t => {
-      t.onclick = () => {
-        tabs.forEach(b => {
-          b.classList.remove('active');
-          if (b.dataset.tab !== 'noChange' && b.dataset.tab !== 'hasChange') {
-            b.style.background = '';
-            b.style.borderColor = '';
-          }
-        });
-        t.classList.add('active');
-        this.activeTab = t.dataset.tab;
-        if (this.activeTab !== 'noChange' && this.activeTab !== 'hasChange') {
-          t.style.borderColor = '#8b5cf6';
-          t.style.background = 'rgba(139, 92, 246, 0.12)';
-        }
+    // タブ切り替えボタン
+    const tabBtns = this.container.querySelectorAll('.calib-tab-btn');
+    tabBtns.forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        this.activeTab = btn.dataset.tab;
+        this.updateTabsUI();
         this.syncSlidersFromTemplate();
         this.drawOverlay();
       };
     });
+
+    // タブ内個別削除ボタン (✕)
+    const delBtns = this.container.querySelectorAll('.calib-tab-del-btn');
+    delBtns.forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        this.deleteBox(btn.dataset.del);
+      };
+    });
+
+    // 削除済み標準枠の再追加ボタン
+    const restoreBtns = this.container.querySelectorAll('.calib-btn-restore-box');
+    restoreBtns.forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        this.addStandardBox(btn.dataset.restore);
+      };
+    });
+  }
+
+  deleteBox(typeOrId) {
+    let label = '';
+    if (typeOrId === 'noChange') {
+      if (!this.template.noChangeBox) return;
+      delete this.template.noChangeBox;
+      label = '変更なし';
+    } else if (typeOrId === 'hasChange') {
+      if (!this.template.hasChangeBox) return;
+      delete this.template.hasChangeBox;
+      label = '変更あり';
+    } else {
+      const found = (this.template.customBoxes || []).find(b => b.id === typeOrId);
+      label = found ? found.label : typeOrId;
+      this.template.customBoxes = (this.template.customBoxes || []).filter(b => b.id !== typeOrId);
+    }
+
+    // activeTab の更新
+    if (this.activeTab === typeOrId) {
+      if (this.template.noChangeBox) {
+        this.activeTab = 'noChange';
+      } else if (this.template.hasChangeBox) {
+        this.activeTab = 'hasChange';
+      } else if (this.template.customBoxes && this.template.customBoxes.length > 0) {
+        this.activeTab = this.template.customBoxes[0].id;
+      } else {
+        this.activeTab = null;
+      }
+    }
+
+    this.updateTabsUI();
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    this.updateLegend();
+
+    if (this.onChange) {
+      this.onChange(this.template);
+    }
+    UI.showToast(`「${label}」チェックボックスを削除しました`, 'info');
+  }
+
+  addStandardBox(type) {
+    const def = CheckboxEngine.getDefaultTemplate();
+    if (type === 'noChange') {
+      this.template.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+      this.activeTab = 'noChange';
+      UI.showToast('「変更なし」読取枠を追加しました', 'success');
+    } else if (type === 'hasChange') {
+      this.template.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+      this.activeTab = 'hasChange';
+      UI.showToast('「変更あり」読取枠を追加しました', 'success');
+    }
+
+    this.updateTabsUI();
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    this.updateLegend();
+
+    if (this.onChange) {
+      this.onChange(this.template);
+    }
+  }
+
+  updateLegend() {
+    const legend = this.container.querySelector('#calib-overlay-legend');
+    if (!legend) return;
+    let html = `<span class="legend-item"><span class="legend-box legend-barcode"></span> バーコード（基準点）</span>`;
+    if (this.template.noChangeBox) {
+      html += `<span class="legend-item"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>`;
+    }
+    if (this.template.hasChangeBox) {
+      html += `<span class="legend-item"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>`;
+    }
+    if (this.template.customBoxes && this.template.customBoxes.length > 0) {
+      html += `<span class="legend-item"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>`;
+    }
+    legend.innerHTML = html;
   }
 
   /**
@@ -292,6 +465,7 @@ export class TemplateCalibrator {
 
     const handleSliderInput = () => {
       const targetBox = this.getTargetBox();
+      if (!targetBox) return;
       targetBox.dx = parseFloat(rngDx.value);
       targetBox.dy = parseFloat(rngDy.value);
       targetBox.size = parseFloat(rngSize.value);
@@ -326,6 +500,7 @@ export class TemplateCalibrator {
           return;
         }
         const targetBox = this.getTargetBox();
+        if (!targetBox) return;
         const currentVal = target === 'size' ? (targetBox.size || targetBox.w || 0.022) : targetBox[target];
         targetBox[target] = Math.round((currentVal + delta) * 1000) / 1000;
         if (target === 'size') {
@@ -338,13 +513,26 @@ export class TemplateCalibrator {
       };
     });
 
+    // 選択中の枠を削除するボタン
+    const delActiveBtn = this.container.querySelector('#btn-calib-del-active');
+    if (delActiveBtn) {
+      delActiveBtn.onclick = () => {
+        if (!this.activeTab) return;
+        this.deleteBox(this.activeTab);
+      };
+    }
+
     // デフォルトに戻す
     const resetBtn = this.container.querySelector('#btn-calib-reset');
     if (resetBtn) {
       resetBtn.onclick = () => {
         this.template = JSON.parse(JSON.stringify(this.defaultResetTemplate));
+        if (!this.template.customBoxes) this.template.customBoxes = [];
+        this.activeTab = this.template.noChangeBox ? 'noChange' : (this.template.hasChangeBox ? 'hasChange' : null);
+        this.updateTabsUI();
         this.syncSlidersFromTemplate();
         this.drawOverlay();
+        this.updateLegend();
         UI.showToast(this.options.resetToastMsg || '標準デフォルト位置に復元しました', 'info');
         if (this.onChange) this.onChange(this.template);
       };
@@ -497,7 +685,8 @@ export class TemplateCalibrator {
    * 判定対象エリア（バーコード〜チェックボックス付近）へ自動ズーム＆フォーカス
    */
   focusTargetArea() {
-    if (!this.sourceCanvas || !this.barcodeBox) {
+    const targetBox = this.getTargetBox();
+    if (!this.sourceCanvas || !this.barcodeBox || !targetBox) {
       this.zoomLevel = 2.2;
       this.panX = 0;
       this.panY = 0;
@@ -509,7 +698,6 @@ export class TemplateCalibrator {
     const cvH = this.sourceCanvas.height;
     const bc = this.barcodeBox;
 
-    const targetBox = this.getTargetBox();
     const targetX = bc.centerX + (targetBox.dx || 0) * cvW;
     const targetY = bc.centerY + (targetBox.dy || 0) * cvH;
 
@@ -541,6 +729,22 @@ export class TemplateCalibrator {
    */
   syncSlidersFromTemplate() {
     const targetBox = this.getTargetBox();
+    const slidersBody = this.container.querySelector('#calib-sliders-body');
+    const noTargetMsg = this.container.querySelector('#calib-no-target-msg');
+
+    if (!targetBox) {
+      if (slidersBody) slidersBody.style.display = 'none';
+      if (noTargetMsg) noTargetMsg.style.display = 'block';
+      return;
+    }
+
+    if (slidersBody) slidersBody.style.display = 'block';
+    if (noTargetMsg) noTargetMsg.style.display = 'none';
+
+    const activeBoxNameEl = this.container.querySelector('#calib-active-box-name');
+    if (activeBoxNameEl) {
+      activeBoxNameEl.textContent = this.getActiveBoxLabel();
+    }
     
     const rngDx = this.container.querySelector('#rng-dx');
     const rngDy = this.container.querySelector('#rng-dy');
@@ -557,6 +761,11 @@ export class TemplateCalibrator {
 
   updateValueLabels() {
     const targetBox = this.getTargetBox();
+    const activeBoxNameEl = this.container.querySelector('#calib-active-box-name');
+    if (activeBoxNameEl) {
+      activeBoxNameEl.textContent = this.getActiveBoxLabel();
+    }
+    if (!targetBox) return;
     
     const valDx = this.container.querySelector('#val-dx');
     const valDy = this.container.querySelector('#val-dy');
@@ -981,16 +1190,20 @@ export class TemplateCalibrator {
 
     // 4. 黒画素率の評価
     const threshold = this.template.threshold !== undefined ? this.template.threshold : 0.25;
-    const noChangeEval = CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.noChangeRect, threshold);
-    const hasChangeEval = CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.hasChangeRect, threshold);
+    const noChangeEval = rects.noChangeRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.noChangeRect, threshold) : null;
+    const hasChangeEval = rects.hasChangeRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.hasChangeRect, threshold) : null;
 
     // 5. 「変更なし」枠（緑）
-    const isNoChangeActive = this.activeTab === 'noChange';
-    this.drawTargetBox(ctx, rects.noChangeRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '変更なし (正方形)', isNoChangeActive);
+    if (rects.noChangeRect) {
+      const isNoChangeActive = this.activeTab === 'noChange';
+      this.drawTargetBox(ctx, rects.noChangeRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '変更なし (正方形)', isNoChangeActive);
+    }
 
     // 6. 「変更あり」枠（橙）
-    const isHasChangeActive = this.activeTab === 'hasChange';
-    this.drawTargetBox(ctx, rects.hasChangeRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', '変更あり (正方形)', isHasChangeActive);
+    if (rects.hasChangeRect) {
+      const isHasChangeActive = this.activeTab === 'hasChange';
+      this.drawTargetBox(ctx, rects.hasChangeRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', '変更あり (正方形)', isHasChangeActive);
+    }
 
     // 7. カスタム追加枠（紫）
     const customEvals = [];
@@ -1052,11 +1265,18 @@ export class TemplateCalibrator {
   }
 
   updateEvalStatus(noChangeEval, hasChangeEval, customEvals = [], isDetected = true) {
+    const noRow = this.container.querySelector('#eval-no-change-row');
+    const hasRow = this.container.querySelector('#eval-has-change-row');
+    const emptyRow = this.container.querySelector('#eval-empty-row');
     const noStatusEl = this.container.querySelector('#eval-no-change-status');
     const noRatioEl = this.container.querySelector('#eval-no-change-ratio');
     const hasStatusEl = this.container.querySelector('#eval-has-change-status');
     const hasRatioEl = this.container.querySelector('#eval-has-change-ratio');
     const customRowsEl = this.container.querySelector('#eval-custom-rows');
+
+    if (noRow) noRow.style.display = noChangeEval ? '' : 'none';
+    if (hasRow) hasRow.style.display = hasChangeEval ? '' : 'none';
+    if (emptyRow) emptyRow.style.display = (!noChangeEval && !hasChangeEval && customEvals.length === 0) ? '' : 'none';
 
     if (!isDetected) {
       if (noStatusEl) {
@@ -1073,7 +1293,7 @@ export class TemplateCalibrator {
       return;
     }
 
-    if (noStatusEl && noRatioEl) {
+    if (noChangeEval && noStatusEl && noRatioEl) {
       const pct = Math.round(noChangeEval.darkRatio * 100);
       noRatioEl.textContent = `黒画素: ${pct}%`;
       if (noChangeEval.isChecked) {
@@ -1085,7 +1305,7 @@ export class TemplateCalibrator {
       }
     }
 
-    if (hasStatusEl && hasRatioEl) {
+    if (hasChangeEval && hasStatusEl && hasRatioEl) {
       const pct = Math.round(hasChangeEval.darkRatio * 100);
       hasRatioEl.textContent = `黒画素: ${pct}%`;
       if (hasChangeEval.isChecked) {

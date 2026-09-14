@@ -156,11 +156,15 @@ export const DB = {
         modified = true;
       }
     }
+    if (!p.projectType) {
+      p.projectType = (sessionName === '志望校別対策講座') ? 'selection' : 'confirmation';
+      modified = true;
+    }
     if (modified && p.id) {
       p.sessionName = sessionName;
       p.title = title;
       // バックグラウンドでIndexedDBを更新修復
-      db.projects.update(p.id, { sessionName, title }).catch(() => {});
+      db.projects.update(p.id, { sessionName, title, projectType: p.projectType }).catch(() => {});
     }
     return p;
   },
@@ -233,11 +237,12 @@ export const DB = {
   /**
    * プロジェクトを新規作成（メインPC操作）
    */
-  async createProject({ year, grade, sessionName, students, scanTemplate }) {
+  async createProject({ year, grade, sessionName, students, scanTemplate, projectType }) {
     const projectId = 'proj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const sessionDisplay = UI.formatSession(sessionName);
     const normalizedSession = (sessionDisplay === '前期' || sessionDisplay === '後期') ? sessionDisplay : sessionName;
     const title = `${year}年度 ${grade}年 ${sessionDisplay}`;
+    const determinedType = projectType || (normalizedSession === '志望校別対策講座' ? 'selection' : 'confirmation');
 
     const project = {
       id: projectId,
@@ -245,6 +250,7 @@ export const DB = {
       grade: parseInt(grade, 10),
       sessionName: normalizedSession,
       title,
+      projectType: determinedType,
       status: '進行中',
       completedAt: null,
       scanTemplate: scanTemplate || null,
@@ -462,6 +468,11 @@ export const DB = {
         enrollmentCourse = '-';
       }
 
+      const customChecks = sub.customChecks || {};
+      const selectedCourseObjs = Object.values(customChecks).filter(c => c && c.isChecked);
+      const selectedCourses = selectedCourseObjs.map(c => c.label || c.id || '');
+      const totalCourseCount = selectedCourses.length;
+
       return {
         studentId: s.id,
         nichinokenId: s.nichinokenId,
@@ -477,7 +488,9 @@ export const DB = {
         inputMethod: sub.inputMethod,
         approvedBy: sub.approvedBy,
         remarks: sub.remarks,
-        customChecks: sub.customChecks || {},
+        customChecks,
+        selectedCourses,
+        totalCourseCount,
         scanImageBlob: sub.scanImageBlob,
         history,
         submittedAt: sub.submittedAt,
@@ -1006,12 +1019,41 @@ export const DB = {
     let noChange = 0;
     let hasChange = 0;
     let notEnrolled = 0;
+    let totalSelectedCourses = 0;
+    const courseCountDistribution = {};
+    const methodDistribution = { Zoom: 0, 動画: 0, 校舎: 0, その他: 0 };
+    let hasCourseSubmissions = 0;
+    let zeroCourseSubmissions = 0;
 
     for (const item of list) {
       if (item.status === '未提出') {
         unsubmitted++;
       } else {
         submitted++;
+        const count = item.totalCourseCount || 0;
+        totalSelectedCourses += count;
+        if (count > 0) {
+          hasCourseSubmissions++;
+        } else {
+          zeroCourseSubmissions++;
+        }
+        if (item.selectedCourses && item.selectedCourses.length > 0) {
+          for (const c of item.selectedCourses) {
+            const cLabel = typeof c === 'string' ? c : (c?.label || '');
+            if (!cLabel) continue;
+            courseCountDistribution[cLabel] = (courseCountDistribution[cLabel] || 0) + 1;
+            const labelLower = cLabel.toLowerCase();
+            if (labelLower.includes('zoom')) {
+              methodDistribution['Zoom']++;
+            } else if (labelLower.includes('動画')) {
+              methodDistribution['動画']++;
+            } else if (labelLower.includes('校') || labelLower.includes('対面')) {
+              methodDistribution['校舎']++;
+            } else {
+              methodDistribution['その他']++;
+            }
+          }
+        }
         if (item.enrollmentClass === '非受講') {
           notEnrolled++;
         } else if (item.hasChange) {
@@ -1022,7 +1064,20 @@ export const DB = {
       }
     }
 
-    return { total, submitted, unsubmitted, noChange, hasChange, notEnrolled };
+    return {
+      total,
+      submitted,
+      unsubmitted,
+      noChange,
+      hasChange,
+      notEnrolled,
+      totalSelectedCourses,
+      avgCourses: submitted > 0 ? (Math.round((totalSelectedCourses / submitted) * 10) / 10) : 0,
+      hasCourseSubmissions,
+      zeroCourseSubmissions,
+      courseCountDistribution,
+      methodDistribution
+    };
   },
 
   /* ================= 3年保持管理 & バックアップ ================= */

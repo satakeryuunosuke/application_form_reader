@@ -79,22 +79,22 @@ export const ScanPage = {
     this.container.innerHTML = `
       <div class="card" style="max-width: 800px; margin: 0 auto;">
         <div class="card-header">
-          <h2 class="card-title">📷 スキャンPDF読取</h2>
-          <span class="badge badge-info">複数ページ連続スキャン対応</span>
+          <h2 class="card-title">📷 スキャン帳票読取（PDF / 画像）</h2>
+          <span class="badge badge-info">PDF・JPEG・PNG複数一括対応</span>
         </div>
 
         <div style="margin-bottom: var(--spacing-lg);">
           <p style="color: var(--gray-600); line-height: 1.6; font-size: 0.94rem;">
-            受講確認票をスキャンしたPDFファイルをアップロードしてください。<br>
-            バーコードから生徒を自動照合し、チェックボックスの塗りつぶしを判定して承認キューに追加します。
+            受講確認票をスキャンしたPDFファイルまたは画像ファイル（JPEG / PNG）をアップロードしてください。<br>
+            バーコードから生徒を自動照合し、チェックボックスのマーク判定を行って承認キューに追加します。
           </p>
         </div>
 
         <div id="pdf-dropzone" class="dropzone" style="margin-bottom: var(--spacing-lg);">
           <div class="dropzone-icon">📑</div>
-          <div class="dropzone-text">スキャンPDFをドラッグ＆ドロップ</div>
-          <div class="dropzone-subtext">またはここをクリックしてファイルを選択 (.pdf)</div>
-          <input type="file" id="pdf-file-input" accept=".pdf,application/pdf" style="display: none;">
+          <div class="dropzone-text">スキャンPDF・画像をドラッグ＆ドロップ</div>
+          <div class="dropzone-subtext">またはここをクリックしてファイルを選択 (.pdf, .jpg, .png / 複数可)</div>
+          <input type="file" id="pdf-file-input" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp" multiple style="display: none;">
         </div>
 
         <div id="scan-progress-box" class="hidden" style="margin-top: var(--spacing-lg);">
@@ -122,29 +122,34 @@ export const ScanPage = {
     dropzone.ondrop = (e) => {
       e.preventDefault();
       dropzone.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) {
-        this.processPdfFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        this.processFiles(e.dataTransfer.files);
       }
     };
 
     fileInput.onchange = () => {
-      if (fileInput.files.length > 0) {
-        this.processPdfFile(fileInput.files[0]);
+      if (fileInput.files && fileInput.files.length > 0) {
+        this.processFiles(fileInput.files);
       }
     };
   },
 
   /**
-   * PDF処理実行
+   * PDF・画像ファイル群の解析処理実行
    */
-  async processPdfFile(file) {
+  async processFiles(fileList) {
     if (this.project.status === '完了') {
       UI.showToast('完了したプロジェクトにはスキャン登録できません。「進行中に戻す」を行ってください。', 'warning');
       return;
     }
 
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      UI.showToast('PDFファイルを選択してください', 'error');
+    const files = Array.from(fileList).filter(f => {
+      const name = f.name.toLowerCase();
+      return name.endsWith('.pdf') || /\.(jpe?g|png|webp)$/i.test(name) || f.type === 'application/pdf' || f.type.startsWith('image/');
+    });
+
+    if (files.length === 0) {
+      UI.showToast('PDFまたは画像ファイル（.pdf, .jpg, .png）を選択してください', 'error');
       return;
     }
 
@@ -160,8 +165,8 @@ export const ScanPage = {
 
     try {
       const template = this.project.scanTemplate;
-      const scanResults = await ScannerEngine.processPdf(file, template, (p) => {
-        const pct = Math.round((p.current / p.total) * 100);
+      const scanResults = await ScannerEngine.processFiles(files, template, (p) => {
+        const pct = p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 0;
         statusText.textContent = p.status;
         percentText.textContent = `${pct}%`;
         progressBar.style.width = `${pct}%`;
@@ -257,6 +262,7 @@ export const ScanPage = {
       currentItem.existingSubmission = existingSub;
     }
     const isAlreadyApproved = existingSub && existingSub.status === '承認済';
+    const isSelectionMode = (this.project.projectType === 'selection');
 
     this.container.innerHTML = `
       <div class="scan-split-container">
@@ -281,7 +287,7 @@ export const ScanPage = {
             </div>
           </div>
           <div class="viewer-canvas-wrap" id="image-viewer-wrap" title="ホイールでズーム / クリックで全画面拡大">
-            <img id="scanned-image-preview" src="${currentItem.imageDataUrl}" style="transform: scale(${this.zoomLevel}); cursor: pointer;" alt="スキャン確認票" title="クリックして全画面拡大">
+            <img id="scanned-image-preview" src="${currentItem.overlayDataUrl || currentItem.imageDataUrl}" style="transform: scale(${this.zoomLevel}); cursor: pointer;" alt="スキャン確認票" title="クリックして全画面拡大">
           </div>
         </div>
 
@@ -342,68 +348,88 @@ export const ScanPage = {
               </div>
             </div>
 
-            <!-- 受講変更セクション -->
+            <!-- 受講変更 / 講座選択セクション -->
             <div class="approval-section" style="margin-bottom: 0;">
-              <div class="approval-section-title">
-                <span>📝 受講内容判定</span>
-                <span class="badge ${currentItem.detectedHasChange ? 'badge-warning' : 'badge-success'}">
-                  自動判定: ${currentItem.detectedHasChange ? '変更あり' : '変更なし'}
-                </span>
-              </div>
+              ${isSelectionMode ? `
+                <div class="approval-section-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span>🎯 志望校別 申込講座判定</span>
+                  <span id="scan-modal-sel-badge" class="badge badge-purple font-bold" style="font-size: 0.85rem; padding: 4px 10px; background: #8b5cf6; color: #fff;">
+                    選択中: <span id="scan-sel-count" class="text-mono" style="font-size: 1rem;">${Object.values(currentItem.checkResult?.customChecks || {}).filter(c => c.isChecked).length}</span> 講座
+                  </span>
+                </div>
 
-              <div class="radio-card-group">
-                <label class="radio-card ${!currentItem.detectedHasChange ? 'selected' : ''}" id="card-opt-no-change">
-                  <input type="radio" name="enrollment-choice" value="no-change" ${!currentItem.detectedHasChange ? 'checked' : ''}>
-                  <div>
-                    <div class="font-bold" style="font-size: 0.88rem;">変更なし（所属クラス・科目で受講）</div>
-                    <div style="font-size: 0.75rem; color: var(--gray-500); line-height: 1.3;">所属クラス・科目のまま受講</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <button type="button" id="btn-scan-select-all" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; border: 1px solid var(--gray-300);">全選択</button>
+                    <button type="button" id="btn-scan-select-none" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; border: 1px solid var(--gray-300);">全解除</button>
                   </div>
-                </label>
+                  <div id="scan-quick-method-filters" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
+                </div>
+                <div id="scan-zero-selected-note" style="margin-bottom: 8px; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.78rem; background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; display: ${Object.values(currentItem.checkResult?.customChecks || {}).filter(c => c.isChecked).length === 0 ? 'block' : 'none'};">
+                  ⚠️ 現在0講座選択です（未受講・不参加として登録されます）
+                </div>
+              ` : `
+                <div class="approval-section-title">
+                  <span>📝 受講内容判定</span>
+                  <span class="badge ${currentItem.detectedHasChange ? 'badge-warning' : 'badge-success'}">
+                    自動判定: ${currentItem.detectedHasChange ? '変更あり' : '変更なし'}
+                  </span>
+                </div>
 
-                <label class="radio-card ${currentItem.detectedHasChange ? 'selected' : ''}" id="card-opt-has-change">
-                  <input type="radio" name="enrollment-choice" value="has-change" ${currentItem.detectedHasChange ? 'checked' : ''}>
-                  <div style="flex: 1; min-width: 0;">
-                    <div class="font-bold" style="font-size: 0.88rem;">変更あり（クラス・科目変更 / 非受講）</div>
-                    <div style="margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap;">
-                      <div style="flex: 1; min-width: 140px;">
-                        <select id="sel-change-class" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
-                          <option value="">-- 変更先クラス / 非受講を選択 --</option>
-                          ${student ? `<option value="${student.className}">${student.className} クラス（クラス変更なし）</option>` : ''}
-                          ${this.classList.filter(c => !student || c !== student.className).map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
-                          <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
-                        </select>
-                      </div>
-                      <div style="width: 95px;" id="wrap-change-course">
-                        <select id="sel-change-course" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
-                          <option value="4科" ${student && student.course === '2科' ? '' : 'selected'}>4科</option>
-                          <option value="2科" ${student && student.course === '2科' ? 'selected' : ''}>2科</option>
-                        </select>
+                <div class="radio-card-group">
+                  <label class="radio-card ${!currentItem.detectedHasChange ? 'selected' : ''}" id="card-opt-no-change">
+                    <input type="radio" name="enrollment-choice" value="no-change" ${!currentItem.detectedHasChange ? 'checked' : ''}>
+                    <div>
+                      <div class="font-bold" style="font-size: 0.88rem;">変更なし（所属クラス・科目で受講）</div>
+                      <div style="font-size: 0.75rem; color: var(--gray-500); line-height: 1.3;">所属クラス・科目のまま受講</div>
+                    </div>
+                  </label>
+
+                  <label class="radio-card ${currentItem.detectedHasChange ? 'selected' : ''}" id="card-opt-has-change">
+                    <input type="radio" name="enrollment-choice" value="has-change" ${currentItem.detectedHasChange ? 'checked' : ''}>
+                    <div style="flex: 1; min-width: 0;">
+                      <div class="font-bold" style="font-size: 0.88rem;">変更あり（クラス・科目変更 / 非受講）</div>
+                      <div style="margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 140px;">
+                          <select id="sel-change-class" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
+                            <option value="">-- 変更先クラス / 非受講を選択 --</option>
+                            ${student ? `<option value="${student.className}">${student.className} クラス（クラス変更なし）</option>` : ''}
+                            ${this.classList.filter(c => !student || c !== student.className).map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
+                            <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
+                          </select>
+                        </div>
+                        <div style="width: 95px;" id="wrap-change-course">
+                          <select id="sel-change-course" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
+                            <option value="4科" ${student && student.course === '2科' ? '' : 'selected'}>4科</option>
+                            <option value="2科" ${student && student.course === '2科' ? 'selected' : ''}>2科</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </label>
-              </div>
+                  </label>
+                </div>
+              `}
 
               ${(this.project.scanTemplate?.customBoxes || []).length > 0 ? `
-                <div class="custom-checks-review-box" style="margin-top: 10px; background: rgba(139, 92, 246, 0.06); border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 10px 12px;">
-                  <div style="font-size: 0.8rem; font-weight: bold; color: #6d28d9; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>🎯 志望校別対策講座・追加チェック項目（自動読み取り結果）</span>
+                <div class="custom-checks-review-box" style="margin-top: ${isSelectionMode ? '0' : '10px'}; background: rgba(139, 92, 246, 0.06); border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 10px 12px;">
+                  <div style="font-size: 0.82rem; font-weight: bold; color: #6d28d9; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>🎯 ${isSelectionMode ? '希望講座一覧（クリックで選択・解除）' : '志望校別対策講座・追加チェック項目'}</span>
                     <span style="font-size: 0.72rem; color: var(--gray-500); font-weight: normal;">クリックで手動変更可能</span>
                   </div>
-                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px; ${isSelectionMode ? 'max-height: 240px; overflow-y: auto;' : ''}">
                     ${(this.project.scanTemplate.customBoxes).map(box => {
                       const det = currentItem.checkResult?.customChecks?.[box.id];
                       const isChecked = det ? det.isChecked : false;
                       const pct = det ? Math.round(det.darkRatio * 100) : 0;
                       return `
-                        <label style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--gray-200); cursor: pointer; user-select: none;">
+                        <label class="custom-box-check-row" style="display: flex; align-items: center; justify-content: space-between; background: ${isChecked ? '#f5f3ff' : '#fff'}; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#c4b5fd' : 'var(--gray-200)'}; cursor: pointer; user-select: none;">
                           <div style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" class="chk-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChecked ? 'checked' : ''}>
-                            <span style="font-weight: 700; font-size: 0.84rem; color: var(--gray-800);">${box.label}</span>
+                            <span style="font-weight: 700; font-size: 0.84rem; color: ${isChecked ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
                           </div>
                           <div style="display: flex; align-items: center; gap: 6px;">
                             <span class="badge ${isChecked ? 'badge-purple' : 'badge-gray'}" style="font-size: 0.72rem;">
-                              ${isChecked ? '✅ 検出' : '⬜ なし'}
+                              ${isChecked ? '✅ マーク検出' : '⬜ 未選択'}
                             </span>
                             <span class="text-mono" style="font-size: 0.72rem; color: var(--gray-500);">黒画素: ${pct}%</span>
                           </div>
@@ -412,11 +438,15 @@ export const ScanPage = {
                     }).join('')}
                   </div>
                 </div>
-              ` : ''}
+              ` : (isSelectionMode ? `
+                <div style="padding: 12px; background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); text-align: center; color: var(--gray-500); font-size: 0.82rem;">
+                  このプロジェクトには講座読取枠が登録されていません。「書式設定」から講座枠を追加してください。
+                </div>
+              ` : '')}
 
               <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.76rem; margin-bottom: 3px;">変更内容・特記事項（手入力メモ）</label>
-                <textarea id="txt-remarks" class="form-control" placeholder="理由や希望校舎など" style="min-height: 44px; height: 44px; font-size: 0.82rem; padding: 6px 10px;"></textarea>
+                <label class="form-label" style="font-size: 0.76rem; margin-bottom: 3px;">特記事項・メモ（手入力）</label>
+                <textarea id="txt-remarks" class="form-control" placeholder="特記事項やメモなど" style="min-height: 44px; height: 44px; font-size: 0.82rem; padding: 6px 10px;"></textarea>
               </div>
             </div>
           </div>
@@ -465,6 +495,7 @@ export const ScanPage = {
   },
 
   bindApprovalEvents(currentItem) {
+    const isSelectionMode = (this.project.projectType === 'selection');
     const img = this.container.querySelector('#scanned-image-preview');
     const zoomVal = this.container.querySelector('#zoom-val');
     const viewerWrap = this.container.querySelector('#image-viewer-wrap');
@@ -532,14 +563,14 @@ export const ScanPage = {
               </div>
             </div>
             <div class="modal-body" style="padding: 10px var(--spacing-lg); max-height: 86vh;">
-              <!-- 志望校別対策講座・追加チェックボックス管理パネル -->
+              <!-- 読取チェックボックス項目管理パネル -->
               <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
                 <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-                  <span>🎯 志望校別対策講座・追加チェックボックス管理</span>
+                  <span>🎯 読取チェックボックス項目管理（標準・志望校別講座）</span>
                   <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト個別設定</span>
                 </div>
                 <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
-                  このプロジェクトで読み取る「志望校別対策講座（講座名×受講方法）」や自由項目チェックボックスを追加・調整できます。
+                  このプロジェクトで読み取るチェックボックス（標準の変更なし・変更あり、志望校別対策講座、自由項目）を調整・削除・追加できます。
                 </p>
 
                 <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
@@ -573,7 +604,7 @@ export const ScanPage = {
                   </button>
                 </div>
 
-                <!-- 登録中カスタムボックス一覧 -->
+                <!-- 登録中チェックボックス一覧 -->
                 <div id="scan-custom-boxes-container"></div>
               </div>
 
@@ -607,61 +638,110 @@ export const ScanPage = {
         const mount = modal.querySelector('#scan-calib-container');
         const calibrator = new TemplateCalibrator(mount, currentTemplate, (t) => {
           currentTemplate = t;
+          renderScanCustomBoxes();
         });
 
-        // カスタムボックス一覧描画 & 操作
+        // チェックボックス一覧描画 & 操作
         const renderScanCustomBoxes = () => {
           const container = modal.querySelector('#scan-custom-boxes-container');
           if (!container) return;
           const boxes = currentTemplate.customBoxes || [];
-          if (boxes.length === 0) {
-            container.innerHTML = `
-              <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center;">
-                現在、追加チェックボックスはありません（上のフォームから講座名×受講方法を選択して追加してください）
+          const hasNoChange = !!currentTemplate.noChangeBox;
+          const hasHasChange = !!currentTemplate.hasChangeBox;
+          const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + boxes.length;
+
+          let standardBoxesHtml = '';
+          if (hasNoChange) {
+            standardBoxesHtml += `
+              <div style="background: #fff; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <span style="font-weight: 700; font-size: 0.85rem; color: #15803d;">🟩 変更なし</span>
+                <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                  🎯 調整
+                </button>
+                <button type="button" class="btn-ghost scan-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
+                  ✕
+                </button>
               </div>
             `;
-            return;
+          }
+          if (hasHasChange) {
+            standardBoxesHtml += `
+              <div style="background: #fff; border: 1px solid #fdba74; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
+                <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                  🎯 調整
+                </button>
+                <button type="button" class="btn-ghost scan-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
+                  ✕
+                </button>
+              </div>
+            `;
           }
 
-          container.innerHTML = `
-            <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px;">
-              登録中の追加チェックボックス（全 ${boxes.length} 個）:
+          const customBoxesHtml = boxes.map(box => `
+            <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
+              <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                🎯 調整
+              </button>
+              <button type="button" class="btn-ghost scan-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+                ✕
+              </button>
             </div>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              ${boxes.map(box => `
-                <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                  <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
-                  <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-                    🎯 調整
-                  </button>
-                  <button type="button" class="btn-ghost scan-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
-                    ✕
-                  </button>
-                </div>
-              `).join('')}
-            </div>
-          `;
+          `).join('');
 
+          let restoreButtonsHtml = '';
+          if (!hasNoChange) {
+            restoreButtonsHtml += `
+              <button type="button" class="btn btn-secondary btn-sm scan-btn-restore-box" data-type="noChange" style="padding: 3px 8px; font-size: 0.75rem; color: #15803d; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
+                ➕ 「変更なし」枠を追加
+              </button>
+            `;
+          }
+          if (!hasHasChange) {
+            restoreButtonsHtml += `
+              <button type="button" class="btn btn-secondary btn-sm scan-btn-restore-box" data-type="hasChange" style="padding: 3px 8px; font-size: 0.75rem; color: #c2410c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
+                ➕ 「変更あり」枠を追加
+              </button>
+            `;
+          }
+
+          if (totalBoxes === 0) {
+            container.innerHTML = `
+              <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center; margin-bottom: 8px;">
+                現在、読取チェックボックスはありません
+              </div>
+              ${restoreButtonsHtml ? `<div style="display: flex; gap: 8px; align-items: center;">${restoreButtonsHtml}</div>` : ''}
+            `;
+          } else {
+            container.innerHTML = `
+              <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                <span>登録中の読取チェックボックス（全 ${totalBoxes} 個）:</span>
+                ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                ${standardBoxesHtml}
+                ${customBoxesHtml}
+              </div>
+            `;
+          }
+
+          // 削除ボタンイベント
           container.querySelectorAll('.scan-btn-del-box').forEach(btn => {
             btn.onclick = () => {
               const id = btn.dataset.id;
-              const target = (currentTemplate.customBoxes || []).find(b => b.id === id);
-              const label = target ? target.label : '';
-              currentTemplate.customBoxes = (currentTemplate.customBoxes || []).filter(b => b.id !== id);
               if (calibrator) {
-                if (calibrator.activeTab === id) {
-                  calibrator.activeTab = 'noChange';
-                }
-                calibrator.setTemplate(currentTemplate);
-                calibrator.updateTabsUI();
-                calibrator.syncSlidersFromTemplate();
-                calibrator.drawOverlay();
+                calibrator.deleteBox(id);
+              } else {
+                if (id === 'noChange') delete currentTemplate.noChangeBox;
+                else if (id === 'hasChange') delete currentTemplate.hasChangeBox;
+                else currentTemplate.customBoxes = (currentTemplate.customBoxes || []).filter(b => b.id !== id);
+                renderScanCustomBoxes();
               }
-              renderScanCustomBoxes();
-              UI.showToast(`「${label}」を削除しました`, 'info');
             };
           });
 
+          // 調整フォーカスボタンイベント
           container.querySelectorAll('.scan-btn-focus-box').forEach(btn => {
             btn.onclick = () => {
               const id = btn.dataset.id;
@@ -671,6 +751,21 @@ export const ScanPage = {
                 calibrator.syncSlidersFromTemplate();
                 calibrator.drawOverlay();
                 calibrator.focusTargetArea();
+              }
+            };
+          });
+
+          // 復元・再追加ボタンイベント
+          container.querySelectorAll('.scan-btn-restore-box').forEach(btn => {
+            btn.onclick = () => {
+              const type = btn.dataset.type;
+              if (calibrator) {
+                calibrator.addStandardBox(type);
+              } else {
+                const def = CheckboxEngine.getDefaultTemplate();
+                if (type === 'noChange') currentTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+                else if (type === 'hasChange') currentTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+                renderScanCustomBoxes();
               }
             };
           });
@@ -784,7 +879,7 @@ export const ScanPage = {
       }
     };
 
-    // ラジオ選択制御
+    // ラジオ選択制御（受講確認モードのみ）
     const radioNoChange = this.container.querySelector('input[value="no-change"]');
     const radioHasChange = this.container.querySelector('input[value="has-change"]');
     const cardNoChange = this.container.querySelector('#card-opt-no-change');
@@ -792,38 +887,121 @@ export const ScanPage = {
     const changeClassSelect = this.container.querySelector('#sel-change-class');
     const changeCourseSelect = this.container.querySelector('#sel-change-course');
 
-    const updateRadioUI = () => {
-      if (radioNoChange.checked) {
-        cardNoChange.classList.add('selected');
-        cardHasChange.classList.remove('selected');
-        changeClassSelect.disabled = true;
-        if (changeCourseSelect) changeCourseSelect.disabled = true;
-      } else {
-        cardNoChange.classList.remove('selected');
-        cardHasChange.classList.add('selected');
-        changeClassSelect.disabled = false;
-        if (changeCourseSelect) {
-          changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
+    if (radioNoChange && radioHasChange && cardNoChange && cardHasChange) {
+      const updateRadioUI = () => {
+        if (radioNoChange.checked) {
+          cardNoChange.classList.add('selected');
+          cardHasChange.classList.remove('selected');
+          if (changeClassSelect) changeClassSelect.disabled = true;
+          if (changeCourseSelect) changeCourseSelect.disabled = true;
+        } else {
+          cardNoChange.classList.remove('selected');
+          cardHasChange.classList.add('selected');
+          if (changeClassSelect) {
+            changeClassSelect.disabled = false;
+            changeClassSelect.focus();
+          }
+          if (changeCourseSelect && changeClassSelect) {
+            changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
+          }
         }
-        changeClassSelect.focus();
-      }
-    };
+      };
 
-    changeClassSelect.onchange = () => {
-      if (changeCourseSelect) {
-        changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
+      if (changeClassSelect) {
+        changeClassSelect.onchange = () => {
+          if (changeCourseSelect) {
+            changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
+          }
+        };
       }
-    };
 
-    radioNoChange.onchange = updateRadioUI;
-    radioHasChange.onchange = updateRadioUI;
-    cardNoChange.onclick = () => { radioNoChange.checked = true; updateRadioUI(); };
-    cardHasChange.onclick = (e) => {
-      if (e.target !== changeClassSelect && e.target !== changeCourseSelect) {
-        radioHasChange.checked = true;
-        updateRadioUI();
+      radioNoChange.onchange = updateRadioUI;
+      radioHasChange.onchange = updateRadioUI;
+      cardNoChange.onclick = () => { radioNoChange.checked = true; updateRadioUI(); };
+      cardHasChange.onclick = (e) => {
+        if (e.target !== changeClassSelect && e.target !== changeCourseSelect) {
+          radioHasChange.checked = true;
+          updateRadioUI();
+        }
+      };
+    }
+
+    // 志望校別・追加チェックボックスのリアルタイムカウンター・スタイル連動
+    const customCheckboxes = this.container.querySelectorAll('.chk-custom-box-item');
+    const zeroNote = this.container.querySelector('#scan-zero-selected-note');
+
+    const updateCustomCount = () => {
+      let count = 0;
+      customCheckboxes.forEach(chk => {
+        if (chk.checked) count++;
+        const row = chk.closest('.custom-box-check-row');
+        if (row) {
+          row.style.background = chk.checked ? '#f5f3ff' : '#fff';
+          row.style.borderColor = chk.checked ? '#c4b5fd' : 'var(--gray-200)';
+          const textEl = row.querySelector('span[style*="font-weight: 700"]');
+          if (textEl) textEl.style.color = chk.checked ? '#6d28d9' : 'var(--gray-800)';
+          const badgeEl = row.querySelector('.badge');
+          if (badgeEl) {
+            badgeEl.className = `badge ${chk.checked ? 'badge-purple font-bold' : 'badge-gray'}`;
+            badgeEl.textContent = chk.checked ? '✅ 選択' : '⬜ 未選択';
+          }
+        }
+      });
+      const countEl = this.container.querySelector('#scan-sel-count');
+      if (countEl) countEl.textContent = count;
+      if (zeroNote) {
+        zeroNote.style.display = (count === 0) ? 'block' : 'none';
       }
     };
+    customCheckboxes.forEach(chk => {
+      chk.addEventListener('change', updateCustomCount);
+    });
+
+    // 講座選択モード専用: クイック選択ツールバー
+    const btnSelectAll = this.container.querySelector('#btn-scan-select-all');
+    const btnSelectNone = this.container.querySelector('#btn-scan-select-none');
+    if (btnSelectAll) {
+      btnSelectAll.onclick = () => {
+        customCheckboxes.forEach(chk => { chk.checked = true; });
+        updateCustomCount();
+      };
+    }
+    if (btnSelectNone) {
+      btnSelectNone.onclick = () => {
+        customCheckboxes.forEach(chk => { chk.checked = false; });
+        updateCustomCount();
+      };
+    }
+
+    // 形式別（Zoom / 対面 / 動画等）のクイックトグル生成
+    const quickMethodContainer = this.container.querySelector('#scan-quick-method-filters');
+    if (quickMethodContainer && customCheckboxes.length > 0) {
+      const methods = new Set();
+      customCheckboxes.forEach(chk => {
+        const label = chk.dataset.label || '';
+        const m = label.match(/[（\(](Zoom|対面|動画|テスト|校舎|午前|午後)[）\)]/i);
+        if (m) methods.add(m[1]);
+      });
+
+      if (methods.size > 0) {
+        quickMethodContainer.innerHTML = Array.from(methods).map(m => `
+          <button type="button" class="btn btn-ghost btn-sm btn-quick-method" data-method="${m}" style="font-size: 0.75rem; padding: 2px 7px; border: 1px solid var(--purple-300, #c4b5fd); color: #6d28d9; background: rgba(139, 92, 246, 0.05);">
+            ${m}のみ
+          </button>
+        `).join('');
+
+        quickMethodContainer.querySelectorAll('.btn-quick-method').forEach(btn => {
+          btn.onclick = () => {
+            const mTag = btn.dataset.method;
+            customCheckboxes.forEach(chk => {
+              const label = chk.dataset.label || '';
+              chk.checked = label.includes(mTag);
+            });
+            updateCustomCount();
+          };
+        });
+      }
+    }
 
     // 日能研番号の手動再検索
     const nichinokenIdInput = this.container.querySelector('#inp-nichinoken-id');
@@ -911,22 +1089,25 @@ export const ScanPage = {
         return;
       }
 
-      const hasChange = radioHasChange.checked;
+      let hasChange = false;
       let enrollmentClass = student.className;
       let enrollmentCourse = student.course || '4科';
 
-      if (hasChange) {
-        const selClass = changeClassSelect.value;
-        if (!selClass) {
-          UI.showToast('「変更あり」の場合、変更先クラスまたは非受講を選択してください', 'warning');
-          changeClassSelect.focus();
-          return;
-        }
-        enrollmentClass = selClass;
-        if (enrollmentClass === '非受講') {
-          enrollmentCourse = '非受講';
-        } else {
-          enrollmentCourse = changeCourseSelect ? changeCourseSelect.value : (student.course || '4科');
+      if (!isSelectionMode) {
+        hasChange = radioHasChange ? radioHasChange.checked : false;
+        if (hasChange) {
+          const selClass = changeClassSelect ? changeClassSelect.value : '';
+          if (!selClass) {
+            UI.showToast('「変更あり」の場合、変更先クラスまたは非受講を選択してください', 'warning');
+            if (changeClassSelect) changeClassSelect.focus();
+            return;
+          }
+          enrollmentClass = selClass;
+          if (enrollmentClass === '非受講') {
+            enrollmentCourse = '非受講';
+          } else {
+            enrollmentCourse = changeCourseSelect ? changeCourseSelect.value : (student.course || '4科');
+          }
         }
       }
 
@@ -943,6 +1124,15 @@ export const ScanPage = {
           isChecked: chk.checked
         };
       });
+
+      let selectedCourses = [];
+      if (isSelectionMode) {
+        selectedCourses = Object.values(customChecks).filter(c => c.isChecked).map(c => c.label);
+        const totalSelected = selectedCourses.length;
+        hasChange = totalSelected > 0;
+        enrollmentClass = totalSelected > 0 ? `${totalSelected}講座申込` : '0講座（未受講）';
+        enrollmentCourse = '-';
+      }
 
       isApproving = true;
       if (approveBtn) UI.setButtonLoading(approveBtn, true, '保存中...');
@@ -968,6 +1158,7 @@ export const ScanPage = {
           approvedBy: this.selectedStaff,
           remarks,
           customChecks,
+          selectedCourses,
           scanImageBlob: currentItem.imageDataUrl,
           submittedAt: new Date().toISOString(),
           approvedAt: new Date().toISOString()
@@ -983,6 +1174,7 @@ export const ScanPage = {
               hasChange,
               enrollmentClass,
               enrollmentCourse,
+              selectedCourses,
               remarks,
               staff: this.selectedStaff
             },
@@ -1009,74 +1201,86 @@ export const ScanPage = {
       } catch (err) {
         UI.showToast(`保存エラー: ${err.message}`, 'error');
         if (approveBtn) UI.setButtonLoading(approveBtn, false);
-      } finally {
         isApproving = false;
       }
     };
 
+    approveBtn.onclick = doApprove;
+
     // スキップ処理
-    const doSkip = () => {
+    skipBtn.onclick = () => {
+      UI.showToast(`ページ ${currentItem.pageNum} をスキップしました`, 'info', 1800);
       this.currentIndex++;
       this.renderApprovalView();
     };
 
-    if (approveBtn) approveBtn.onclick = doApprove;
-    if (skipBtn) skipBtn.onclick = doSkip;
-
-    // キーボードショートカット
+    // キーボードショートカット（Enterで承認、Spaceでスキップ）
     const keyHandler = (e) => {
-      // モーダル表示中や入力欄フォーカス時はスキップ
-      if (document.querySelector('.modal-overlay')) {
+      // モーダル表示中やテキスト入力中はショートカット無効
+      if (document.querySelector('.modal-overlay')) return;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        if (e.key === 'Enter' && e.ctrlKey) {
+          e.preventDefault();
+          doApprove();
+        }
         return;
       }
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
-        return;
-      }
+
       if (e.key === 'Enter') {
         e.preventDefault();
         doApprove();
       } else if (e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault();
-        doSkip();
+        skipBtn.click();
       }
     };
 
-    document.addEventListener('keydown', keyHandler, { once: true });
+    document.addEventListener('keydown', keyHandler);
+    this._currentKeyHandler = keyHandler;
   },
 
   /**
-   * 提出結果の保存と次ページ遷移
+   * 承認保存を実行して次ページへ進む
    */
-  async saveAndProceed(submissionId, student, dataToSave, isOverwrite = false) {
-    try {
-      await DB.saveSubmission(submissionId, dataToSave);
-      const syncText = FolderConnector.isConnected() ? '（共有同期済）' : '';
-      const msg = isOverwrite 
-        ? `${student.name} 様 (${student.nichinokenId}) を上書き登録しました${syncText}`
-        : `${student.name} 様 (${student.nichinokenId}) を承認しました${syncText}`;
-      UI.showToast(msg, 'success', 2000);
-
-      // プロジェクトヘッダーの統計およびバッジを即時更新
-      if (typeof ProjectPage.updateHeaderStats === 'function') {
-        ProjectPage.updateHeaderStats();
-      }
-
-      this.currentIndex++;
-      this.renderApprovalView();
-    } catch (err) {
-      console.error(err);
-      UI.showToast(`保存エラー: ${err.message}`, 'error');
+  async saveAndProceed(submissionId, student, dataToSave, isOverwrite) {
+    if (this._currentKeyHandler) {
+      document.removeEventListener('keydown', this._currentKeyHandler);
+      this._currentKeyHandler = null;
     }
+
+    await DB.saveSubmission(submissionId, dataToSave);
+
+    const syncNote = FolderConnector.isConnected() ? '（共有フォルダ同期済）' : '';
+    UI.showToast(
+      isOverwrite 
+        ? `${student.name} 様の確認票を上書き承認しました${syncNote}`
+        : `${student.name} 様の受講内容を承認しました${syncNote}`,
+      'success',
+      2000
+    );
+
+    this.pendingQueue[this.currentIndex].approved = true;
+    this.currentIndex++;
+
+    if (typeof ProjectPage.updateHeaderStats === 'function') {
+      ProjectPage.updateHeaderStats();
+    }
+
+    this.renderApprovalView();
   },
 
   /**
-   * すでに登録されている生徒の上書き確認モーダル（ポップアップ）
+   * 既存登録済み生徒に対する上書き確認モーダル
    */
   showOverwriteModal({ student, target, newData, onOverwrite, onSkip }) {
+    const isSelectionMode = (this.project.projectType === 'selection');
+    const prevCourses = target.selectedCourses || (target.customChecks ? Object.values(target.customChecks).filter(c => c.isChecked).map(c => c.label) : []);
+    const newCourses = newData.selectedCourses || [];
+
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-      <div class="modal-content" style="max-width: 530px;">
+      <div class="modal-content" style="max-width: 540px;">
         <div class="modal-header" style="background: var(--warning-bg); border-bottom: 1px solid var(--warning-border); padding: 14px 18px;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.5rem;">⚠️</span>

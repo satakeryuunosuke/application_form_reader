@@ -213,18 +213,27 @@ export const ReviewPage = {
           </div>
 
           <div style="display: grid; gap: 6px; font-size: 0.88rem;">
-            <div style="display: flex; justify-content: space-between;">
-              <span class="text-muted">受講判定:</span>
-              <span class="badge ${hasChange ? 'badge-warning' : 'badge-success'}" style="font-weight: 700;">
-                ${hasChange ? '変更あり' : '変更なし'}
-              </span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span class="text-muted">受講クラス:</span>
-              <span class="font-bold text-mono" style="font-size: 0.95rem; color: ${item.enrollmentClass === '非受講' ? 'var(--purple-solid)' : 'var(--primary-700)'};">
-                ${item.enrollmentClass || '-'} ${item.enrollmentCourse && item.enrollmentCourse !== '非受講' ? `(${item.enrollmentCourse})` : ''}
-              </span>
-            </div>
+            ${isSelectionMode ? `
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="text-muted">申込講座数:</span>
+                <span class="badge badge-purple font-bold" style="font-size: 0.88rem; padding: 2px 8px;">
+                  🎯 ${Object.values(item.customChecks || {}).filter(c => c.isChecked).length} 講座申込
+                </span>
+              </div>
+            ` : `
+              <div style="display: flex; justify-content: space-between;">
+                <span class="text-muted">受講判定:</span>
+                <span class="badge ${hasChange ? 'badge-warning' : 'badge-success'}" style="font-weight: 700;">
+                  ${hasChange ? '変更あり' : '変更なし'}
+                </span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span class="text-muted">受講クラス:</span>
+                <span class="font-bold text-mono" style="font-size: 0.95rem; color: ${item.enrollmentClass === '非受講' ? 'var(--purple-solid)' : 'var(--primary-700)'};">
+                  ${item.enrollmentClass || '-'} ${item.enrollmentCourse && item.enrollmentCourse !== '非受講' ? `(${item.enrollmentCourse})` : ''}
+                </span>
+              </div>
+            `}
             <div style="display: flex; justify-content: space-between;">
               <span class="text-muted">登録担当者:</span>
               <span><strong>${item.approvedBy || '-'}</strong> (${item.inputMethod || 'スキャン'})</span>
@@ -242,7 +251,7 @@ export const ReviewPage = {
             <!-- 志望校別講座・追加チェック項目表示 -->
             ${Object.keys(item.customChecks || {}).length > 0 ? `
               <div style="margin-top: 6px; padding: 6px 10px; background: rgba(139, 92, 246, 0.08); border: 1px solid #ddd6fe; border-radius: var(--radius-sm); font-size: 0.8rem;">
-                <div style="font-weight: 700; color: #6d28d9; margin-bottom: 4px;">🎯 追加チェック項目:</div>
+                <div style="font-weight: 700; color: #6d28d9; margin-bottom: 4px;">🎯 ${isSelectionMode ? '申込希望講座一覧:' : '追加チェック項目:'}</div>
                 <div style="display: flex; flex-wrap: wrap; gap: 6px;">
                   ${Object.values(item.customChecks).map(c => `
                     <span class="badge ${c.isChecked ? 'badge-purple font-bold' : 'badge-gray'}" style="${c.isChecked ? 'background:#8b5cf6; color:#fff;' : ''} font-size: 0.76rem;">
@@ -273,7 +282,7 @@ export const ReviewPage = {
           <div id="mismatch-note-wrap" style="display: ${isMismatch ? 'block' : 'none'};">
             <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px;">不一致・相違の内容メモ</label>
             <div style="display: flex; gap: 6px;">
-              <input type="text" id="inp-mismatch-note" class="form-control" placeholder="例: チェック漏れ、M1へ変更のはず、等" value="${item.reviewNote || ''}" style="font-size: 0.85rem;">
+              <input type="text" id="inp-mismatch-note" class="form-control" placeholder="例: チェック漏れ、講座相違、等" value="${item.reviewNote || ''}" style="font-size: 0.85rem;">
               <button id="btn-save-mismatch-note" class="btn btn-secondary btn-sm" style="white-space: nowrap;">保存</button>
             </div>
           </div>
@@ -285,43 +294,45 @@ export const ReviewPage = {
             ✏️ 画像と相違がある場合、その場でデータを修正する
           </summary>
           <div style="margin-top: 12px; display: grid; gap: 10px;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" style="font-size: 0.78rem;">受講選択</label>
-              <div style="display: flex; gap: 12px;">
-                <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer;">
-                  <input type="radio" name="edit-has-change" value="0" ${!hasChange ? 'checked' : ''}> 変更なし
-                </label>
-                <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer;">
-                  <input type="radio" name="edit-has-change" value="1" ${hasChange ? 'checked' : ''}> 変更あり
-                </label>
-              </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            ${isSelectionMode ? '' : `
               <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">受講クラス</label>
-                <select id="sel-edit-class" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
-                  <option value="${item.className}">所属: ${item.className}</option>
-                  <option value="非受講" ${item.enrollmentClass === '非受講' ? 'selected' : ''}>非受講</option>
-                  ${classOptions.filter(c => c !== item.className).map(c => `
-                    <option value="${c}" ${item.enrollmentClass === c ? 'selected' : ''}>${c}</option>
-                  `).join('')}
-                </select>
+                <label class="form-label" style="font-size: 0.78rem;">受講選択</label>
+                <div style="display: flex; gap: 12px;">
+                  <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer;">
+                    <input type="radio" name="edit-has-change" value="0" ${!hasChange ? 'checked' : ''}> 変更なし
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer;">
+                    <input type="radio" name="edit-has-change" value="1" ${hasChange ? 'checked' : ''}> 変更あり
+                  </label>
+                </div>
               </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">受講科目</label>
-                <select id="sel-edit-course" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
-                  <option value="4科" ${item.enrollmentCourse === '4科' ? 'selected' : ''}>4科</option>
-                  <option value="2科" ${item.enrollmentCourse === '2科' ? 'selected' : ''}>2科</option>
-                  <option value="非受講" ${item.enrollmentCourse === '非受講' ? 'selected' : ''}>非受講</option>
-                </select>
-              </div>
-            </div>
 
-            <!-- 追加カスタムチェックボックスの修正UI -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">受講クラス</label>
+                  <select id="sel-edit-class" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
+                    <option value="${item.className}">所属: ${item.className}</option>
+                    <option value="非受講" ${item.enrollmentClass === '非受講' ? 'selected' : ''}>非受講</option>
+                    ${classOptions.filter(c => c !== item.className).map(c => `
+                      <option value="${c}" ${item.enrollmentClass === c ? 'selected' : ''}>${c}</option>
+                    `).join('')}
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">受講科目</label>
+                  <select id="sel-edit-course" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
+                    <option value="4科" ${item.enrollmentCourse === '4科' ? 'selected' : ''}>4科</option>
+                    <option value="2科" ${item.enrollmentCourse === '2科' ? 'selected' : ''}>2科</option>
+                    <option value="非受講" ${item.enrollmentCourse === '非受講' ? 'selected' : ''}>非受講</option>
+                  </select>
+                </div>
+              </div>
+            `}
+
+            <!-- 講座・カスタムチェックボックスの修正UI -->
             ${((this.project.scanTemplate?.customBoxes || []).length > 0 || Object.keys(item.customChecks || {}).length > 0) ? `
               <div style="background: rgba(139, 92, 246, 0.05); border: 1px solid #c4b5fd; border-radius: var(--radius-sm); padding: 8px 10px;">
-                <div style="font-size: 0.78rem; font-weight: bold; color: #6d28d9; margin-bottom: 4px;">🎯 追加チェック項目:</div>
+                <div style="font-size: 0.78rem; font-weight: bold; color: #6d28d9; margin-bottom: 4px;">🎯 ${isSelectionMode ? '申込希望講座の修正:' : '追加チェック項目:'}</div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   ${((this.project.scanTemplate?.customBoxes || []).length > 0
                       ? this.project.scanTemplate.customBoxes
@@ -332,7 +343,7 @@ export const ReviewPage = {
                       return `
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
                           <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''}>
-                          <span>${box.label}</span>
+                          <span style="font-weight: ${isChk ? 'bold' : 'normal'};">${box.label}</span>
                         </label>
                       `;
                     }).join('')}
@@ -491,11 +502,12 @@ export const ReviewPage = {
     const saveInlineBtn = this.container.querySelector('#btn-save-inline-edit');
     if (saveInlineBtn) {
       saveInlineBtn.onclick = async () => {
+        const isSelectionMode = (this.project.projectType === 'selection');
         const hasChangeRadio = this.container.querySelector('input[name="edit-has-change"]:checked');
-        const hasChange = hasChangeRadio?.value === '1';
-        const enrollmentClass = this.container.querySelector('#sel-edit-class').value;
-        const enrollmentCourse = this.container.querySelector('#sel-edit-course').value;
-        const remarks = this.container.querySelector('#inp-edit-remarks').value.trim();
+        let hasChange = hasChangeRadio?.value === '1';
+        let enrollmentClass = this.container.querySelector('#sel-edit-class')?.value || currentItem.className;
+        let enrollmentCourse = this.container.querySelector('#sel-edit-course')?.value || currentItem.course || '4科';
+        const remarks = this.container.querySelector('#inp-edit-remarks')?.value.trim() || '';
 
         // カスタムチェックボックスの修正状態を収集
         const customChecks = {};
@@ -508,6 +520,13 @@ export const ReviewPage = {
             isChecked: chk.checked
           };
         });
+
+        if (isSelectionMode) {
+          const totalSelected = Object.values(customChecks).filter(c => c.isChecked).length;
+          hasChange = totalSelected > 0;
+          enrollmentClass = totalSelected > 0 ? `${totalSelected}講座申込` : '0講座（未受講）';
+          enrollmentCourse = '-';
+        }
 
         UI.setButtonLoading(saveInlineBtn, true, '保存中...');
         try {

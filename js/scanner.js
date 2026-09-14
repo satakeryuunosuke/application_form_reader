@@ -102,69 +102,258 @@ export const ScannerEngine = {
 
       await page.render({ canvasContext: ctx, viewport }).promise;
 
-      // 1. バーコード検出（Pure 1D 高速スキャン + バンド射影 + ZXing ROI ハイブリッド）
-      const barcodeResult = await this.detectBarcode(canvas);
-
-      // 2. チェックボックス判定
-      let checkResult = { hasChange: false, noChangeChecked: false, hasChangeChecked: false, customChecks: {} };
-      let templateApplied = false;
-
-      let targetRects = null;
-      if (barcodeResult.found && template) {
-        targetRects = CheckboxEngine.calculateTargetRects(canvas, barcodeResult.box, template);
-        const noChangeEval = CheckboxEngine.evaluateCheckbox(canvas, targetRects.noChangeRect, targetRects.threshold);
-        const hasChangeEval = CheckboxEngine.evaluateCheckbox(canvas, targetRects.hasChangeRect, targetRects.threshold);
-
-        const customChecks = {};
-        if (targetRects.customRects && targetRects.customRects.length > 0) {
-          for (const item of targetRects.customRects) {
-            const ev = CheckboxEngine.evaluateCheckbox(canvas, item.rect, targetRects.threshold);
-            customChecks[item.id] = {
-              id: item.id,
-              label: item.label,
-              isChecked: ev.isChecked,
-              darkRatio: ev.darkRatio
-            };
-          }
-        }
-
-        checkResult = {
-          noChangeChecked: noChangeEval.isChecked,
-          hasChangeChecked: hasChangeEval.isChecked,
-          noChangeRatio: noChangeEval.darkRatio,
-          hasChangeRatio: hasChangeEval.darkRatio,
-          // 「変更あり」にチェックがあれば変更あり、そうでなければ変更なし
-          hasChange: hasChangeEval.isChecked && !noChangeEval.isChecked,
-          customChecks
-        };
-        templateApplied = true;
-      }
-
-      // 3. ページ画像データURL（プレビュー用）
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-      // 4. バリデーションチェック（前後の*をトリムして評価）
-      const rawText = barcodeResult.text || '';
-      const validation = rawText ? Validator.validateNichinokenId(rawText) : { isValid: false };
-
-      results.push({
-        pageNum,
-        barcodeFound: barcodeResult.found,
-        rawNichinokenId: validation.cleaned || rawText.replace(/^\*+|\*+$/g, ''),
-        validatedId: validation.isValid ? validation.cleaned : (validation.cleaned || rawText.replace(/^\*+|\*+$/g, '')),
-        isIdValid: validation.isValid,
-        idValidationReason: validation.reason || '',
-        barcodeBox: barcodeResult.box,
-        targetRects,
-        checkResult,
-        templateApplied,
-        imageDataUrl: dataUrl,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height
-      });
+      const pageResult = await this.analyzeCanvas(canvas, template);
+      pageResult.pageNum = pageNum;
+      results.push(pageResult);
     }
 
     return results;
+  },
+
+  /**
+   * 画像ファイル（File/Blob）から Canvas を生成
+   */
+  async imageToCanvas(fileOrBlob) {
+    if (typeof createImageBitmap === 'function') {
+      try {
+        const bmp = await createImageBitmap(fileOrBlob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close();
+        return canvas;
+      } catch (e) {
+        console.warn('createImageBitmap failed, fallback to Image:', e);
+      }
+    }
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(fileOrBlob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas);
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        reject(new Error('画像の読み込みに失敗しました'));
+      };
+      img.src = url;
+    });
+  },
+
+  /**
+   * 単一画像ファイル（JPEG / PNG等）を解析してスキャン結果を返す
+   * 
+   * @param {File|Blob} imageFile
+   * @param {object} template 読取テンプレート
+   * @returns {Promise<object>}
+   */
+  async processImage(imageFile, template) {
+    const canvas = await this.imageToCanvas(imageFile);
+    const result = await this.analyzeCanvas(canvas, template);
+    result.pageNum = 1;
+    result.fileName = imageFile.name || '画像ファイル';
+    return result;
+  },
+
+  /**
+   * PDFおよび画像ファイルをまとめて順次解析し、全スキャン結果リストを返す
+   * 
+   * @param {FileList|Array<File>} fileList
+   * @param {object} template 読取テンプレート
+   * @param {(progress: { current: number, total: number, status: string }) => void} onProgress
+   * @returns {Promise<Array<object>>}
+   */
+  async processFiles(fileList, template, onProgress) {
+    const results = [];
+    const files = Array.from(fileList);
+    const totalFiles = files.length;
+
+    for (let i = 0; i < totalFiles; i++) {
+      const file = files[i];
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+      if (isPdf) {
+        const pdfResults = await this.processPdf(file, template, (prog) => {
+          if (onProgress) {
+            onProgress({
+              current: results.length + prog.current,
+              total: results.length + (prog.total - prog.current + 1),
+              status: `[${i + 1}/${totalFiles}] ${file.name} (ページ ${prog.current} / ${prog.total})...`
+            });
+          }
+        });
+        results.push(...pdfResults);
+      } else if (file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name)) {
+        if (onProgress) {
+          onProgress({
+            current: results.length + 1,
+            total: Math.max(results.length + 1, totalFiles),
+            status: `[${i + 1}/${totalFiles}] ${file.name} を解析中...`
+          });
+        }
+        const imgResult = await this.processImage(file, template);
+        imgResult.pageNum = results.length + 1;
+        results.push(imgResult);
+      }
+    }
+
+    // 連番を再付与
+    results.forEach((r, idx) => {
+      r.pageNum = idx + 1;
+    });
+
+    return results;
+  },
+
+  /**
+   * 単一 Canvas に対するバーコード検出・チェックボックス判定の共通コアロジック
+   * 
+   * @param {HTMLCanvasElement} canvas
+   * @param {object} template
+   * @returns {Promise<object>}
+   */
+  async analyzeCanvas(canvas, template) {
+    this.initReader();
+
+    // 1. バーコード検出（Pure 1D 高速スキャン + バンド射影 + ZXing ROI ハイブリッド）
+    const barcodeResult = await this.detectBarcode(canvas);
+
+    // 2. チェックボックス判定
+    let checkResult = { hasChange: false, noChangeChecked: false, hasChangeChecked: false, customChecks: {} };
+    let templateApplied = false;
+    let targetRects = null;
+
+    if (barcodeResult.found && template) {
+      targetRects = CheckboxEngine.calculateTargetRects(canvas, barcodeResult.box, template);
+      const noChangeEval = targetRects.noChangeRect
+        ? CheckboxEngine.evaluateCheckbox(canvas, targetRects.noChangeRect, targetRects.threshold)
+        : { isChecked: false, darkRatio: 0 };
+      const hasChangeEval = targetRects.hasChangeRect
+        ? CheckboxEngine.evaluateCheckbox(canvas, targetRects.hasChangeRect, targetRects.threshold)
+        : { isChecked: false, darkRatio: 0 };
+
+      const customChecks = {};
+      if (targetRects.customRects && targetRects.customRects.length > 0) {
+        for (const item of targetRects.customRects) {
+          const ev = CheckboxEngine.evaluateCheckbox(canvas, item.rect, targetRects.threshold);
+          customChecks[item.id] = {
+            id: item.id,
+            label: item.label,
+            isChecked: ev.isChecked,
+            darkRatio: ev.darkRatio
+          };
+        }
+      }
+
+      let hasChange = false;
+      if (targetRects.hasChangeRect && targetRects.noChangeRect) {
+        hasChange = hasChangeEval.isChecked && !noChangeEval.isChecked;
+      } else if (targetRects.hasChangeRect) {
+        hasChange = hasChangeEval.isChecked;
+      } else if (targetRects.noChangeRect) {
+        hasChange = !noChangeEval.isChecked;
+      } else {
+        hasChange = false;
+      }
+
+      checkResult = {
+        noChangeChecked: noChangeEval.isChecked,
+        hasChangeChecked: hasChangeEval.isChecked,
+        noChangeRatio: noChangeEval.darkRatio,
+        hasChangeRatio: hasChangeEval.darkRatio,
+        hasChange,
+        customChecks
+      };
+      templateApplied = true;
+    }
+
+    // 3. ページ画像データURL（生画像 & 枠線オーバーレイ画像）
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+    let overlayDataUrl = dataUrl;
+    try {
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = canvas.width;
+      previewCanvas.height = canvas.height;
+      const pctx = previewCanvas.getContext('2d');
+      pctx.drawImage(canvas, 0, 0);
+
+      // バーコード検出枠の描画（緑）
+      if (barcodeResult.found && barcodeResult.box) {
+        const b = barcodeResult.box;
+        pctx.strokeStyle = '#22c55e';
+        pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
+        pctx.strokeRect(b.x, b.y, b.width, b.height);
+        pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+        pctx.fillRect(b.x, b.y, b.width, b.height);
+      }
+
+      // 標準チェックボックス枠の描画
+      if (targetRects) {
+        if (targetRects.noChangeRect) {
+          const r = targetRects.noChangeRect;
+          const isChk = checkResult.noChangeChecked;
+          pctx.strokeStyle = isChk ? '#22c55e' : '#94a3b8';
+          pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
+          pctx.strokeRect(r.x, r.y, r.width, r.height);
+          pctx.fillStyle = isChk ? 'rgba(34, 197, 94, 0.25)' : 'rgba(148, 163, 184, 0.1)';
+          pctx.fillRect(r.x, r.y, r.width, r.height);
+        }
+        if (targetRects.hasChangeRect) {
+          const r = targetRects.hasChangeRect;
+          const isChk = checkResult.hasChangeChecked;
+          pctx.strokeStyle = isChk ? '#eab308' : '#94a3b8';
+          pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
+          pctx.strokeRect(r.x, r.y, r.width, r.height);
+          pctx.fillStyle = isChk ? 'rgba(234, 179, 8, 0.25)' : 'rgba(148, 163, 184, 0.1)';
+          pctx.fillRect(r.x, r.y, r.width, r.height);
+        }
+
+        // 講座/カスタムチェックボックス枠の描画（選択: 紫、未選択: スレート）
+        if (targetRects.customRects && targetRects.customRects.length > 0) {
+          targetRects.customRects.forEach(item => {
+            const r = item.rect;
+            const isChk = checkResult.customChecks?.[item.id]?.isChecked;
+            pctx.strokeStyle = isChk ? '#8b5cf6' : '#64748b';
+            pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0028));
+            pctx.strokeRect(r.x, r.y, r.width, r.height);
+            pctx.fillStyle = isChk ? 'rgba(139, 92, 246, 0.28)' : 'rgba(100, 116, 139, 0.08)';
+            pctx.fillRect(r.x, r.y, r.width, r.height);
+          });
+        }
+      }
+      overlayDataUrl = previewCanvas.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+      console.warn('Overlay preview generation failed:', e);
+    }
+
+    // 4. バリデーションチェック（前後の*をトリムして評価）
+    const rawText = barcodeResult.text || '';
+    const validation = rawText ? Validator.validateNichinokenId(rawText) : { isValid: false };
+
+    return {
+      barcodeFound: barcodeResult.found,
+      rawNichinokenId: validation.cleaned || rawText.replace(/^\*+|\*+$/g, ''),
+      validatedId: validation.isValid ? validation.cleaned : (validation.cleaned || rawText.replace(/^\*+|\*+$/g, '')),
+      isIdValid: validation.isValid,
+      idValidationReason: validation.reason || '',
+      barcodeBox: barcodeResult.box,
+      targetRects,
+      checkResult,
+      templateApplied,
+      imageDataUrl: dataUrl,
+      overlayDataUrl: overlayDataUrl,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height
+    };
   },
 
   /**

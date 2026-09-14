@@ -159,8 +159,8 @@ export const CheckboxEngine = {
     }));
 
     return {
-      noChangeRect: getPixelRect(t.noChangeBox),
-      hasChangeRect: getPixelRect(t.hasChangeBox),
+      noChangeRect: t.noChangeBox ? getPixelRect(t.noChangeBox) : null,
+      hasChangeRect: t.hasChangeBox ? getPixelRect(t.hasChangeBox) : null,
       customRects,
       threshold: t.threshold !== undefined ? t.threshold : 0.20,
       angle

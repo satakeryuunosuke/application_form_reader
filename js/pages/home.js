@@ -213,6 +213,7 @@ export const HomePage = {
               <span class="badge badge-info">${p.year}年度</span>
               <span class="badge badge-purple">${p.grade}年生</span>
               <span class="badge badge-success">${UI.formatSession(p.sessionName)}</span>
+              ${p.projectType === 'selection' ? '<span class="badge badge-purple font-bold" style="font-size: 0.72rem; padding: 2px 6px;">🎯 講座選択</span>' : ''}
               ${isCompleted
                 ? '<span class="badge badge-gray" style="font-weight: 700;">🏁 完了</span>'
                 : '<span class="badge badge-success" style="font-weight: 700; background: #e8f5e9; color: #2e7d32;">🟢 進行中</span>'
@@ -236,20 +237,37 @@ export const HomePage = {
             <div style="width: ${percent}%; height: 100%; background: ${isCompleted ? 'var(--gray-500)' : 'linear-gradient(90deg, var(--primary-500), var(--secondary))'};"></div>
           </div>
 
-          <div class="project-stats">
-            <div class="stat-item">
-              <div class="stat-num" style="color: var(--success-solid);">${stats.noChange}</div>
-              <div class="stat-label">変更なし</div>
+          ${p.projectType === 'selection' ? `
+            <div class="project-stats">
+              <div class="stat-item">
+                <div class="stat-num" style="color: #6d28d9;">${stats.totalSelectedCourses || 0}</div>
+                <div class="stat-label">総申込講座数</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num" style="color: var(--primary-600);">${stats.hasCourseSubmissions || 0}</div>
+                <div class="stat-label">申込者数</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num" style="color: var(--danger-solid);">${stats.unsubmitted}</div>
+                <div class="stat-label">未提出</div>
+              </div>
             </div>
-            <div class="stat-item">
-              <div class="stat-num" style="color: var(--secondary);">${stats.hasChange}</div>
-              <div class="stat-label">変更あり</div>
+          ` : `
+            <div class="project-stats">
+              <div class="stat-item">
+                <div class="stat-num" style="color: var(--success-solid);">${stats.noChange}</div>
+                <div class="stat-label">変更なし</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num" style="color: var(--secondary);">${stats.hasChange}</div>
+                <div class="stat-label">変更あり</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num" style="color: var(--danger-solid);">${stats.unsubmitted}</div>
+                <div class="stat-label">未提出</div>
+              </div>
             </div>
-            <div class="stat-item">
-              <div class="stat-num" style="color: var(--danger-solid);">${stats.unsubmitted}</div>
-              <div class="stat-label">未提出</div>
-            </div>
-          </div>
+          `}
         </div>
       </div>
     `;
@@ -460,6 +478,7 @@ export const HomePage = {
     let selectedSessionOption = '夏期';
     let customSessionName = '';
     let selectedSession = '夏期';
+    let selectedProjectType = 'confirmation';
     let parsedStudents = [];
 
     const settings = await DB.getSettings();
@@ -520,6 +539,27 @@ export const HomePage = {
               </div>
             </div>
           </div>
+
+          <!-- 運用モード選択 -->
+          <div class="form-group" style="margin-top: 14px;">
+            <label class="form-label font-bold" style="font-size: 0.88rem; margin-bottom: 6px;">運用モード <span class="required">*</span></label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <label class="radio-card ${selectedProjectType === 'confirmation' ? 'selected' : ''}" id="lbl-wiz-mode-confirmation" style="cursor: pointer; padding: 12px 14px;">
+                <input type="radio" name="wiz-project-type" value="confirmation" ${selectedProjectType === 'confirmation' ? 'checked' : ''} style="display: none;">
+                <div>
+                  <div class="font-bold" style="font-size: 0.88rem; color: var(--gray-900);">📝 受講確認モード</div>
+                  <div style="font-size: 0.76rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">夏期・冬期・通常授業向け。<br>「変更なし／変更あり」で所属クラスからの変更を確認・集計</div>
+                </div>
+              </label>
+              <label class="radio-card ${selectedProjectType === 'selection' ? 'selected' : ''}" id="lbl-wiz-mode-selection" style="cursor: pointer; padding: 12px 14px;">
+                <input type="radio" name="wiz-project-type" value="selection" ${selectedProjectType === 'selection' ? 'checked' : ''} style="display: none;">
+                <div>
+                  <div class="font-bold" style="font-size: 0.88rem; color: #6d28d9;">🎯 講座選択モード（志望校別）</div>
+                  <div style="font-size: 0.76rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">志望校別対策講座向け。<br>提示された講座群から希望講座を複数選んで申込・合計集計</div>
+                </div>
+              </label>
+            </div>
+          </div>
         `;
       } else if (wizardStep === 2) {
         bodyContent = `
@@ -574,6 +614,9 @@ export const HomePage = {
                 <span class="badge badge-info">${selectedYear}年度</span>
                 <span class="badge badge-purple">${selectedGrade}年生</span>
                 <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                <span class="badge ${selectedProjectType === 'selection' ? 'badge-purple font-bold' : 'badge-info'}">
+                  ${selectedProjectType === 'selection' ? '🎯 講座選択モード（志望校別）' : '📝 受講確認モード'}
+                </span>
                 <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
                   受講確認票の書式・スキャン読取位置設定
                 </span>
@@ -583,17 +626,19 @@ export const HomePage = {
               </div>
             </div>
             <p style="font-size: 0.88rem; color: var(--gray-700); margin-bottom: 12px;">
-              受講確認票のチェックボックス位置と判定閾値の調整を行います。志望校別対策講座などの追加枠もこのプロジェクト専用に設定できます。
+              ${selectedProjectType === 'selection'
+                ? '志望校別対策講座用の読取枠設定を行います。「変更なし/あり」標準枠は使用せず、講座名と受講方法を選んで読取枠を追加・位置調整してください。'
+                : '受講確認票のチェックボックス位置と判定閾値の調整を行います。志望校別対策講座などの追加枠もこのプロジェクト専用に設定できます。'}
             </p>
 
-            <!-- 志望校別対策講座・追加チェックボックス管理パネル -->
+            <!-- 読取チェックボックス項目管理パネル -->
             <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
               <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-                <span>🎯 志望校別対策講座・追加チェックボックス管理</span>
+                <span>🎯 読取チェックボックス項目管理（標準・志望校別講座）</span>
                 <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト設定</span>
               </div>
               <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
-                このプロジェクトで読み取る「志望校別対策講座（講座名×受講方法）」や自由項目チェックボックスを追加・調整できます。
+                このプロジェクトで読み取るチェックボックス（標準の変更なし・変更あり、志望校別対策講座、自由項目）を調整・削除・追加できます。
               </p>
 
               <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
@@ -694,6 +739,7 @@ export const HomePage = {
             customTemplate,
             (t) => {
               customTemplate = t;
+              renderWizCustomBoxes();
             },
             {
               defaultResetTemplate: defaultTemplate,
@@ -703,59 +749,107 @@ export const HomePage = {
           );
         }
 
-        // ウィザード用カスタムボックス一覧描画
+        // ウィザード用チェックボックス一覧描画
         const renderWizCustomBoxes = () => {
           const container = modal.querySelector('#wiz-custom-boxes-container');
           if (!container) return;
           const boxes = customTemplate.customBoxes || [];
-          if (boxes.length === 0) {
-            container.innerHTML = `
-              <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center;">
-                現在、追加チェックボックスはありません（上のフォームから講座名×受講方法を選択して追加してください）
+          const hasNoChange = !!customTemplate.noChangeBox;
+          const hasHasChange = !!customTemplate.hasChangeBox;
+          const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + boxes.length;
+
+          let standardBoxesHtml = '';
+          if (hasNoChange) {
+            standardBoxesHtml += `
+              <div style="background: #fff; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <span style="font-weight: 700; font-size: 0.85rem; color: #15803d;">🟩 変更なし</span>
+                <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                  🎯 調整
+                </button>
+                <button type="button" class="btn-ghost wiz-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
+                  ✕
+                </button>
               </div>
             `;
-            return;
+          }
+          if (hasHasChange) {
+            standardBoxesHtml += `
+              <div style="background: #fff; border: 1px solid #fdba74; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
+                <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                  🎯 調整
+                </button>
+                <button type="button" class="btn-ghost wiz-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
+                  ✕
+                </button>
+              </div>
+            `;
           }
 
-          container.innerHTML = `
-            <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px;">
-              登録中の追加チェックボックス（全 ${boxes.length} 個）:
+          const customBoxesHtml = boxes.map(box => `
+            <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
+              <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                🎯 調整
+              </button>
+              <button type="button" class="btn-ghost wiz-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+                ✕
+              </button>
             </div>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              ${boxes.map(box => `
-                <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                  <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
-                  <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-                    🎯 調整
-                  </button>
-                  <button type="button" class="btn-ghost wiz-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
-                    ✕
-                  </button>
-                </div>
-              `).join('')}
-            </div>
-          `;
+          `).join('');
 
+          let restoreButtonsHtml = '';
+          if (!hasNoChange) {
+            restoreButtonsHtml += `
+              <button type="button" class="btn btn-secondary btn-sm wiz-btn-restore-box" data-type="noChange" style="padding: 3px 8px; font-size: 0.75rem; color: #15803d; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
+                ➕ 「変更なし」枠を追加
+              </button>
+            `;
+          }
+          if (!hasHasChange) {
+            restoreButtonsHtml += `
+              <button type="button" class="btn btn-secondary btn-sm wiz-btn-restore-box" data-type="hasChange" style="padding: 3px 8px; font-size: 0.75rem; color: #c2410c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
+                ➕ 「変更あり」枠を追加
+              </button>
+            `;
+          }
+
+          if (totalBoxes === 0) {
+            container.innerHTML = `
+              <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center; margin-bottom: 8px;">
+                現在、読取チェックボックスはありません
+              </div>
+              ${restoreButtonsHtml ? `<div style="display: flex; gap: 8px; align-items: center;">${restoreButtonsHtml}</div>` : ''}
+            `;
+          } else {
+            container.innerHTML = `
+              <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                <span>登録中の読取チェックボックス（全 ${totalBoxes} 個）:</span>
+                ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                ${standardBoxesHtml}
+                ${customBoxesHtml}
+              </div>
+            `;
+          }
+
+          // 削除ボタンイベント
           container.querySelectorAll('.wiz-btn-del-box').forEach(btn => {
             btn.onclick = () => {
               const id = btn.dataset.id;
-              const target = (customTemplate.customBoxes || []).find(b => b.id === id);
-              const label = target ? target.label : '';
-              customTemplate.customBoxes = (customTemplate.customBoxes || []).filter(b => b.id !== id);
               if (calibratorInstance) {
-                if (calibratorInstance.activeTab === id) {
-                  calibratorInstance.activeTab = 'noChange';
-                }
-                calibratorInstance.setTemplate(customTemplate);
-                calibratorInstance.updateTabsUI();
-                calibratorInstance.syncSlidersFromTemplate();
-                calibratorInstance.drawOverlay();
+                calibratorInstance.deleteBox(id);
+              } else {
+                if (id === 'noChange') delete customTemplate.noChangeBox;
+                else if (id === 'hasChange') delete customTemplate.hasChangeBox;
+                else customTemplate.customBoxes = (customTemplate.customBoxes || []).filter(b => b.id !== id);
+                renderWizCustomBoxes();
               }
-              renderWizCustomBoxes();
-              UI.showToast(`「${label}」を削除しました`, 'info');
             };
           });
 
+          // 調整フォーカスボタンイベント
           container.querySelectorAll('.wiz-btn-focus-box').forEach(btn => {
             btn.onclick = () => {
               const id = btn.dataset.id;
@@ -765,6 +859,21 @@ export const HomePage = {
                 calibratorInstance.syncSlidersFromTemplate();
                 calibratorInstance.drawOverlay();
                 calibratorInstance.focusTargetArea();
+              }
+            };
+          });
+
+          // 復元・再追加ボタンイベント
+          container.querySelectorAll('.wiz-btn-restore-box').forEach(btn => {
+            btn.onclick = () => {
+              const type = btn.dataset.type;
+              if (calibratorInstance) {
+                calibratorInstance.addStandardBox(type);
+              } else {
+                const def = CheckboxEngine.getDefaultTemplate();
+                if (type === 'noChange') customTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+                else if (type === 'hasChange') customTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+                renderWizCustomBoxes();
               }
             };
           });
@@ -851,6 +960,33 @@ export const HomePage = {
         const sessionEl = modal.querySelector('#wiz-session');
         const customWrapper = modal.querySelector('#wiz-session-custom-wrapper');
         const customInput = modal.querySelector('#wiz-session-custom');
+        const modeConf = modal.querySelector('#lbl-wiz-mode-confirmation');
+        const modeSel = modal.querySelector('#lbl-wiz-mode-selection');
+
+        const updateModeCards = () => {
+          if (modeConf && modeSel) {
+            modeConf.classList.toggle('selected', selectedProjectType === 'confirmation');
+            modeSel.classList.toggle('selected', selectedProjectType === 'selection');
+            const confRadio = modeConf.querySelector('input');
+            const selRadio = modeSel.querySelector('input');
+            if (confRadio) confRadio.checked = (selectedProjectType === 'confirmation');
+            if (selRadio) selRadio.checked = (selectedProjectType === 'selection');
+          }
+        };
+
+        if (modeConf) {
+          modeConf.onclick = () => {
+            selectedProjectType = 'confirmation';
+            updateModeCards();
+          };
+        }
+        if (modeSel) {
+          modeSel.onclick = () => {
+            selectedProjectType = 'selection';
+            updateModeCards();
+          };
+        }
+
         if (customInput) {
           customInput.value = customSessionName;
         }
@@ -861,6 +997,12 @@ export const HomePage = {
               if (customInput) customInput.focus();
             } else {
               customWrapper.style.display = 'none';
+            }
+
+            // 志望校別対策講座が選ばれたら自動的に講座選択モードをセット
+            if (sessionEl.value === '志望校別対策講座') {
+              selectedProjectType = 'selection';
+              updateModeCards();
             }
           };
         }
@@ -934,6 +1076,13 @@ export const HomePage = {
               UI.showToast('生徒CSVファイルをアップロードしてください', 'warning');
               return;
             }
+            if (selectedProjectType === 'selection') {
+              // 講座選択モードの場合、標準枠（変更なし/あり）を初期状態で除外
+              if (customTemplate.noChangeBox || customTemplate.hasChangeBox) {
+                customTemplate.noChangeBox = null;
+                customTemplate.hasChangeBox = null;
+              }
+            }
             wizardStep = 3;
             renderStep();
           } else if (wizardStep === 3) {
@@ -966,7 +1115,8 @@ export const HomePage = {
                   grade: selectedGrade,
                   sessionName: selectedSession,
                   students: parsedStudents,
-                  scanTemplate: customTemplate
+                  scanTemplate: customTemplate,
+                  projectType: selectedProjectType
                 });
               }, {
                 title: 'プロジェクトを作成中...',

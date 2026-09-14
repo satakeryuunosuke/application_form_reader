@@ -46,6 +46,7 @@ export const ProjectPage = {
     const isFolderConnected = FolderConnector.isConnected();
     const lastSync = SyncManager.getLastSyncTime(projectId);
     const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const isSelectionMode = project.projectType === 'selection';
 
     this.container.innerHTML = `
       <div class="view-container">
@@ -58,6 +59,7 @@ export const ProjectPage = {
                 <span class="badge badge-info">${project.year}年度</span>
                 <span class="badge badge-purple">${project.grade}年生</span>
                 <span class="badge badge-success">${UI.formatSession(project.sessionName)}</span>
+                ${isSelectionMode ? '<span class="badge" style="background: #ede7f6; color: #512da8; border: 1px solid #d1c4e9; font-weight: 700;">🎯 講座選択モード</span>' : ''}
                 <span id="header-status-badge" class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}" style="${isCompleted ? 'font-weight: 700;' : 'font-weight: 700; background: #e8f5e9; color: #2e7d32;'}">
                   ${isCompleted ? '🏁 完了' : '🟢 進行中'}
                 </span>
@@ -70,6 +72,7 @@ export const ProjectPage = {
                 登録生徒数: <span id="header-stat-total" class="font-bold text-mono">${stats.total}</span> 名 | 
                 提出済: <span id="header-stat-submitted" class="font-bold text-mono" style="color: var(--primary-600);">${stats.submitted}</span> 名 | 
                 未提出: <span id="header-stat-unsubmitted" class="font-bold text-mono" style="color: var(--danger-solid);">${stats.unsubmitted}</span> 名
+                ${isSelectionMode ? ` | 申込講座計: <span id="header-stat-courses" class="font-bold text-mono" style="color: #673ab7;">${stats.totalSelectedCourses || 0}</span> 講座` : ''}
                 ${project.completedAt ? ` | 完了日時: <span class="text-mono font-bold">${UI.formatDate(project.completedAt)}</span>` : ''}
               </div>
             </div>
@@ -104,7 +107,7 @@ export const ProjectPage = {
     `;
 
     this.bindEvents(projectId);
-    this.renderActiveTab();
+    await this.renderActiveTab();
   },
 
   /**
@@ -117,10 +120,12 @@ export const ProjectPage = {
       const totalEl = this.container.querySelector('#header-stat-total');
       const submittedEl = this.container.querySelector('#header-stat-submitted');
       const unsubmittedEl = this.container.querySelector('#header-stat-unsubmitted');
+      const coursesEl = this.container.querySelector('#header-stat-courses');
 
       if (totalEl) totalEl.textContent = stats.total;
       if (submittedEl) submittedEl.textContent = stats.submitted;
       if (unsubmittedEl) unsubmittedEl.textContent = stats.unsubmitted;
+      if (coursesEl) coursesEl.textContent = stats.totalSelectedCourses || 0;
 
       // 更新ボタンの最終更新時刻も最新化
       const syncBtn = this.container.querySelector('#btn-header-sync');
@@ -459,6 +464,10 @@ export const ProjectPage = {
     const reviewStats = await DB.getReviewStats(projectId);
     const isCompleted = project.status === '完了';
     const isFolderConnected = FolderConnector.isConnected();
+    const isSelectionMode = project.projectType === 'selection';
+    const courseDist = stats.courseCountDistribution || {};
+    const methodDist = stats.methodDistribution || {};
+    const courseBoxes = (project.scanTemplate?.customBoxes || project.template?.customBoxes || []);
 
     content.innerHTML = `
       <div class="dashboard-container">
@@ -477,11 +486,57 @@ export const ProjectPage = {
           </div>
         </div>
 
+        ${isSelectionMode ? `
+          <!-- 講座選択モード専用: 講座別申込サマリー -->
+          <div class="dashboard-section">
+            <div class="dashboard-section-header">
+              <span style="font-size: 1.25rem;">🎯</span>
+              <h3 class="dashboard-section-title">志望校別 講座別申込人数サマリー</h3>
+              <span class="badge" style="background: #ede7f6; color: #512da8; font-weight: 700; margin-left: 8px;">
+                延べ申込: ${stats.totalSelectedCourses || 0} 講座 (平均 ${(stats.avgCourses || 0).toFixed(1)} 講座/人)
+              </span>
+            </div>
+            
+            <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 20px; box-shadow: var(--shadow-sm);">
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+                ${courseBoxes.length > 0 ? courseBoxes.map(b => {
+                  const count = courseDist[b.label] || 0;
+                  const pct = stats.submitted > 0 ? Math.round((count / stats.submitted) * 100) : 0;
+                  const isZoom = b.label.includes('Zoom');
+                  const isVideo = b.label.includes('動画');
+                  const badgeColor = isZoom ? '#0284c7' : (isVideo ? '#ea580c' : '#7c3aed');
+                  const badgeBg = isZoom ? '#e0f2fe' : (isVideo ? '#ffedd5' : '#ede9fe');
+                  const badgeText = isZoom ? 'Zoom' : (isVideo ? '動画' : '対面');
+                  return `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md);">
+                      <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+                        <span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-weight: 700; font-size: 0.72rem; padding: 2px 6px;">${badgeText}</span>
+                        <span style="font-weight: 600; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${b.label}">${b.label}</span>
+                      </div>
+                      <div style="text-align: right; min-width: 65px;">
+                        <span class="text-mono font-bold" style="font-size: 1.1rem; color: var(--primary-700);">${count}</span>
+                        <span style="font-size: 0.75rem; color: var(--gray-500);">名 (${pct}%)</span>
+                      </div>
+                    </div>
+                  `;
+                }).join('') : '<p class="text-muted" style="padding: 8px;">講座枠が設定されていません</p>'}
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--gray-200); font-size: 0.82rem; color: var(--gray-600);">
+                <span>受講形式内訳:</span>
+                <span>💻 Zoom: <strong class="text-mono font-bold" style="color: #0284c7;">${methodDist['Zoom'] || 0}</strong> 件</span>
+                <span>🎬 動画: <strong class="text-mono font-bold" style="color: #ea580c;">${methodDist['動画'] || 0}</strong> 件</span>
+                <span>🏫 校舎: <strong class="text-mono font-bold" style="color: #7c3aed;">${methodDist['校舎'] || 0}</strong> 件</span>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- セクション1: 受講確認票 スキャン・照合業務 -->
         <div class="dashboard-section">
           <div class="dashboard-section-header">
             <span style="font-size: 1.25rem;">📷</span>
-            <h3 class="dashboard-section-title">受講確認票 スキャン・照合業務</h3>
+            <h3 class="dashboard-section-title">${isSelectionMode ? '志望校別申込書 スキャン・照合業務' : '受講確認票 スキャン・照合業務'}</h3>
           </div>
           <div class="dashboard-grid">
             <!-- スキャン読み取り・承認 -->
@@ -495,7 +550,9 @@ export const ProjectPage = {
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
-                  スキャナーや画像ファイル（PDF/JPEG）から受講確認票のバーコード・チェックボックスを一括読み取りし、提出状況を反映・承認します。
+                  ${isSelectionMode 
+                    ? 'スキャナーや画像ファイル（PDF/JPEG）から志望校別対策講座申込書のバーコードと希望講座チェックを一括読み取りし、申込状況を承認します。' 
+                    : 'スキャナーや画像ファイル（PDF/JPEG）から受講確認票のバーコード・チェックボックスを一括読み取りし、提出状況を反映・承認します。'}
                 </p>
               </div>
               <div>
@@ -518,7 +575,9 @@ export const ProjectPage = {
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
-                  読み取った受講確認票の原本画像と自動認識結果を並べて照合し、チェックの誤りや未確認の差異がないか確認・修正します。
+                  ${isSelectionMode 
+                    ? '読み取った申込書の原本画像と講座認識結果を並べて照合し、希望講座のチェック漏れや差異がないか確認・修正します。' 
+                    : '読み取った受講確認票の原本画像と自動認識結果を並べて照合し、チェックの誤りや未確認の差異がないか確認・修正します。'}
                 </p>
               </div>
               <div>
@@ -564,12 +623,14 @@ export const ProjectPage = {
                 <div class="dashboard-card-header">
                   <div class="dashboard-card-icon">📊</div>
                   <div>
-                    <h4 class="dashboard-card-title">提出状況データ出力</h4>
+                    <h4 class="dashboard-card-title">${isSelectionMode ? '講座申込データ出力' : '提出状況データ出力'}</h4>
                     <span class="badge badge-primary">Excel / CSV</span>
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
-                  登録された全生徒の提出状況・受講変更・確定内容の一覧データを、Excel (.xlsx) または CSV 形式でダウンロードして集計や保管に利用します。
+                  ${isSelectionMode 
+                    ? '全生徒の申込講座一覧および講座別クロス集計マトリクス（生徒×講座）を、Excel (.xlsx) または CSV 形式でダウンロードして集計や校舎管理に利用します。' 
+                    : '登録された全生徒の提出状況・受講変更・確定内容の一覧データを、Excel (.xlsx) または CSV 形式でダウンロードして集計や保管に利用します。'}
                 </p>
               </div>
               <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -737,8 +798,12 @@ export const ProjectPage = {
           UI.setButtonLoading(exportExcelBtn, true, '出力中...');
           const items = await DB.getProjectStudentsWithSubmissions(projectId);
           const cleanTitle = UI.formatProjectTitle(project.title);
-          const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.xlsx`;
-          CsvUtil.exportSubmissionsExcel(items, fileName);
+          const fileName = `${cleanTitle}_${isSelectionMode ? '講座申込集計' : '提出集計'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          if (isSelectionMode) {
+            CsvUtil.exportSelectionSubmissionsExcel(items, project.scanTemplate?.customBoxes || project.template?.customBoxes, fileName);
+          } else {
+            CsvUtil.exportSubmissionsExcel(items, fileName);
+          }
           UI.showToast(`Excelファイルを出力しました (${items.length} 件)`, 'success');
         } catch (e) {
           UI.showToast(`Excel出力エラー: ${e.message}`, 'error');
@@ -755,8 +820,12 @@ export const ProjectPage = {
           UI.setButtonLoading(exportCsvBtn, true, '出力中...');
           const items = await DB.getProjectStudentsWithSubmissions(projectId);
           const cleanTitle = UI.formatProjectTitle(project.title);
-          const fileName = `${cleanTitle}_提出集計_${new Date().toISOString().slice(0, 10)}.csv`;
-          CsvUtil.exportSubmissionsCsv(items, fileName);
+          const fileName = `${cleanTitle}_${isSelectionMode ? '講座申込集計' : '提出集計'}_${new Date().toISOString().slice(0, 10)}.csv`;
+          if (isSelectionMode) {
+            CsvUtil.exportSelectionSubmissionsCsv(items, fileName);
+          } else {
+            CsvUtil.exportSubmissionsCsv(items, fileName);
+          }
           UI.showToast(`CSVファイルを出力しました (${items.length} 件)`, 'success');
         } catch (e) {
           UI.showToast(`CSV出力エラー: ${e.message}`, 'error');
@@ -874,14 +943,14 @@ export const ProjectPage = {
           </div>
         </div>
         <div class="modal-body" style="padding: 10px var(--spacing-lg); max-height: 86vh;">
-          <!-- 志望校別対策講座・追加チェックボックス管理パネル -->
+          <!-- 読取チェックボックス項目管理パネル -->
           <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
             <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-              <span>🎯 志望校別対策講座・追加チェックボックス管理</span>
+              <span>🎯 読取チェックボックス項目管理（標準・志望校別講座）</span>
               <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト個別設定</span>
             </div>
             <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
-              このプロジェクトで読み取る「志望校別対策講座（講座名×受講方法）」や自由項目チェックボックスを追加・調整できます。
+              このプロジェクトで読み取るチェックボックス（標準の変更なし・変更あり、志望校別対策講座、自由項目）を調整・削除・追加できます。
             </p>
 
             <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
@@ -915,7 +984,7 @@ export const ProjectPage = {
               </button>
             </div>
 
-            <!-- 登録中カスタムボックス一覧 -->
+            <!-- 登録中チェックボックス一覧 -->
             <div id="proj-custom-boxes-container"></div>
           </div>
 
@@ -953,6 +1022,7 @@ export const ProjectPage = {
       currentTemplate,
       (t) => {
         currentTemplate = t;
+        renderProjCustomBoxes();
       },
       {
         defaultResetTemplate: defaultTemplate,
@@ -961,59 +1031,107 @@ export const ProjectPage = {
       }
     );
 
-    // カスタムボックス一覧描画 & 操作
+    // チェックボックス一覧描画 & 操作
     const renderProjCustomBoxes = () => {
       const container = modal.querySelector('#proj-custom-boxes-container');
       if (!container) return;
       const boxes = currentTemplate.customBoxes || [];
-      if (boxes.length === 0) {
-        container.innerHTML = `
-          <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center;">
-            現在、追加チェックボックスはありません（上のフォームから講座名×受講方法を選択して追加してください）
+      const hasNoChange = !!currentTemplate.noChangeBox;
+      const hasHasChange = !!currentTemplate.hasChangeBox;
+      const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + boxes.length;
+
+      let standardBoxesHtml = '';
+      if (hasNoChange) {
+        standardBoxesHtml += `
+          <div style="background: #fff; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <span style="font-weight: 700; font-size: 0.85rem; color: #15803d;">🟩 変更なし</span>
+            <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+              🎯 調整
+            </button>
+            <button type="button" class="btn-ghost proj-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
+              ✕
+            </button>
           </div>
         `;
-        return;
+      }
+      if (hasHasChange) {
+        standardBoxesHtml += `
+          <div style="background: #fff; border: 1px solid #fdba74; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
+            <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+              🎯 調整
+            </button>
+            <button type="button" class="btn-ghost proj-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
+              ✕
+            </button>
+          </div>
+        `;
       }
 
-      container.innerHTML = `
-        <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px;">
-          登録中の追加チェックボックス（全 ${boxes.length} 個）:
+      const customBoxesHtml = boxes.map(box => `
+        <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+          <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
+          <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+            🎯 調整
+          </button>
+          <button type="button" class="btn-ghost proj-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+            ✕
+          </button>
         </div>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-          ${boxes.map(box => `
-            <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-              <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
-              <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-                🎯 調整
-              </button>
-              <button type="button" class="btn-ghost proj-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
-                ✕
-              </button>
-            </div>
-          `).join('')}
-        </div>
-      `;
+      `).join('');
 
+      let restoreButtonsHtml = '';
+      if (!hasNoChange) {
+        restoreButtonsHtml += `
+          <button type="button" class="btn btn-secondary btn-sm proj-btn-restore-box" data-type="noChange" style="padding: 3px 8px; font-size: 0.75rem; color: #15803d; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
+            ➕ 「変更なし」枠を追加
+          </button>
+        `;
+      }
+      if (!hasHasChange) {
+        restoreButtonsHtml += `
+          <button type="button" class="btn btn-secondary btn-sm proj-btn-restore-box" data-type="hasChange" style="padding: 3px 8px; font-size: 0.75rem; color: #c2410c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
+            ➕ 「変更あり」枠を追加
+          </button>
+        `;
+      }
+
+      if (totalBoxes === 0) {
+        container.innerHTML = `
+          <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center; margin-bottom: 8px;">
+            現在、読取チェックボックスはありません
+          </div>
+          ${restoreButtonsHtml ? `<div style="display: flex; gap: 8px; align-items: center;">${restoreButtonsHtml}</div>` : ''}
+        `;
+      } else {
+        container.innerHTML = `
+          <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+            <span>登録中の読取チェックボックス（全 ${totalBoxes} 個）:</span>
+            ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            ${standardBoxesHtml}
+            ${customBoxesHtml}
+          </div>
+        `;
+      }
+
+      // 削除ボタンイベント
       container.querySelectorAll('.proj-btn-del-box').forEach(btn => {
         btn.onclick = () => {
           const id = btn.dataset.id;
-          const target = (currentTemplate.customBoxes || []).find(b => b.id === id);
-          const label = target ? target.label : '';
-          currentTemplate.customBoxes = (currentTemplate.customBoxes || []).filter(b => b.id !== id);
           if (calibrator) {
-            if (calibrator.activeTab === id) {
-              calibrator.activeTab = 'noChange';
-            }
-            calibrator.setTemplate(currentTemplate);
-            calibrator.updateTabsUI();
-            calibrator.syncSlidersFromTemplate();
-            calibrator.drawOverlay();
+            calibrator.deleteBox(id);
+          } else {
+            if (id === 'noChange') delete currentTemplate.noChangeBox;
+            else if (id === 'hasChange') delete currentTemplate.hasChangeBox;
+            else currentTemplate.customBoxes = (currentTemplate.customBoxes || []).filter(b => b.id !== id);
+            renderProjCustomBoxes();
           }
-          renderProjCustomBoxes();
-          UI.showToast(`「${label}」を削除しました`, 'info');
         };
       });
 
+      // 調整フォーカスボタンイベント
       container.querySelectorAll('.proj-btn-focus-box').forEach(btn => {
         btn.onclick = () => {
           const id = btn.dataset.id;
@@ -1023,6 +1141,21 @@ export const ProjectPage = {
             calibrator.syncSlidersFromTemplate();
             calibrator.drawOverlay();
             calibrator.focusTargetArea();
+          }
+        };
+      });
+
+      // 復元・再追加ボタンイベント
+      container.querySelectorAll('.proj-btn-restore-box').forEach(btn => {
+        btn.onclick = () => {
+          const type = btn.dataset.type;
+          if (calibrator) {
+            calibrator.addStandardBox(type);
+          } else {
+            const def = CheckboxEngine.getDefaultTemplate();
+            if (type === 'noChange') currentTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+            else if (type === 'hasChange') currentTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+            renderProjCustomBoxes();
           }
         };
       });

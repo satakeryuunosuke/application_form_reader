@@ -790,19 +790,44 @@ textarea.form-control {
 }
 
 .calibrator-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   background: var(--gray-100);
-  padding: 4px;
+  padding: 6px;
   border-radius: var(--radius-md);
 }
 
+.calib-tabs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.calib-tab-item {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+}
+
+.calib-tab-item:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.calib-tab-item.active {
+  background: #ffffff;
+  border-color: var(--gray-300);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
 .calib-tab-btn {
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: none;
   background: transparent;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: var(--gray-600);
   border-radius: var(--radius-sm);
@@ -814,10 +839,35 @@ textarea.form-control {
   color: var(--gray-900);
 }
 
-.calib-tab-btn.active {
-  background: #ffffff;
+.calib-tab-item.active .calib-tab-btn {
   color: var(--gray-900);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.calib-tab-del-btn {
+  padding: 2px 6px;
+  margin-right: 4px;
+  border: none;
+  background: transparent;
+  color: var(--gray-400);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  transition: all var(--transition-fast);
+}
+
+.calib-tab-del-btn:hover {
+  color: var(--danger-solid);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.calib-tabs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px dashed var(--gray-300);
 }
 
 .calibrator-eval-card {

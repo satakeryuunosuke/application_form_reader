@@ -18,6 +18,7 @@ export const ListPage = {
   currentPostClassFilter: 'all',
   currentPrevCourseFilter: 'all',
   currentPostCourseFilter: 'all',
+  currentCourseFilter: 'all',
   currentSortKey: 'id',
   currentSortOrder: 'asc',
   searchQuery: '',
@@ -42,6 +43,8 @@ export const ListPage = {
 
     this.allStudentsWithSubmissions = await DB.getProjectStudentsWithSubmissions(project.id);
     const classes = await DB.getProjectClasses(project.id);
+    const isSelectionMode = project.projectType === 'selection';
+    const courseBoxes = (project.scanTemplate?.customBoxes || project.template?.customBoxes || []).filter(b => b && b.label);
 
     // 変更前クラス一覧
     const prevClasses = classes;
@@ -64,7 +67,7 @@ export const ListPage = {
             <div class="filter-left-tools">
               <div class="search-input-wrap">
                 <span class="search-icon">🔍</span>
-                <input type="text" id="inp-search" class="form-control filter-search-input" placeholder="氏名・カナ・日能研番号で検索..." value="${this.searchQuery}">
+                <input type="text" id="inp-search" class="form-control filter-search-input" placeholder="${isSelectionMode ? '氏名・カナ・日能研番号・講座名で検索...' : '氏名・カナ・日能研番号で検索...'}" value="${this.searchQuery}">
                 <button type="button" id="btn-search-clear" class="btn-search-clear ${this.searchQuery ? '' : 'hidden'}" title="検索をクリア">✕</button>
               </div>
 
@@ -75,7 +78,11 @@ export const ListPage = {
                   <option value="id-desc" ${this.currentSortKey === 'id' && this.currentSortOrder === 'desc' ? 'selected' : ''}>日能研番号 (降順)</option>
                   <option value="name-asc" ${this.currentSortKey === 'name' && this.currentSortOrder === 'asc' ? 'selected' : ''}>氏名 (五十音順)</option>
                   <option value="name-desc" ${this.currentSortKey === 'name' && this.currentSortOrder === 'desc' ? 'selected' : ''}>氏名 (逆順)</option>
-                  <option value="prevClass-asc" ${this.currentSortKey === 'prevClass' && this.currentSortOrder === 'asc' ? 'selected' : ''}>前クラス順</option>
+                  <option value="prevClass-asc" ${this.currentSortKey === 'prevClass' && this.currentSortOrder === 'asc' ? 'selected' : ''}>クラス順</option>
+                  ${isSelectionMode ? `
+                    <option value="courses-desc" ${this.currentSortKey === 'courses' && this.currentSortOrder === 'desc' ? 'selected' : ''}>申込講座数 (多い順)</option>
+                    <option value="courses-asc" ${this.currentSortKey === 'courses' && this.currentSortOrder === 'asc' ? 'selected' : ''}>申込講座数 (少ない順)</option>
+                  ` : ''}
                   <option value="date-desc" ${this.currentSortKey === 'date' && this.currentSortOrder === 'desc' ? 'selected' : ''}>日時 (新しい順)</option>
                   <option value="date-asc" ${this.currentSortKey === 'date' && this.currentSortOrder === 'asc' ? 'selected' : ''}>日時 (古い順)</option>
                 </select>
@@ -92,47 +99,71 @@ export const ListPage = {
               <div class="filter-single-select-wrap">
                 <select id="sel-filter-status" class="filter-single-select ${this.currentStatusFilter !== 'all' ? 'is-active' : ''}" title="提出ステータスで絞り込み">
                   <option value="all" ${this.currentStatusFilter === 'all' ? 'selected' : ''}>状況: すべて</option>
-                  <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済のみ</option>
-                  <option value="no-change" ${this.currentStatusFilter === 'no-change' ? 'selected' : ''}>変更なし</option>
-                  <option value="has-change" ${this.currentStatusFilter === 'has-change' ? 'selected' : ''}>変更あり</option>
-                  <option value="not-enrolled" ${this.currentStatusFilter === 'not-enrolled' ? 'selected' : ''}>非受講</option>
-                  <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
+                  ${isSelectionMode ? `
+                    <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済（1講座以上）</option>
+                    <option value="zero" ${this.currentStatusFilter === 'zero' ? 'selected' : ''}>0講座（申込なし）</option>
+                    <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
+                  ` : `
+                    <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済のみ</option>
+                    <option value="no-change" ${this.currentStatusFilter === 'no-change' ? 'selected' : ''}>変更なし</option>
+                    <option value="has-change" ${this.currentStatusFilter === 'has-change' ? 'selected' : ''}>変更あり</option>
+                    <option value="not-enrolled" ${this.currentStatusFilter === 'not-enrolled' ? 'selected' : ''}>非受講</option>
+                    <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
+                  `}
                 </select>
               </div>
 
-              <!-- 変更前 所属グループ -->
-              <div class="filter-pill-cluster ${this.currentPrevClassFilter !== 'all' || this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前の所属情報">
-                <span class="cluster-tag prev">変更前</span>
-                <select id="sel-filter-prev-class" class="cluster-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="変更前クラス">
-                  <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
-                  ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
-                </select>
-                <span class="cluster-divider">/</span>
-                <select id="sel-filter-prev-course" class="cluster-select ${this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前科目">
-                  <option value="all" ${this.currentPrevCourseFilter === 'all' ? 'selected' : ''}>科目: すべて</option>
-                  <option value="4科" ${this.currentPrevCourseFilter === '4科' ? 'selected' : ''}>4科</option>
-                  <option value="2科" ${this.currentPrevCourseFilter === '2科' ? 'selected' : ''}>2科</option>
-                </select>
-              </div>
+              ${isSelectionMode ? `
+                <!-- 講座選択モード用: 所属クラスフィルター -->
+                <div class="filter-single-select-wrap">
+                  <select id="sel-filter-prev-class" class="filter-single-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="所属クラスで絞り込み">
+                    <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>所属クラス: すべて</option>
+                    ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                  </select>
+                </div>
 
-              <!-- 確定後 受講グループ -->
-              <div class="filter-pill-cluster ${this.currentPostClassFilter !== 'all' || this.currentPostCourseFilter !== 'all' ? 'is-active' : ''}" title="確定後の受講情報">
-                <span class="cluster-tag post">確定後</span>
-                <select id="sel-filter-post-class" class="cluster-select ${this.currentPostClassFilter !== 'all' ? 'is-active' : ''}" title="確定後クラス">
-                  <option value="all" ${this.currentPostClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
-                  ${postClasses.map(c => `<option value="${c}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
-                  <option value="非受講" ${this.currentPostClassFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
-                  <option value="unsubmitted" ${this.currentPostClassFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
-                </select>
-                <span class="cluster-divider">/</span>
-                <select id="sel-filter-post-course" class="cluster-select ${this.currentPostCourseFilter !== 'all' ? 'is-active' : ''}" title="確定後科目">
-                  <option value="all" ${this.currentPostCourseFilter === 'all' ? 'selected' : ''}>科目: すべて</option>
-                  <option value="4科" ${this.currentPostCourseFilter === '4科' ? 'selected' : ''}>4科</option>
-                  <option value="2科" ${this.currentPostCourseFilter === '2科' ? 'selected' : ''}>2科</option>
-                  <option value="非受講" ${this.currentPostCourseFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
-                  <option value="unsubmitted" ${this.currentPostCourseFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
-                </select>
-              </div>
+                <!-- 講座選択モード用: 申込講座フィルター -->
+                <div class="filter-single-select-wrap">
+                  <select id="sel-filter-course" class="filter-single-select ${this.currentCourseFilter !== 'all' ? 'is-active' : ''}" title="申込講座で絞り込み">
+                    <option value="all" ${this.currentCourseFilter === 'all' ? 'selected' : ''}>🎯 講座: すべて</option>
+                    ${courseBoxes.map(b => `<option value="${b.label}" ${this.currentCourseFilter === b.label ? 'selected' : ''}>${b.label}</option>`).join('')}
+                  </select>
+                </div>
+              ` : `
+                <!-- 通常モード: 変更前 所属グループ -->
+                <div class="filter-pill-cluster ${this.currentPrevClassFilter !== 'all' || this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前の所属情報">
+                  <span class="cluster-tag prev">変更前</span>
+                  <select id="sel-filter-prev-class" class="cluster-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="変更前クラス">
+                    <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
+                    ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                  </select>
+                  <span class="cluster-divider">/</span>
+                  <select id="sel-filter-prev-course" class="cluster-select ${this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前科目">
+                    <option value="all" ${this.currentPrevCourseFilter === 'all' ? 'selected' : ''}>科目: すべて</option>
+                    <option value="4科" ${this.currentPrevCourseFilter === '4科' ? 'selected' : ''}>4科</option>
+                    <option value="2科" ${this.currentPrevCourseFilter === '2科' ? 'selected' : ''}>2科</option>
+                  </select>
+                </div>
+
+                <!-- 通常モード: 確定後 受講グループ -->
+                <div class="filter-pill-cluster ${this.currentPostClassFilter !== 'all' || this.currentPostCourseFilter !== 'all' ? 'is-active' : ''}" title="確定後の受講情報">
+                  <span class="cluster-tag post">確定後</span>
+                  <select id="sel-filter-post-class" class="cluster-select ${this.currentPostClassFilter !== 'all' ? 'is-active' : ''}" title="確定後クラス">
+                    <option value="all" ${this.currentPostClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
+                    ${postClasses.map(c => `<option value="${c}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    <option value="非受講" ${this.currentPostClassFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
+                    <option value="unsubmitted" ${this.currentPostClassFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
+                  </select>
+                  <span class="cluster-divider">/</span>
+                  <select id="sel-filter-post-course" class="cluster-select ${this.currentPostCourseFilter !== 'all' ? 'is-active' : ''}" title="確定後科目">
+                    <option value="all" ${this.currentPostCourseFilter === 'all' ? 'selected' : ''}>科目: すべて</option>
+                    <option value="4科" ${this.currentPostCourseFilter === '4科' ? 'selected' : ''}>4科</option>
+                    <option value="2科" ${this.currentPostCourseFilter === '2科' ? 'selected' : ''}>2科</option>
+                    <option value="非受講" ${this.currentPostCourseFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
+                    <option value="unsubmitted" ${this.currentPostCourseFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
+                  </select>
+                </div>
+              `}
             </div>
 
             <div class="filter-actions-right">
@@ -190,11 +221,22 @@ export const ListPage = {
     };
 
     const prevClassSelect = this.container.querySelector('#sel-filter-prev-class');
-    prevClassSelect.onchange = () => {
-      this.currentPrevClassFilter = prevClassSelect.value;
-      this.updateClassFilterStyles();
-      this.applyFiltersAndRenderTable();
-    };
+    if (prevClassSelect) {
+      prevClassSelect.onchange = () => {
+        this.currentPrevClassFilter = prevClassSelect.value;
+        this.updateClassFilterStyles();
+        this.applyFiltersAndRenderTable();
+      };
+    }
+
+    const courseSelect = this.container.querySelector('#sel-filter-course');
+    if (courseSelect) {
+      courseSelect.onchange = () => {
+        this.currentCourseFilter = courseSelect.value;
+        this.updateClassFilterStyles();
+        this.applyFiltersAndRenderTable();
+      };
+    }
 
     const prevCourseSelect = this.container.querySelector('#sel-filter-prev-course');
     if (prevCourseSelect) {
@@ -206,11 +248,13 @@ export const ListPage = {
     }
 
     const postClassSelect = this.container.querySelector('#sel-filter-post-class');
-    postClassSelect.onchange = () => {
-      this.currentPostClassFilter = postClassSelect.value;
-      this.updateClassFilterStyles();
-      this.applyFiltersAndRenderTable();
-    };
+    if (postClassSelect) {
+      postClassSelect.onchange = () => {
+        this.currentPostClassFilter = postClassSelect.value;
+        this.updateClassFilterStyles();
+        this.applyFiltersAndRenderTable();
+      };
+    }
 
     const postCourseSelect = this.container.querySelector('#sel-filter-post-course');
     if (postCourseSelect) {
@@ -240,13 +284,15 @@ export const ListPage = {
       this.currentPostClassFilter = 'all';
       this.currentPrevCourseFilter = 'all';
       this.currentPostCourseFilter = 'all';
+      this.currentCourseFilter = 'all';
       this.currentSortKey = 'id';
       this.currentSortOrder = 'asc';
       searchInput.value = '';
       if (searchClearBtn) searchClearBtn.classList.add('hidden');
       statusSelect.value = 'all';
-      prevClassSelect.value = 'all';
-      postClassSelect.value = 'all';
+      if (prevClassSelect) prevClassSelect.value = 'all';
+      if (courseSelect) courseSelect.value = 'all';
+      if (postClassSelect) postClassSelect.value = 'all';
       if (prevCourseSelect) prevCourseSelect.value = 'all';
       if (postCourseSelect) postCourseSelect.value = 'all';
       if (sortSelect) sortSelect.value = 'id-asc';
@@ -272,6 +318,12 @@ export const ListPage = {
       statusSelect.classList.toggle('is-active', this.currentStatusFilter !== 'all');
     }
 
+    // 講座選択モード用 講座セレクト
+    const courseSelect = this.container.querySelector('#sel-filter-course');
+    if (courseSelect) {
+      courseSelect.classList.toggle('is-active', this.currentCourseFilter !== 'all');
+    }
+
     // 前クラスタのアクティブ状態
     const prevCluster = this.container.querySelector('.filter-pill-cluster:nth-of-type(1)');
     const prevClassSelect = this.container.querySelector('#sel-filter-prev-class');
@@ -295,6 +347,7 @@ export const ListPage = {
     if (this.searchQuery) activeFilterCount++;
     if (this.currentStatusFilter !== 'all') activeFilterCount++;
     if (this.currentPrevClassFilter !== 'all') activeFilterCount++;
+    if (this.currentCourseFilter !== 'all') activeFilterCount++;
     if (this.currentPrevCourseFilter !== 'all') activeFilterCount++;
     if (this.currentPostClassFilter !== 'all') activeFilterCount++;
     if (this.currentPostCourseFilter !== 'all') activeFilterCount++;
@@ -332,8 +385,42 @@ export const ListPage = {
   },
 
   applyFiltersAndRenderTable() {
+    const isSelectionMode = this.project?.projectType === 'selection';
+
     this.filteredList = this.allStudentsWithSubmissions.filter(item => {
-      // 1. ステータスフィルター
+      if (isSelectionMode) {
+        // 1. ステータスフィルター（講座選択モード）
+        if (this.currentStatusFilter === 'submitted' && (item.status !== '承認済' || (item.totalCourseCount || 0) === 0)) return false;
+        if (this.currentStatusFilter === 'zero' && (item.status !== '承認済' || (item.totalCourseCount || 0) > 0)) return false;
+        if (this.currentStatusFilter === 'unsubmitted' && item.status !== '未提出') return false;
+
+        // 2. 所属クラスフィルター
+        if (this.currentPrevClassFilter !== 'all' && item.className !== this.currentPrevClassFilter) {
+          return false;
+        }
+
+        // 3. 講座フィルター
+        if (this.currentCourseFilter !== 'all') {
+          if (!item.selectedCourses || !item.selectedCourses.includes(this.currentCourseFilter)) {
+            return false;
+          }
+        }
+
+        // 4. 検索クエリ
+        if (this.searchQuery) {
+          const q = this.searchQuery;
+          const matchId = item.nichinokenId.toLowerCase().includes(q);
+          const matchName = item.name.toLowerCase().includes(q);
+          const matchKana = (item.nameKana || '').toLowerCase().includes(q);
+          const matchClass = (item.className || '').toLowerCase().includes(q);
+          const matchCourseList = (item.selectedCourses || []).some(c => c.toLowerCase().includes(q));
+          if (!matchId && !matchName && !matchKana && !matchClass && !matchCourseList) return false;
+        }
+
+        return true;
+      }
+
+      // 通常受講確認モードのフィルタリング
       if (this.currentStatusFilter === 'submitted' && item.status === '未提出') return false;
       if (this.currentStatusFilter === 'unsubmitted' && item.status !== '未提出') return false;
       if (this.currentStatusFilter === 'no-change') {
@@ -359,7 +446,6 @@ export const ListPage = {
       // 3. 変更後クラスフィルター（確定受講クラス）
       if (this.currentPostClassFilter !== 'all') {
         if (this.currentPostClassFilter === 'unsubmitted') {
-          // 未提出または受講クラス未定
           if (item.status !== '未提出' && item.enrollmentClass !== '-' && item.enrollmentClass) {
             return false;
           }
@@ -368,7 +454,6 @@ export const ListPage = {
             return false;
           }
         } else {
-          // 指定されたクラス名（確定受講クラスが一致するもの）
           if (item.status === '未提出' || item.enrollmentClass !== this.currentPostClassFilter) {
             return false;
           }
@@ -431,6 +516,9 @@ export const ListPage = {
         case 'postCourse':
           cmp = (a.enrollmentCourse || '').localeCompare(b.enrollmentCourse || '', 'ja');
           break;
+        case 'courses':
+          cmp = (a.totalCourseCount || 0) - (b.totalCourseCount || 0);
+          break;
         case 'date': {
           const timeA = new Date(a.approvedAt || a.submittedAt || 0).getTime();
           const timeB = new Date(b.approvedAt || b.submittedAt || 0).getTime();
@@ -469,25 +557,96 @@ export const ListPage = {
         <table class="table submission-list-table">
           <thead>
             <tr>
-              ${this.getSortHeaderHtml('日能研番号', 'id', 'col-id')}
-              ${this.getSortHeaderHtml('氏名', 'name', 'col-name')}
-              ${this.getSortHeaderHtml('氏名カナ', 'name', 'col-kana')}
-              ${this.getSortHeaderHtml('前クラス', 'prevClass', 'col-compact-class', '(所属)')}
-              ${this.getSortHeaderHtml('前科目', 'prevCourse', 'col-compact-course', '(所属)')}
-              ${this.getSortHeaderHtml('提出状況', 'status', 'col-status')}
-              ${this.getSortHeaderHtml('確定クラス', 'postClass', 'col-compact-class', '(後)')}
-              ${this.getSortHeaderHtml('確定科目', 'postCourse', 'col-compact-course', '(後)')}
-              <th class="col-method">受付方法</th>
-              <th class="col-approver">承認者</th>
-              ${this.getSortHeaderHtml('日時', 'date', 'col-date')}
-              <th class="col-remarks">特記事項</th>
-              <th class="col-history" style="text-align: center;">変更履歴</th>
+              ${isSelectionMode ? `
+                ${this.getSortHeaderHtml('日能研番号', 'id', 'col-id')}
+                ${this.getSortHeaderHtml('氏名', 'name', 'col-name')}
+                ${this.getSortHeaderHtml('氏名カナ', 'name', 'col-kana')}
+                ${this.getSortHeaderHtml('所属クラス', 'prevClass', 'col-compact-class')}
+                ${this.getSortHeaderHtml('提出状況', 'status', 'col-status')}
+                ${this.getSortHeaderHtml('申込講座数', 'courses', 'col-compact-course', '(計)')}
+                <th class="col-courses-list" style="min-width: 220px;">申込講座一覧</th>
+                <th class="col-method">受付方法</th>
+                <th class="col-approver">承認者</th>
+                ${this.getSortHeaderHtml('日時', 'date', 'col-date')}
+                <th class="col-remarks">特記事項</th>
+                <th class="col-history" style="text-align: center;">変更履歴</th>
+              ` : `
+                ${this.getSortHeaderHtml('日能研番号', 'id', 'col-id')}
+                ${this.getSortHeaderHtml('氏名', 'name', 'col-name')}
+                ${this.getSortHeaderHtml('氏名カナ', 'name', 'col-kana')}
+                ${this.getSortHeaderHtml('前クラス', 'prevClass', 'col-compact-class', '(所属)')}
+                ${this.getSortHeaderHtml('前科目', 'prevCourse', 'col-compact-course', '(所属)')}
+                ${this.getSortHeaderHtml('提出状況', 'status', 'col-status')}
+                ${this.getSortHeaderHtml('確定クラス', 'postClass', 'col-compact-class', '(後)')}
+                ${this.getSortHeaderHtml('確定科目', 'postCourse', 'col-compact-course', '(後)')}
+                <th class="col-method">受付方法</th>
+                <th class="col-approver">承認者</th>
+                ${this.getSortHeaderHtml('日時', 'date', 'col-date')}
+                <th class="col-remarks">特記事項</th>
+                <th class="col-history" style="text-align: center;">変更履歴</th>
+              `}
             </tr>
           </thead>
           <tbody>
     `;
 
     for (const row of this.filteredList) {
+      const historyCount = Array.isArray(row.history) ? row.history.length : (row.status === '承認済' ? 1 : 0);
+      const hasScanImg = (row.scanImageBlob) || (row.history && row.history.some(h => h.scanImageBlob));
+
+      if (isSelectionMode) {
+        let statusBadge = '<span class="badge badge-gray">未提出</span>';
+        if (row.status === '承認済') {
+          if ((row.totalCourseCount || 0) > 0) {
+            statusBadge = '<span class="badge badge-success">提出済</span>';
+          } else {
+            statusBadge = '<span class="badge badge-gray">0講座</span>';
+          }
+        }
+
+        html += `
+          <tr>
+            <td class="col-id text-mono font-bold">${row.nichinokenId}</td>
+            <td class="col-name font-bold">${row.name}</td>
+            <td class="col-kana">${row.nameKana || ''}</td>
+            <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${row.className}</span></td>
+            <td class="col-status">${statusBadge}</td>
+            <td class="col-compact-course text-mono font-bold">
+              ${row.status === '承認済' 
+                ? `<span class="badge" style="background: #ede7f6; color: #512da8; font-size: 0.85rem; padding: 2px 8px;">${row.totalCourseCount || 0} 講座</span>`
+                : '<span class="text-muted">-</span>'}
+            </td>
+            <td class="col-courses-list">
+              ${row.status === '承認済' ? (
+                (row.selectedCourses && row.selectedCourses.length > 0)
+                  ? `<div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                      ${row.selectedCourses.map(rawC => {
+                        const cName = typeof rawC === 'string' ? rawC : (rawC?.label || '');
+                        const isZoom = cName.includes('Zoom');
+                        const isVideo = cName.includes('動画');
+                        const bg = isZoom ? '#e0f2fe' : (isVideo ? '#ffedd5' : '#ede9fe');
+                        const color = isZoom ? '#0369a1' : (isVideo ? '#c2410c' : '#6d28d9');
+                        return `<span class="badge" style="background: ${bg}; color: ${color}; font-size: 0.75rem; padding: 2px 6px; font-weight: 600;">🟪 ${cName}</span>`;
+                      }).join('')}
+                     </div>`
+                  : '<span class="text-muted" style="font-size: 0.82rem;">申込なし（0講座）</span>'
+              ) : '<span class="text-muted">-</span>'}
+            </td>
+            <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${row.inputMethod}</span>` : '-'}</td>
+            <td class="col-approver">${row.approvedBy || '-'}</td>
+            <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
+            <td class="col-remarks" title="${row.remarks || ''}"><span>${row.remarks || '-'}</span></td>
+            <td class="col-history" style="text-align: center;">
+              <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
+                📜 履歴 <span class="badge ${historyCount > 0 ? 'badge-info' : 'badge-gray'}" style="padding: 1px 4px; font-size: 0.7rem; margin-left: 2px;">${historyCount}</span>
+                ${hasScanImg ? '<span title="スキャン原本画像あり" style="font-size: 0.8rem; margin-left: 1px;">📷</span>' : ''}
+              </button>
+            </td>
+          </tr>
+        `;
+        continue;
+      }
+
       let statusBadge = '<span class="badge badge-gray">未提出</span>';
       let enrollmentBadge = '<span class="text-muted">-</span>';
       let enrollmentCourseBadge = '<span class="text-muted">-</span>';
@@ -508,9 +667,6 @@ export const ListPage = {
           enrollmentCourseBadge = `<span class="badge badge-purple" style="font-size: 0.85rem; padding: 2px 6px;">${row.enrollmentCourse || row.course || '4科'}</span>`;
         }
       }
-
-      const historyCount = Array.isArray(row.history) ? row.history.length : (row.status === '承認済' ? 1 : 0);
-      const hasScanImg = (row.scanImageBlob) || (row.history && row.history.some(h => h.scanImageBlob));
 
       html += `
         <tr>

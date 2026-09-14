@@ -28,6 +28,7 @@ export const ManualPage = {
     this.selectedStudent = null;
 
     const isCompleted = this.project.status === '完了';
+    const isSelectionMode = (this.project.projectType === 'selection');
     const now = new Date();
     const nowIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -124,51 +125,104 @@ export const ManualPage = {
           </div>
         </div>
 
-        <!-- 4. 受講変更内容 -->
-        <div class="form-group">
-          <label class="form-label">受講内容 <span class="required">*</span></label>
-          <div class="radio-card-group">
-            <label class="radio-card selected" id="man-card-no-change" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
-              <input type="radio" name="man-enroll-choice" value="no-change" checked ${isCompleted ? 'disabled' : ''}>
-              <div>
-                <div class="font-bold">変更なし（所属クラス・科目で受講）</div>
-                <div style="font-size: 0.76rem; color: var(--gray-500); margin-top: 2px;">所属クラス・科目のまま受講</div>
-              </div>
-            </label>
+        <!-- 4. 受講変更内容 / 講座選択 -->
+        ${isSelectionMode ? `
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+              <label class="form-label font-bold" style="margin-bottom: 0;">🎯 申込希望講座の選択 <span class="required">*</span></label>
+              <span class="badge badge-purple font-bold" style="font-size: 0.85rem; padding: 4px 10px; background: #8b5cf6; color: #fff;">
+                選択中: <span id="man-sel-count" class="text-mono" style="font-size: 1rem;">0</span> 講座
+              </span>
+            </div>
 
-            <label class="radio-card" id="man-card-has-change" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
-              <input type="radio" name="man-enroll-choice" value="has-change" ${isCompleted ? 'disabled' : ''}>
-              <div style="flex: 1;">
-                <div class="font-bold">変更あり（クラス・科目変更 / 非受講）</div>
-                <div style="margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap;">
-                  <div style="flex: 1; min-width: 170px;">
-                    <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先クラス</label>
-                    <select id="man-sel-change-class" class="form-control font-bold" style="padding: 6px 10px;" disabled>
-                      <option value="">-- 変更先クラス / 非受講を選択 --</option>
-                      ${this.classList.map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
-                      <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
-                    </select>
-                  </div>
-                  <div style="width: 125px;" id="man-wrap-change-course">
-                    <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先科目</label>
-                    <select id="man-sel-change-course" class="form-control font-bold" style="padding: 6px 10px;" disabled>
-                      <option value="4科">4科</option>
-                      <option value="2科">2科</option>
-                    </select>
+            <!-- クイック選択ツールバー -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button type="button" id="btn-man-select-all" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; border: 1px solid var(--gray-300);" ${isCompleted ? 'disabled' : ''}>全選択</button>
+                <button type="button" id="btn-man-select-none" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; border: 1px solid var(--gray-300);" ${isCompleted ? 'disabled' : ''}>全解除</button>
+              </div>
+              <div id="man-quick-method-filters" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
+            </div>
+
+            <div id="man-zero-selected-note" style="margin-bottom: 8px; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.78rem; background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3;">
+              ⚠️ 現在0講座選択です（未受講・不参加として登録されます）
+            </div>
+
+            <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 12px;">
+              ${(this.project.scanTemplate?.customBoxes || []).length > 0 ? `
+                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto;">
+                  ${(this.project.scanTemplate.customBoxes).map(box => {
+                    const m = (box.label || '').match(/[（\(](Zoom|対面|動画|テスト|校舎|午前|午後)[）\)]/i);
+                    const tag = m ? m[1] : '';
+                    return `
+                      <label class="custom-box-check-row" style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--gray-200); cursor: pointer; user-select: none;">
+                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                          <input type="checkbox" class="chk-man-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isCompleted ? 'disabled' : ''}>
+                          <span style="font-weight: 700; font-size: 0.88rem; color: var(--gray-800);">${box.label}</span>
+                          ${tag ? `<span class="badge ${tag === 'Zoom' ? 'badge-info' : (tag === '動画' ? 'badge-purple' : 'badge-gray')}" style="font-size: 0.7rem; padding: 1px 5px;">${tag}</span>` : ''}
+                        </div>
+                        <span class="badge badge-gray" style="font-size: 0.75rem;">⬜ なし</span>
+                      </label>
+                    `;
+                  }).join('')}
+                </div>
+              ` : `
+                <div style="color: var(--gray-500); font-size: 0.82rem; text-align: center; padding: 10px;">
+                  読取講座枠が設定されていません。「書式設定」から講座枠を登録してください。
+                </div>
+              `}
+            </div>
+          </div>
+        ` : `
+          <div class="form-group">
+            <label class="form-label">受講内容 <span class="required">*</span></label>
+            <div class="radio-card-group">
+              <label class="radio-card selected" id="man-card-no-change" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
+                <input type="radio" name="man-enroll-choice" value="no-change" checked ${isCompleted ? 'disabled' : ''}>
+                <div>
+                  <div class="font-bold">変更なし（所属クラス・科目で受講）</div>
+                  <div style="font-size: 0.76rem; color: var(--gray-500); margin-top: 2px;">所属クラス・科目のまま受講</div>
+                </div>
+              </label>
+
+              <label class="radio-card" id="man-card-has-change" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
+                <input type="radio" name="man-enroll-choice" value="has-change" ${isCompleted ? 'disabled' : ''}>
+                <div style="flex: 1;">
+                  <div class="font-bold">変更あり（クラス・科目変更 / 非受講）</div>
+                  <div style="margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 170px;">
+                      <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先クラス</label>
+                      <select id="man-sel-change-class" class="form-control font-bold" style="padding: 6px 10px;" disabled>
+                        <option value="">-- 変更先クラス / 非受講を選択 --</option>
+                        ${this.classList.map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
+                        <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
+                      </select>
+                    </div>
+                    <div style="width: 125px;" id="man-wrap-change-course">
+                      <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先科目</label>
+                      <select id="man-sel-change-course" class="form-control font-bold" style="padding: 6px 10px;" disabled>
+                        <option value="4科">4科</option>
+                        <option value="2科">2科</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </label>
+              </label>
+            </div>
           </div>
-        </div>
+        `}
 
         <!-- 5. 特記事項 -->
         <div class="form-group">
           <label class="form-label">特記事項・理由（任意）</label>
-          <textarea id="man-txt-remarks" class="form-control" placeholder="例: 紙紛失のため口頭連絡。夏期前半は他校舎受講を希望など" ${isCompleted ? 'disabled' : ''}></textarea>
+          <textarea id="man-txt-remarks" class="form-control" placeholder="例: 紙紛失のため口頭連絡。12/28はZoom受講希望など" ${isCompleted ? 'disabled' : ''}></textarea>
         </div>
 
-        <div style="margin-top: var(--spacing-xl); text-align: right;">
+        <div style="margin-top: var(--spacing-xl); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer; user-select: none;">
+            <input type="checkbox" id="chk-man-continuous" checked ${isCompleted ? 'disabled' : ''}>
+            <span>⚡ 登録後、続けて次の生徒を入力する</span>
+          </label>
           <button id="btn-save-manual" class="btn ${isCompleted ? 'btn-secondary' : 'btn-primary'} btn-lg" style="min-width: 160px;" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
             ${isCompleted ? '🔒 完了のため保存不可' : '💾 登録を保存する'}
           </button>
@@ -285,13 +339,46 @@ export const ManualPage = {
       });
     };
 
+    // 日能研番号または生徒名のEnter即時確定
+    searchInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const rawQ = searchInput.value.trim().toLowerCase();
+        if (!rawQ) return;
+        const q = rawQ.replace(/[\s　]+/g, '');
+        const qKana = toKatakana(q);
+
+        // 完全一致があれば最優先
+        const exactMatch = this.studentsList.find(s => 
+          (s.nichinokenId || '').toLowerCase() === q ||
+          (s.name || '').replace(/[\s　]+/g, '') === q
+        );
+        if (exactMatch) {
+          this.selectStudent(exactMatch, dispName, dispId, dispClass, dispStatus, selectedStudentCard, resultsBox, searchInput);
+          return;
+        }
+
+        // 候補が1件のみなら確定
+        const matches = this.studentsList.filter(s => {
+          const id = (s.nichinokenId || '').toLowerCase();
+          const name = (s.name || '').toLowerCase().replace(/[\s　]+/g, '');
+          const kana = toKatakana((s.nameKana || '').toLowerCase().replace(/[\s　]+/g, ''));
+          return id.includes(q) || name.includes(q) || kana.includes(qKana);
+        });
+        if (matches.length === 1) {
+          this.selectStudent(matches[0], dispName, dispId, dispClass, dispStatus, selectedStudentCard, resultsBox, searchInput);
+        }
+      }
+    };
+
     clearSelectedBtn.onclick = () => {
       this.selectedStudent = null;
       selectedStudentCard.classList.add('hidden');
       searchInput.value = '';
+      searchInput.focus();
     };
 
-    // ラジオ選択制御
+    // ラジオ選択制御（受講確認モードのみ）
     const radioNoChange = this.container.querySelector('input[value="no-change"]');
     const radioHasChange = this.container.querySelector('input[value="has-change"]');
     const cardNoChange = this.container.querySelector('#man-card-no-change');
@@ -299,38 +386,120 @@ export const ManualPage = {
     const changeClassSelect = this.container.querySelector('#man-sel-change-class');
     const changeCourseSelect = this.container.querySelector('#man-sel-change-course');
 
-    const updateRadio = () => {
-      if (radioNoChange.checked) {
-        cardNoChange.classList.add('selected');
-        cardHasChange.classList.remove('selected');
-        changeClassSelect.disabled = true;
-        changeCourseSelect.disabled = true;
-      } else {
-        cardNoChange.classList.remove('selected');
-        cardHasChange.classList.add('selected');
-        changeClassSelect.disabled = false;
-        changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
-        changeClassSelect.focus();
-      }
-    };
+    if (radioNoChange && radioHasChange && cardNoChange && cardHasChange) {
+      const updateRadio = () => {
+        if (radioNoChange.checked) {
+          cardNoChange.classList.add('selected');
+          cardHasChange.classList.remove('selected');
+          if (changeClassSelect) changeClassSelect.disabled = true;
+          if (changeCourseSelect) changeCourseSelect.disabled = true;
+        } else {
+          cardNoChange.classList.remove('selected');
+          cardHasChange.classList.add('selected');
+          if (changeClassSelect) {
+            changeClassSelect.disabled = false;
+            changeClassSelect.focus();
+          }
+          if (changeCourseSelect && changeClassSelect) {
+            changeCourseSelect.disabled = (changeClassSelect.value === '非受講');
+          }
+        }
+      };
 
-    changeClassSelect.onchange = () => {
-      if (changeClassSelect.value === '非受講') {
-        changeCourseSelect.disabled = true;
-      } else if (radioHasChange.checked) {
-        changeCourseSelect.disabled = false;
+      if (changeClassSelect) {
+        changeClassSelect.onchange = () => {
+          if (changeClassSelect.value === '非受講') {
+            if (changeCourseSelect) changeCourseSelect.disabled = true;
+          } else if (radioHasChange.checked) {
+            if (changeCourseSelect) changeCourseSelect.disabled = false;
+          }
+        };
       }
-    };
 
-    radioNoChange.onchange = updateRadio;
-    radioHasChange.onchange = updateRadio;
-    cardNoChange.onclick = () => { radioNoChange.checked = true; updateRadio(); };
-    cardHasChange.onclick = (e) => {
-      if (e.target !== changeClassSelect && e.target !== changeCourseSelect) {
-        radioHasChange.checked = true;
-        updateRadio();
+      radioNoChange.onchange = updateRadio;
+      radioHasChange.onchange = updateRadio;
+      cardNoChange.onclick = () => { radioNoChange.checked = true; updateRadio(); };
+      cardHasChange.onclick = (e) => {
+        if (e.target !== changeClassSelect && e.target !== changeCourseSelect) {
+          radioHasChange.checked = true;
+          updateRadio();
+        }
+      };
+    }
+
+    // 志望校別・講座チェックボックスのリアルタイムカウンター・連動
+    const manCustomChecks = this.container.querySelectorAll('.chk-man-custom-box-item');
+    const manZeroNote = this.container.querySelector('#man-zero-selected-note');
+
+    const updateManCount = () => {
+      let count = 0;
+      manCustomChecks.forEach(chk => {
+        if (chk.checked) count++;
+        const row = chk.closest('.custom-box-check-row');
+        if (row) {
+          row.style.background = chk.checked ? '#f5f3ff' : '#fff';
+          row.style.borderColor = chk.checked ? '#c4b5fd' : 'var(--gray-200)';
+          const textEl = row.querySelector('span[style*="font-weight: 700"]');
+          if (textEl) textEl.style.color = chk.checked ? '#6d28d9' : 'var(--gray-800)';
+          const badgeEl = row.querySelector('.badge');
+          if (badgeEl) {
+            badgeEl.className = `badge ${chk.checked ? 'badge-purple font-bold' : 'badge-gray'}`;
+            badgeEl.textContent = chk.checked ? '✅ 選択' : '⬜ なし';
+          }
+        }
+      });
+      const countEl = this.container.querySelector('#man-sel-count');
+      if (countEl) countEl.textContent = count;
+      if (manZeroNote) {
+        manZeroNote.style.display = (count === 0) ? 'block' : 'none';
       }
     };
+    manCustomChecks.forEach(chk => chk.addEventListener('change', updateManCount));
+
+    // 講座選択モード用: クイック選択ツールバー
+    const btnManSelectAll = this.container.querySelector('#btn-man-select-all');
+    const btnManSelectNone = this.container.querySelector('#btn-man-select-none');
+    if (btnManSelectAll) {
+      btnManSelectAll.onclick = () => {
+        manCustomChecks.forEach(chk => { chk.checked = true; });
+        updateManCount();
+      };
+    }
+    if (btnManSelectNone) {
+      btnManSelectNone.onclick = () => {
+        manCustomChecks.forEach(chk => { chk.checked = false; });
+        updateManCount();
+      };
+    }
+
+    const quickMethodContainer = this.container.querySelector('#man-quick-method-filters');
+    if (quickMethodContainer && manCustomChecks.length > 0) {
+      const methods = new Set();
+      manCustomChecks.forEach(chk => {
+        const label = chk.dataset.label || '';
+        const m = label.match(/[（\(](Zoom|対面|動画|テスト|校舎|午前|午後)[）\)]/i);
+        if (m) methods.add(m[1]);
+      });
+
+      if (methods.size > 0) {
+        quickMethodContainer.innerHTML = Array.from(methods).map(m => `
+          <button type="button" class="btn btn-ghost btn-sm btn-quick-man-method" data-method="${m}" style="font-size: 0.75rem; padding: 2px 7px; border: 1px solid var(--purple-300, #c4b5fd); color: #6d28d9; background: rgba(139, 92, 246, 0.05);">
+            ${m}のみ
+          </button>
+        `).join('');
+
+        quickMethodContainer.querySelectorAll('.btn-quick-man-method').forEach(btn => {
+          btn.onclick = () => {
+            const mTag = btn.dataset.method;
+            manCustomChecks.forEach(chk => {
+              const label = chk.dataset.label || '';
+              chk.checked = label.includes(mTag);
+            });
+            updateManCount();
+          };
+        });
+      }
+    }
 
     // 保存ボタン
     this.container.querySelector('#btn-save-manual').onclick = async () => {
@@ -357,22 +526,39 @@ export const ManualPage = {
       const datetime = this.container.querySelector('#man-inp-datetime').value;
       const remarks = this.container.querySelector('#man-txt-remarks').value.trim();
 
-      const hasChange = radioHasChange.checked;
+      const isSelectionMode = (this.project.projectType === 'selection');
+      let hasChange = false;
       let enrollmentClass = this.selectedStudent.className;
       let enrollmentCourse = this.selectedStudent.course || '4科';
+      const customChecks = {};
+      let selectedCourses = [];
 
-      if (hasChange) {
-        const sel = changeClassSelect.value;
-        if (!sel) {
-          UI.showToast('変更先クラスまたは非受講を選択してください', 'warning');
-          changeClassSelect.focus();
-          return;
-        }
-        enrollmentClass = sel;
-        if (enrollmentClass === '非受講') {
-          enrollmentCourse = '非受講';
-        } else {
-          enrollmentCourse = changeCourseSelect.value || '4科';
+      if (isSelectionMode) {
+        manCustomChecks.forEach(chk => {
+          const id = chk.dataset.id;
+          const label = chk.dataset.label;
+          customChecks[id] = { id, label, isChecked: chk.checked };
+        });
+        selectedCourses = Object.values(customChecks).filter(c => c.isChecked).map(c => c.label);
+        const totalSelected = selectedCourses.length;
+        hasChange = totalSelected > 0;
+        enrollmentClass = totalSelected > 0 ? `${totalSelected}講座申込` : '0講座（未受講）';
+        enrollmentCourse = '-';
+      } else {
+        hasChange = radioHasChange ? radioHasChange.checked : false;
+        if (hasChange) {
+          const sel = changeClassSelect ? changeClassSelect.value : '';
+          if (!sel) {
+            UI.showToast('変更先クラスまたは非受講を選択してください', 'warning');
+            if (changeClassSelect) changeClassSelect.focus();
+            return;
+          }
+          enrollmentClass = sel;
+          if (enrollmentClass === '非受講') {
+            enrollmentCourse = '非受講';
+          } else {
+            enrollmentCourse = changeCourseSelect ? changeCourseSelect.value : (this.selectedStudent.course || '4科');
+          }
         }
       }
 
@@ -380,7 +566,7 @@ export const ManualPage = {
       if (saveBtn) UI.setButtonLoading(saveBtn, true, '登録中...');
 
       try {
-        await DB.saveSubmission(this.selectedStudent.submissionId, {
+        const payload = {
           status: '承認済',
           hasChange,
           enrollmentClass,
@@ -390,7 +576,13 @@ export const ManualPage = {
           remarks,
           submittedAt: datetime ? new Date(datetime).toISOString() : new Date().toISOString(),
           approvedAt: new Date().toISOString()
-        });
+        };
+        if (isSelectionMode) {
+          payload.customChecks = customChecks;
+          payload.selectedCourses = selectedCourses;
+        }
+
+        await DB.saveSubmission(this.selectedStudent.submissionId, payload);
 
         const syncNote = FolderConnector.isConnected() ? '（共有フォルダ同期済）' : '';
         UI.showToast(`${this.selectedStudent.name} 様の受講内容を手動登録しました${syncNote}`, 'success');
@@ -399,8 +591,27 @@ export const ManualPage = {
           ProjectPage.updateHeaderStats();
         }
 
-        // 再レンダリング
-        await this.render(this.container, this.project);
+        const isContinuous = this.container.querySelector('#chk-man-continuous')?.checked;
+        if (isContinuous) {
+          if (saveBtn) UI.setButtonLoading(saveBtn, false);
+          // 連続登録モード: フォームをクリアして即座に検索へフォーカス
+          this.selectedStudent = null;
+          selectedStudentCard.classList.add('hidden');
+          searchInput.value = '';
+          searchInput.focus();
+
+          // 生徒リストを最新状態に非同期同期
+          this.studentsList = await DB.getProjectStudentsWithSubmissions(this.project.id);
+
+          // 講座選択状態をリセット
+          manCustomChecks.forEach(chk => { chk.checked = false; });
+          updateManCount();
+          const remarksInput = this.container.querySelector('#man-txt-remarks');
+          if (remarksInput) remarksInput.value = '';
+        } else {
+          // 通常モード: 再レンダリング
+          await this.render(this.container, this.project);
+        }
       } catch (err) {
         UI.showToast(`保存エラー: ${err.message}`, 'error');
         if (saveBtn) UI.setButtonLoading(saveBtn, false);
@@ -452,26 +663,60 @@ export const ManualPage = {
 
     remarksInput.value = stu.remarks || '';
 
-    if (stu.status === '承認済' && (stu.hasChange || stu.enrollmentClass === '非受講')) {
-      radioHasChange.checked = true;
-      cardNoChange.classList.remove('selected');
-      cardHasChange.classList.add('selected');
-      changeClassSelect.disabled = false;
-      changeClassSelect.value = stu.enrollmentClass || '';
-      if (changeCourseSelect) {
-        changeCourseSelect.value = (stu.enrollmentCourse && stu.enrollmentCourse !== '-' && stu.enrollmentCourse !== '非受講')
-          ? stu.enrollmentCourse 
-          : (stu.course || '4科');
-        changeCourseSelect.disabled = (stu.enrollmentClass === '非受講');
+    const isSelectionMode = (this.project.projectType === 'selection');
+    if (isSelectionMode) {
+      const savedChecks = stu.customChecks || {};
+      const manCustomChecks = this.container.querySelectorAll('.chk-man-custom-box-item');
+      let count = 0;
+      manCustomChecks.forEach(chk => {
+        const id = chk.dataset.id;
+        const isChecked = !!(savedChecks[id] && savedChecks[id].isChecked);
+        chk.checked = isChecked;
+        if (isChecked) count++;
+
+        const row = chk.closest('.custom-box-check-row');
+        if (row) {
+          row.style.background = isChecked ? '#f5f3ff' : '#fff';
+          row.style.borderColor = isChecked ? '#c4b5fd' : 'var(--gray-200)';
+          const textEl = row.querySelector('span[style*="font-weight: 700"]');
+          if (textEl) textEl.style.color = isChecked ? '#6d28d9' : 'var(--gray-800)';
+          const badgeEl = row.querySelector('.badge');
+          if (badgeEl) {
+            badgeEl.className = `badge ${isChecked ? 'badge-purple font-bold' : 'badge-gray'}`;
+            badgeEl.textContent = isChecked ? '✅ 選択' : '⬜ なし';
+          }
+        }
+      });
+      const countEl = this.container.querySelector('#man-sel-count');
+      if (countEl) countEl.textContent = count;
+      const manZeroNote = this.container.querySelector('#man-zero-selected-note');
+      if (manZeroNote) {
+        manZeroNote.style.display = (count === 0) ? 'block' : 'none';
       }
     } else {
-      radioNoChange.checked = true;
-      cardNoChange.classList.add('selected');
-      cardHasChange.classList.remove('selected');
-      changeClassSelect.disabled = true;
-      if (changeCourseSelect) {
-        changeCourseSelect.value = stu.course || '4科';
-        changeCourseSelect.disabled = true;
+      if (stu.status === '承認済' && (stu.hasChange || stu.enrollmentClass === '非受講')) {
+        if (radioHasChange) radioHasChange.checked = true;
+        if (cardNoChange) cardNoChange.classList.remove('selected');
+        if (cardHasChange) cardHasChange.classList.add('selected');
+        if (changeClassSelect) {
+          changeClassSelect.disabled = false;
+          changeClassSelect.value = stu.enrollmentClass || '';
+        }
+        if (changeCourseSelect) {
+          changeCourseSelect.value = (stu.enrollmentCourse && stu.enrollmentCourse !== '-' && stu.enrollmentCourse !== '非受講')
+            ? stu.enrollmentCourse 
+            : (stu.course || '4科');
+          changeCourseSelect.disabled = (stu.enrollmentClass === '非受講');
+        }
+      } else {
+        if (radioNoChange) radioNoChange.checked = true;
+        if (cardNoChange) cardNoChange.classList.add('selected');
+        if (cardHasChange) cardHasChange.classList.remove('selected');
+        if (changeClassSelect) changeClassSelect.disabled = true;
+        if (changeCourseSelect) {
+          changeCourseSelect.value = stu.course || '4科';
+          changeCourseSelect.disabled = true;
+        }
       }
     }
   }

@@ -270,6 +270,133 @@ export const CsvUtil = {
   },
 
   /**
+   * 講座選択モード用 CSVエクスポート
+   */
+  exportSelectionSubmissionsCsv(rows, fileName = '志望校別対策講座_申込集計.csv') {
+    const headers = [
+      '日能研番号',
+      '氏名',
+      '氏名カナ',
+      '所属クラス',
+      '提出ステータス',
+      '申込講座数',
+      '申込講座一覧',
+      '受付方法',
+      '承認者',
+      '受付・承認日時',
+      '特記事項'
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    for (const r of rows) {
+      const escape = val => `"${(val || '').toString().replace(/"/g, '""')}"`;
+      const selectedCoursesStr = (r.selectedCourses && r.selectedCourses.length > 0)
+        ? r.selectedCourses.join(' / ')
+        : (r.status === '承認済' ? '申込なし(0講座)' : '-');
+
+      csvRows.push([
+        escape(r.nichinokenId),
+        escape(r.name),
+        escape(r.nameKana),
+        escape(r.className),
+        escape(r.status),
+        escape(r.status === '承認済' ? (r.totalCourseCount || 0) : '-'),
+        escape(selectedCoursesStr),
+        escape(r.inputMethod || '-'),
+        escape(r.approvedBy || '-'),
+        escape(r.approvedAt || r.submittedAt || '-'),
+        escape(r.remarks || '')
+      ].join(','));
+    }
+
+    const csvContent = csvRows.join('\r\n');
+    this.downloadFile(csvContent, fileName, 'text/csv;charset=utf-8;');
+  },
+
+  /**
+   * 講座選択モード用 Excel (.xlsx) エクスポート（生徒別一覧 ＋ クロスマトリクス 2シート出力）
+   */
+  exportSelectionSubmissionsExcel(rows, customBoxes = [], fileName = '志望校別対策講座_申込集計.xlsx') {
+    if (typeof XLSX === 'undefined') {
+      this.exportSelectionSubmissionsCsv(rows, fileName.replace(/\.xlsx$/, '.csv'));
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // シート1: 生徒別申込一覧
+    const listData = [
+      ['日能研番号', '氏名', '氏名カナ', '所属クラス', '提出ステータス', '申込講座数', '申込講座一覧', '受付方法', '承認者', '受付・承認日時', '特記事項']
+    ];
+
+    for (const r of rows) {
+      const selectedCoursesStr = (r.selectedCourses && r.selectedCourses.length > 0)
+        ? r.selectedCourses.join(' / ')
+        : (r.status === '承認済' ? '申込なし(0講座)' : '-');
+
+      listData.push([
+        r.nichinokenId || '',
+        r.name || '',
+        r.nameKana || '',
+        r.className || '',
+        r.status || '',
+        r.status === '承認済' ? (r.totalCourseCount || 0) : '-',
+        selectedCoursesStr,
+        r.inputMethod || '-',
+        r.approvedBy || '-',
+        r.approvedAt || r.submittedAt || '-',
+        r.remarks || ''
+      ]);
+    }
+    const wsList = XLSX.utils.aoa_to_sheet(listData);
+    XLSX.utils.book_append_sheet(wb, wsList, '生徒別一覧');
+
+    // シート2: 講座別クロス集計マトリクス（生徒 × 全講座）
+    const courseBoxes = (customBoxes || []).filter(b => b && b.label);
+    if (courseBoxes.length > 0) {
+      const matrixHeaders = ['日能研番号', '氏名', 'クラス', '提出状況', '合計講座数', ...courseBoxes.map(b => b.label)];
+      const matrixData = [matrixHeaders];
+
+      for (const r of rows) {
+        const studentCheckedLabels = new Set(
+          r.customChecks ? Object.values(r.customChecks).filter(c => c.isChecked).map(c => c.label) : []
+        );
+
+        const row = [
+          r.nichinokenId || '',
+          r.name || '',
+          r.className || '',
+          r.status || '',
+          r.status === '承認済' ? (r.totalCourseCount || 0) : '-',
+        ];
+
+        for (const box of courseBoxes) {
+          if (r.status !== '承認済') {
+            row.push('-');
+          } else {
+            row.push(studentCheckedLabels.has(box.label) ? '○' : '');
+          }
+        }
+        matrixData.push(row);
+      }
+
+      // 合計行の追加
+      const totalRow = ['合計人数', '', '', '', rows.filter(r => r.status === '承認済').reduce((sum, r) => sum + (r.totalCourseCount || 0), 0)];
+      for (const box of courseBoxes) {
+        const count = rows.filter(r => r.status === '承認済' && r.customChecks && Object.values(r.customChecks).some(c => c.isChecked && c.label === box.label)).length;
+        totalRow.push(count);
+      }
+      matrixData.push(totalRow);
+
+      const wsMatrix = XLSX.utils.aoa_to_sheet(matrixData);
+      XLSX.utils.book_append_sheet(wb, wsMatrix, '講座別マトリクス');
+    }
+
+    XLSX.writeFile(wb, fileName);
+  },
+
+  /**
    * ファイルダウンロードヘルパー（BOM付与）
    */
   downloadFile(content, fileName, mimeType) {
