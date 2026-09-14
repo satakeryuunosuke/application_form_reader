@@ -13,6 +13,14 @@ if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
 async def main():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    server_port = 8088
+    server_proc = subprocess.Popen([
+        sys.executable, '-m', 'http.server', str(server_port)
+    ], cwd=repo_root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"[DEBUG] Started local HTTP server on port {server_port}")
+    await asyncio.sleep(1)
+
     chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
     if not os.path.exists(chrome_path):
         chrome_path = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
@@ -27,7 +35,7 @@ async def main():
         f'--remote-debugging-port={port}',
         f'--user-data-dir={user_data_dir}',
         '--window-size=1280,950',
-        'http://127.0.0.1:8000/'
+        f'http://127.0.0.1:{server_port}/'
     ])
 
     try:
@@ -68,14 +76,14 @@ async def main():
 
             await send('Page.enable')
             await send('Runtime.enable')
-            await send('Page.navigate', {'url': 'http://127.0.0.1:8000/'})
+            await send('Page.navigate', {'url': f'http://127.0.0.1:{server_port}/'})
             await asyncio.sleep(2)
 
             # 1. ページロード確認 & バージョン確認
             await wait_for_selector('#header-app-version')
             version_text = await eval_js("document.querySelector('#header-app-version').textContent")
             print(f"[CHECK 1] Header App Version: {version_text}")
-            assert version_text == 'v1.6.4', f"Expected v1.6.4, got {version_text}"
+            assert version_text == 'v1.8.0', f"Expected v1.8.0, got {version_text}"
 
             # 2. 新規プロジェクトモーダルを開く
             await eval_js("document.querySelector('#btn-new-project').click()")
@@ -94,12 +102,58 @@ async def main():
                 {'value': '冬期', 'text': '冬期講習'},
                 {'value': '春期', 'text': '春期講習'},
                 {'value': '前期', 'text': '前期'},
-                {'value': '後期', 'text': '後期'}
+                {'value': '後期', 'text': '後期'},
+                {'value': '志望校別対策講座', 'text': '志望校別対策講座'},
+                {'value': 'その他', 'text': 'その他（自由記述）'}
             ]
             assert options == expected_options, f"Options mismatch: {options} vs {expected_options}"
             print("[CHECK 2 PASS] Options matched perfectly!")
 
-            # 4. モーダルを一度閉じる
+            # 3-2. 「その他」選択時の自由記述欄トグルおよび入力バリデーション検証
+            # 初期状態では自由記述欄が非表示であることを確認
+            is_custom_visible = await eval_js("document.querySelector('#wiz-session-custom-wrapper').style.display !== 'none'")
+            assert not is_custom_visible, "Custom session wrapper should be hidden initially"
+
+            # 「その他」を選択してchangeイベント発火
+            await eval_js("""
+                const sel = document.querySelector('#wiz-session');
+                sel.value = 'その他';
+                sel.dispatchEvent(new Event('change'));
+            """)
+            await asyncio.sleep(0.3)
+            is_custom_visible_after = await eval_js("document.querySelector('#wiz-session-custom-wrapper').style.display !== 'none'")
+            assert is_custom_visible_after, "Custom session wrapper should be visible after selecting 'その他'"
+            print("[CHECK 2-2 PASS] Custom input displayed properly on 'その他'!")
+
+            # 空のまま「次へ」をクリック -> Step 2 に進まずエラー（wiz-sessionがまだ存在）
+            await eval_js("document.querySelector('#btn-wiz-next').click()")
+            await asyncio.sleep(0.3)
+            still_step_1 = await eval_js("document.querySelector('#wiz-session') !== null")
+            assert still_step_1, "Should block next step when custom session name is empty"
+            print("[CHECK 2-3 PASS] Blocked next step on empty custom session name!")
+
+            # 自由記述を入力して「次へ」をクリック
+            await eval_js("""
+                const input = document.querySelector('#wiz-session-custom');
+                input.value = '難関選抜特訓';
+                document.querySelector('#btn-wiz-next').click();
+            """)
+            await asyncio.sleep(0.5)
+            # Step 2 に遷移したか確認（#csv-dropzoneが存在）
+            is_step_2 = await eval_js("document.querySelector('#csv-dropzone') !== null")
+            assert is_step_2, "Should proceed to Step 2 with valid custom session name"
+            print("[CHECK 2-4 PASS] Proceeded to Step 2 with custom session name!")
+
+            # 「戻る」をクリックして Step 1 に戻り、値が復元されているか確認
+            await eval_js("document.querySelector('#btn-wiz-prev').click()")
+            await asyncio.sleep(0.5)
+            restored_sel = await eval_js("document.querySelector('#wiz-session').value")
+            restored_custom = await eval_js("document.querySelector('#wiz-session-custom').value")
+            assert restored_sel == 'その他', f"Expected selected 'その他', got {restored_sel}"
+            assert restored_custom == '難関選抜特訓', f"Expected custom value '難関選抜特訓', got {restored_custom}"
+            print("[CHECK 2-5 PASS] Restored custom session name upon returning to Step 1!")
+
+            # 4. モーダルを閉じる
             await eval_js("document.querySelector('.modal-close').click()")
             await asyncio.sleep(0.5)
 
@@ -166,6 +220,38 @@ async def main():
             print(f"[CHECK 3-C] Created Natsu project: title='{proj_natsu.get('title')}', sessionName='{proj_natsu.get('sessionName')}'")
             assert proj_natsu.get('title') == '2026年度 4年 夏期講習', f"Expected '2026年度 4年 夏期講習', got {proj_natsu.get('title')}"
 
+            # (D) 志望校別対策講座
+            proj_shibou = await eval_js("""
+                (async () => {
+                    const { DB } = await import('./js/db.js');
+                    return await DB.createProject({
+                        year: 2026,
+                        grade: 6,
+                        sessionName: '志望校別対策講座',
+                        students: [{ nichinokenId: '12345681', name: 'テスト志望校別', className: 'M1', course: '4科' }]
+                    });
+                })()
+            """)
+            print(f"[CHECK 3-D] Created Shibou project: title='{proj_shibou.get('title')}', sessionName='{proj_shibou.get('sessionName')}'")
+            assert proj_shibou.get('title') == '2026年度 6年 志望校別対策講座', f"Expected '2026年度 6年 志望校別対策講座', got {proj_shibou.get('title')}"
+            assert proj_shibou.get('sessionName') == '志望校別対策講座', f"Expected sessionName '志望校別対策講座', got {proj_shibou.get('sessionName')}"
+
+            # (E) その他（自由記述: 難関選抜特訓）
+            proj_custom = await eval_js("""
+                (async () => {
+                    const { DB } = await import('./js/db.js');
+                    return await DB.createProject({
+                        year: 2026,
+                        grade: 6,
+                        sessionName: '難関選抜特訓',
+                        students: [{ nichinokenId: '12345682', name: 'テスト自由記述', className: 'M1', course: '4科' }]
+                    });
+                })()
+            """)
+            print(f"[CHECK 3-E] Created Custom project: title='{proj_custom.get('title')}', sessionName='{proj_custom.get('sessionName')}'")
+            assert proj_custom.get('title') == '2026年度 6年 難関選抜特訓', f"Expected '2026年度 6年 難関選抜特訓', got {proj_custom.get('title')}"
+            assert proj_custom.get('sessionName') == '難関選抜特訓', f"Expected sessionName '難関選抜特訓', got {proj_custom.get('sessionName')}"
+
             # 6. ホーム画面を再描画してプロジェクトカードのバッジを確認
             await eval_js("location.hash = '#home'; location.reload();")
             await wait_for_selector('.project-card')
@@ -192,8 +278,18 @@ async def main():
             assert natsu_card is not None, "Natsu card not found!"
             assert '夏期講習' in natsu_card['badges'], f"Expected '夏期講習' in badges, got {natsu_card['badges']}"
 
-            # 7. 前期プロジェクトの詳細画面へ遷移し、ヘッダーバッジを確認
-            await eval_js(f"location.hash = '#project/{proj_zenki['id']}';")
+            # 志望校別対策講座カードに「志望校別対策講座」バッジがあることを確認
+            shibou_card = next((c for c in cards if '志望校別対策講座' in c['title']), None)
+            assert shibou_card is not None, "Shibou card not found!"
+            assert '志望校別対策講座' in shibou_card['badges'], f"Expected '志望校別対策講座' in badges, got {shibou_card['badges']}"
+
+            # 自由記述カードに「難関選抜特訓」バッジがあることを確認
+            custom_card = next((c for c in cards if '難関選抜特訓' in c['title']), None)
+            assert custom_card is not None, "Custom card not found!"
+            assert '難関選抜特訓' in custom_card['badges'], f"Expected '難関選抜特訓' in badges, got {custom_card['badges']}"
+
+            # 7. 志望校別対策講座プロジェクトの詳細画面へ遷移し、ヘッダーバッジを確認
+            await eval_js(f"location.hash = '#project/{proj_shibou['id']}';")
             await wait_for_selector('.project-header-bar')
             await asyncio.sleep(0.5)
 
@@ -201,18 +297,23 @@ async def main():
                 Array.from(document.querySelectorAll('.project-header-bar .badge')).map(b => b.textContent.trim())
             """)
             print(f"[CHECK 5] Project header badges: {proj_header_badges}")
-            assert '前期' in proj_header_badges, f"Expected '前期' in project header, got {proj_header_badges}"
-            assert '前期講習' not in proj_header_badges, "Header badge should NOT be '前期講習'!"
+            assert '志望校別対策講座' in proj_header_badges, f"Expected '志望校別対策講座' in project header, got {proj_header_badges}"
 
             # 8. スクリーンショット保存
-            # ホームに戻って新規作成モーダルを開いた状態のスクリーンショットを保存
+            # ホームに戻って新規作成モーダルを開き、「その他」を選択して自由記述欄を表示させた状態のスクリーンショットを保存
             await eval_js("location.hash = '#home';")
             await wait_for_selector('#btn-new-project')
             await asyncio.sleep(0.5)
             await eval_js("document.querySelector('#btn-new-project').click()")
             await wait_for_selector('#wiz-session')
-            # 前期を選択
-            await eval_js("document.querySelector('#wiz-session').value = '前期'")
+            # その他を選択して入力
+            await eval_js("""
+                const sel = document.querySelector('#wiz-session');
+                sel.value = 'その他';
+                sel.dispatchEvent(new Event('change'));
+                const inp = document.querySelector('#wiz-session-custom');
+                inp.value = '志望校別特訓';
+            """)
             await asyncio.sleep(0.5)
 
             ss = await send('Page.captureScreenshot', {'format': 'png'})
@@ -243,6 +344,7 @@ async def main():
 
     finally:
         chrome_proc.terminate()
+        server_proc.terminate()
 
 if __name__ == '__main__':
     asyncio.run(main())

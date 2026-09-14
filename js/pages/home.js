@@ -457,6 +457,8 @@ export const HomePage = {
     let wizardStep = 1;
     let selectedYear = currentYear;
     let selectedGrade = '6';
+    let selectedSessionOption = '夏期';
+    let customSessionName = '';
     let selectedSession = '夏期';
     let parsedStudents = [];
 
@@ -501,12 +503,18 @@ export const HomePage = {
             <div class="form-group">
               <label class="form-label">講習・受講期 <span class="required">*</span></label>
               <select id="wiz-session" class="form-control font-bold">
-                <option value="夏期" ${selectedSession === '夏期' ? 'selected' : ''}>夏期講習</option>
-                <option value="冬期" ${selectedSession === '冬期' ? 'selected' : ''}>冬期講習</option>
-                <option value="春期" ${selectedSession === '春期' ? 'selected' : ''}>春期講習</option>
-                <option value="前期" ${selectedSession === '前期' ? 'selected' : ''}>前期</option>
-                <option value="後期" ${selectedSession === '後期' ? 'selected' : ''}>後期</option>
+                <option value="夏期" ${selectedSessionOption === '夏期' ? 'selected' : ''}>夏期講習</option>
+                <option value="冬期" ${selectedSessionOption === '冬期' ? 'selected' : ''}>冬期講習</option>
+                <option value="春期" ${selectedSessionOption === '春期' ? 'selected' : ''}>春期講習</option>
+                <option value="前期" ${selectedSessionOption === '前期' ? 'selected' : ''}>前期</option>
+                <option value="後期" ${selectedSessionOption === '後期' ? 'selected' : ''}>後期</option>
+                <option value="志望校別対策講座" ${selectedSessionOption === '志望校別対策講座' ? 'selected' : ''}>志望校別対策講座</option>
+                <option value="その他" ${selectedSessionOption === 'その他' ? 'selected' : ''}>その他（自由記述）</option>
               </select>
+              <div id="wiz-session-custom-wrapper" style="margin-top: 8px; ${selectedSessionOption === 'その他' ? '' : 'display: none;'}">
+                <input type="text" id="wiz-session-custom" class="form-control" placeholder="講習・講座名を入力（例: 特別対策講座、志望校別特訓）" maxlength="50">
+                <small class="text-muted">※ 自由記述した名称がプロジェクト名や受講確認票の集計タイトル等に適用されます</small>
+              </div>
             </div>
           </div>
         `;
@@ -649,6 +657,26 @@ export const HomePage = {
         }
       }
 
+      // Step 1 のイベントバインド
+      if (wizardStep === 1) {
+        const sessionEl = modal.querySelector('#wiz-session');
+        const customWrapper = modal.querySelector('#wiz-session-custom-wrapper');
+        const customInput = modal.querySelector('#wiz-session-custom');
+        if (customInput) {
+          customInput.value = customSessionName;
+        }
+        if (sessionEl && customWrapper) {
+          sessionEl.onchange = () => {
+            if (sessionEl.value === 'その他') {
+              customWrapper.style.display = 'block';
+              if (customInput) customInput.focus();
+            } else {
+              customWrapper.style.display = 'none';
+            }
+          };
+        }
+      }
+
       // イベントバインド
       const closeBtn = modal.querySelector('#btn-wizard-close, #btn-wiz-close, .modal-close, .btn-close-modal');
       if (closeBtn) closeBtn.onclick = () => modal.remove();
@@ -692,9 +720,24 @@ export const HomePage = {
             const yearEl = modal.querySelector('#wiz-year');
             const gradeEl = modal.querySelector('#wiz-grade');
             const sessionEl = modal.querySelector('#wiz-session');
+            const customInput = modal.querySelector('#wiz-session-custom');
             if (yearEl) selectedYear = parseInt(yearEl.value, 10);
             if (gradeEl) selectedGrade = gradeEl.value;
-            if (sessionEl) selectedSession = sessionEl.value;
+            if (sessionEl) selectedSessionOption = sessionEl.value;
+
+            if (selectedSessionOption === 'その他') {
+              const customVal = customInput ? customInput.value.trim() : '';
+              if (!customVal) {
+                UI.showToast('講習・講座名（自由記述）を入力してください', 'warning');
+                if (customInput) customInput.focus();
+                return;
+              }
+              customSessionName = customVal;
+              selectedSession = customVal;
+            } else {
+              selectedSession = selectedSessionOption;
+            }
+
             wizardStep = 2;
             renderStep();
           } else if (wizardStep === 2) {

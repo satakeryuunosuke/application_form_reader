@@ -276,7 +276,7 @@ export const UI = {
   },
 
   /**
-   * 講習名・受講期を表示用に整形（例: "夏期" -> "夏期講習", "前期" -> "前期", "前期講習" -> "前期"）
+   * 講習名・受講期を表示用に整形（例: "夏期" -> "夏期講習", "前期" -> "前期", "志望校別対策講座" -> "志望校別対策講座"）
    * @param {string} sessionName
    * @returns {string}
    */
@@ -285,8 +285,13 @@ export const UI = {
     const clean = String(sessionName).trim();
     if (clean === '前期' || clean === '前期講習' || clean.startsWith('前期')) return '前期';
     if (clean === '後期' || clean === '後期講習' || clean.startsWith('後期')) return '後期';
-    if (clean.includes('講習')) return clean;
-    return `${clean}講習`;
+    if (clean === '夏期') return '夏期講習';
+    if (clean === '冬期') return '冬期講習';
+    if (clean === '春期') return '春期講習';
+    if (clean.includes('講習') || clean.includes('講座') || clean.includes('特訓') || clean.includes('ゼミ') || clean.includes('コース')) {
+      return clean;
+    }
+    return clean;
   },
 
   /**
