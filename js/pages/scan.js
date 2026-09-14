@@ -164,13 +164,15 @@ export const ScanPage = {
     progressBox.classList.remove('hidden');
 
     try {
+      const settings = await DB.getSettings();
+      const codeType = settings.codeType || 'code39';
       const template = this.project.scanTemplate;
       const scanResults = await ScannerEngine.processFiles(files, template, (p) => {
         const pct = p.total > 0 ? Math.min(100, Math.round((p.current / p.total) * 100)) : 0;
         statusText.textContent = p.status;
         percentText.textContent = `${pct}%`;
         progressBar.style.width = `${pct}%`;
-      });
+      }, { codeType });
 
       // 各スキャン結果に対してDBの生徒情報を照合
       this.pendingQueue = [];

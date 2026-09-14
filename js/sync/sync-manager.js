@@ -299,6 +299,12 @@ export const SyncManager = {
         }
       }
 
+      // 読取コード規格（QR / Code39 / Auto）のマージ
+      if (sharedSettings.codeType && sharedSettings.codeType !== localSettings.codeType) {
+        localSettings.codeType = sharedSettings.codeType;
+        hasChanges = true;
+      }
+
       if (hasChanges) {
         await DB.saveSettings(localSettings);
       }

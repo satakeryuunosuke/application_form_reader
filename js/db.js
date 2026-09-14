@@ -68,11 +68,15 @@ export const DB = {
         coursePresets: [...DEFAULT_COURSE_PRESETS],
         methodPresets: [...DEFAULT_METHOD_PRESETS],
         checkThreshold: 0.25,
+        codeType: 'code39',
         defaultScanTemplate: defaultTemplate,
         updatedAt: new Date().toISOString()
       });
     } else {
       const updates = {};
+      if (!settings.codeType) {
+        updates.codeType = 'code39';
+      }
       if (!settings.defaultScanTemplate) {
         updates.defaultScanTemplate = defaultTemplate;
       }

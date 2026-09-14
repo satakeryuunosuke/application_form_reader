@@ -49,6 +49,7 @@ export const SettingsPage = {
     const staffList = settings.staffNames || [];
     const coursePresets = settings.coursePresets || [];
     const methodPresets = settings.methodPresets || [];
+    const currentCodeType = settings.codeType || 'code39';
     const systemDefaultTemplate = CheckboxEngine.getDefaultTemplate();
     this.currentDefaultTemplate = settings.defaultScanTemplate
       ? JSON.parse(JSON.stringify(settings.defaultScanTemplate))
@@ -251,10 +252,46 @@ export const SettingsPage = {
             <span class="badge badge-info">新規プロジェクト適用</span>
           </div>
           <p style="color: var(--gray-600); font-size: 0.88rem; margin-bottom: var(--spacing-md);">
-            新しく作成するプロジェクトの初期書式として適用される、受講確認票（交換票）の共通既定書式（バーコードからのチェックボックス相対位置・サイズ・判定閾値）を設定します。<br>
+            新しく作成するプロジェクトの初期書式として適用される、受講確認票（交換票）の共通既定書式（コード規格、チェックボックス相対位置・サイズ・判定閾値）を設定します。<br>
             ※ サンプル帳票やお手元のPDF/画像を読み込んで位置を合わせ、右下の「<strong>💾 共通既定書式を保存</strong>」を押してください。
             ${isConnected ? '（共有フォルダ接続中は全PCに共有されます）' : ''}
           </p>
+
+          <!-- 読取コード規格切替パネル -->
+          <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: var(--spacing-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+              <div style="font-weight: 700; font-size: 0.95rem; color: var(--gray-800); display: flex; align-items: center; gap: 6px;">
+                <span>🏷️ 帳票の読取コード規格</span>
+                <span class="badge badge-info" style="font-size: 0.75rem;">全PC共有</span>
+              </div>
+              <span style="font-size: 0.78rem; color: var(--gray-500);">※ Wordの差し込み印刷でQRコードをお使いの場合は「QRコード」を選択してください</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+              <label id="label-code-type-qr" style="display: flex; align-items: flex-start; gap: 10px; background: white; border: 2px solid ${currentCodeType === 'qr' ? 'var(--primary-600)' : 'var(--gray-200)'}; border-radius: var(--radius-md); padding: 12px 14px; cursor: pointer; transition: all 0.2s ease;">
+                <input type="radio" name="setting-code-type" value="qr" ${currentCodeType === 'qr' ? 'checked' : ''} style="margin-top: 3px;">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.88rem; color: var(--gray-900);">🏁 QRコード <span class="badge badge-success" style="font-size: 0.72rem; padding: 2px 6px;">推奨・最速</span></div>
+                  <div style="font-size: 0.78rem; color: var(--gray-600); margin-top: 3px;">省スペース・傾きや汚れに強く、読取処理が最も高速です。Word差込印刷（MERGEBARCODE）に対応。</div>
+                </div>
+              </label>
+
+              <label id="label-code-type-code39" style="display: flex; align-items: flex-start; gap: 10px; background: white; border: 2px solid ${currentCodeType === 'code39' ? 'var(--primary-600)' : 'var(--gray-200)'}; border-radius: var(--radius-md); padding: 12px 14px; cursor: pointer; transition: all 0.2s ease;">
+                <input type="radio" name="setting-code-type" value="code39" ${currentCodeType === 'code39' ? 'checked' : ''} style="margin-top: 3px;">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.88rem; color: var(--gray-900);">📊 バーコード (CODE 39)</div>
+                  <div style="font-size: 0.78rem; color: var(--gray-600); margin-top: 3px;">従来の横長バーコード形式です。過去に印刷済みの帳票を読み取る場合に選択してください。</div>
+                </div>
+              </label>
+
+              <label id="label-code-type-auto" style="display: flex; align-items: flex-start; gap: 10px; background: white; border: 2px solid ${currentCodeType === 'auto' ? 'var(--primary-600)' : 'var(--gray-200)'}; border-radius: var(--radius-md); padding: 12px 14px; cursor: pointer; transition: all 0.2s ease;">
+                <input type="radio" name="setting-code-type" value="auto" ${currentCodeType === 'auto' ? 'checked' : ''} style="margin-top: 3px;">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.88rem; color: var(--gray-900);">🔀 自動判別 (両対応)</div>
+                  <div style="font-size: 0.78rem; color: var(--gray-600); margin-top: 3px;">QRコードを優先探索し、未検出時はCODE 39も探索します。新旧帳票が混在する場合に便利です。</div>
+                </div>
+              </label>
+            </div>
+          </div>
 
           <!-- 志望校別対策講座・追加チェックボックス管理パネル -->
           <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
@@ -467,6 +504,7 @@ export const SettingsPage = {
         },
         {
           defaultResetTemplate: systemDefaultTemplate,
+          codeType: currentCodeType,
           resetLabel: '🔄 システム標準初期値に戻す',
           resetToastMsg: 'システム標準初期値に復元しました（「共通既定書式を保存」で確定してください）'
         }
@@ -703,12 +741,43 @@ export const SettingsPage = {
       };
     });
 
+    // 読取コード規格（QRコード / CODE 39 / 自動判別）の切り替え
+    const codeTypeRadios = this.container.querySelectorAll('input[name="setting-code-type"]');
+    codeTypeRadios.forEach(radio => {
+      radio.addEventListener('change', async (e) => {
+        const val = e.target.value;
+        const s = await DB.getSettings();
+        s.codeType = val;
+        await DB.saveSettings(s);
+
+        // ラベルのアクティブ枠線表示を更新
+        codeTypeRadios.forEach(r => {
+          const parentLabel = r.closest('label');
+          if (parentLabel) {
+            parentLabel.style.borderColor = r.checked ? 'var(--primary-600)' : 'var(--gray-200)';
+          }
+        });
+
+        // キャリブレーターに動的通知
+        if (this.calibrator) {
+          await this.calibrator.updateCodeType(val);
+        }
+
+        const labelText = val === 'qr' ? 'QRコード' : (val === 'code39' ? 'バーコード (CODE 39)' : '自動判別 (両対応)');
+        UI.showToast(`読取コード規格を「${labelText}」に変更しました${FolderConnector.isConnected() ? '（共有フォルダ同期済）' : ''}`, 'success');
+      });
+    });
+
     // 共通既定書式の保存
     const saveDefaultTemplateBtn = this.container.querySelector('#btn-save-default-template');
     if (saveDefaultTemplateBtn) {
       saveDefaultTemplateBtn.onclick = async () => {
+        const selRadio = this.container.querySelector('input[name="setting-code-type"]:checked');
+        const selectedCodeType = selRadio ? selRadio.value : (settings.codeType || 'code39');
+
         if (this.calibrator && !this.calibrator.isBarcodeDetected()) {
-          UI.showToast('バーコードが読み取れていません。バーコードが鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。', 'error');
+          const codeName = selectedCodeType === 'qr' ? 'QRコード' : 'コード';
+          UI.showToast(`${codeName}が読み取れていません。鮮明に写っている受講票ファイルを選択するか、ファイルをご確認ください。`, 'error');
           return;
         }
         UI.setButtonLoading(saveDefaultTemplateBtn, true, '保存中...');
@@ -719,6 +788,7 @@ export const SettingsPage = {
             staffNames: staffList,
             coursePresets,
             methodPresets,
+            codeType: selectedCodeType,
             defaultScanTemplate: templateToSave,
             checkThreshold: templateToSave.threshold !== undefined ? templateToSave.threshold : 0.25
           };

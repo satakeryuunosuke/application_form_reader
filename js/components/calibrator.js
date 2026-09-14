@@ -6,6 +6,7 @@
 
 import { CheckboxEngine } from '../checkbox.js';
 import { ScannerEngine } from '../scanner.js';
+import { DB } from '../db.js';
 import { UI } from '../utils/ui.js';
 
 export class TemplateCalibrator {
@@ -13,11 +14,19 @@ export class TemplateCalibrator {
    * @param {HTMLElement} container 描画先要素
    * @param {object} initialTemplate 初期テンプレート設定
    * @param {(template: object) => void} onChange 設定変更時コールバック
-   * @param {object} options オプション設定 { defaultResetTemplate, resetLabel, isSettingsMode }
+   * @param {object} options オプション設定 { defaultResetTemplate, resetLabel, isSettingsMode, codeType }
    */
   constructor(container, initialTemplate = null, onChange = null, options = {}) {
     this.container = container;
     this.options = options || {};
+    this.codeType = this.options.codeType || 'code39';
+    if (!this.options.codeType) {
+      DB.getSettings().then(s => {
+        if (s && s.codeType) {
+          this.codeType = s.codeType;
+        }
+      }).catch(() => {});
+    }
     this.defaultResetTemplate = this.options.defaultResetTemplate || CheckboxEngine.getDefaultTemplate();
     this.template = initialTemplate ? JSON.parse(JSON.stringify(initialTemplate)) : JSON.parse(JSON.stringify(this.defaultResetTemplate));
     if (!this.template.customBoxes) {
@@ -42,6 +51,31 @@ export class TemplateCalibrator {
 
     this.render();
     this.initDefaultSample();
+  }
+
+  /**
+   * 読取コード規格（qr / code39 / auto）の動的変更を反映し、再検出
+   */
+  async updateCodeType(newCodeType) {
+    this.codeType = newCodeType || 'code39';
+    if (this.loadedPages && this.loadedPages.length > 0) {
+      for (const page of this.loadedPages) {
+        if (page.canvas) {
+          const bcResult = await ScannerEngine.detectBarcode(page.canvas, { codeType: this.codeType });
+          page.barcodeFound = bcResult.found;
+          page.barcodeText = bcResult.text || '';
+          page.barcodeType = bcResult.codeType || null;
+          if (bcResult.box) {
+            page.barcodeBox = bcResult.box;
+          }
+        }
+      }
+      const cur = this.loadedPages[this.currentPageIndex];
+      if (cur) {
+        this.barcodeBox = cur.barcodeBox;
+        this.drawOverlay();
+      }
+    }
   }
 
   getTemplate() {
@@ -1000,15 +1034,17 @@ export class TemplateCalibrator {
           const ctx = cv.getContext('2d');
           await page.render({ canvasContext: ctx, viewport }).promise;
 
-          const bcResult = await ScannerEngine.detectBarcode(cv);
+          const bcResult = await ScannerEngine.detectBarcode(cv, { codeType: this.codeType });
+          const isQR = bcResult.codeType === 'QR' || this.codeType === 'qr';
           this.loadedPages.push({
             canvas: cv,
             barcodeFound: bcResult.found,
+            barcodeType: bcResult.codeType || (isQR ? 'QR' : 'CODE39'),
             barcodeBox: bcResult.box || {
               centerX: cv.width * 0.13,
               centerY: cv.height * 0.10,
-              width: cv.width * 0.15,
-              height: cv.height * 0.05,
+              width: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.width * 0.15),
+              height: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.height * 0.05),
               angle: 0,
               angleDeg: 0
             },
@@ -1021,13 +1057,15 @@ export class TemplateCalibrator {
         this.setPage(0);
 
         const foundCount = this.loadedPages.filter(p => p.barcodeFound).length;
+        const codeLabel = (this.codeType === 'qr') ? 'QRコード' : ((this.codeType === 'auto') ? 'コード (QR/バーコード)' : 'バーコード');
         if (foundCount === 0) {
-          UI.showToast('⚠️ バーコードを検出できませんでした。画像の向き・鮮明さ・傾きをご確認ください。', 'warning');
+          UI.showToast(`⚠️ ${codeLabel}を検出できませんでした。画像の向き・鮮明さ・規格設定をご確認ください。`, 'warning');
         } else if (foundCount === this.loadedPages.length) {
           const first = this.loadedPages[0];
-          UI.showToast(`バーコード「${first.barcodeText}」を検出しました（全${this.loadedPages.length}ページ）`, 'success');
+          const detectedLabel = first.barcodeType === 'QR' ? 'QRコード' : 'バーコード';
+          UI.showToast(`${detectedLabel}「${first.barcodeText}」を検出しました（全${this.loadedPages.length}ページ）`, 'success');
         } else {
-          UI.showToast(`${this.loadedPages.length} ページ中 ${foundCount} ページのバーコードを検出しました`, 'warning');
+          UI.showToast(`${this.loadedPages.length} ページ中 ${foundCount} ページの${codeLabel}を検出しました`, 'warning');
         }
       } else {
         // 画像ファイル
@@ -1042,16 +1080,18 @@ export class TemplateCalibrator {
           URL.revokeObjectURL(url);
 
           ScannerEngine.initReader();
-          const bcResult = await ScannerEngine.detectBarcode(cv);
+          const bcResult = await ScannerEngine.detectBarcode(cv, { codeType: this.codeType });
+          const isQR = bcResult.codeType === 'QR' || this.codeType === 'qr';
 
           this.loadedPages = [{
             canvas: cv,
             barcodeFound: bcResult.found,
+            barcodeType: bcResult.codeType || (isQR ? 'QR' : 'CODE39'),
             barcodeBox: bcResult.box || {
               centerX: cv.width * 0.13,
               centerY: cv.height * 0.10,
-              width: cv.width * 0.15,
-              height: cv.height * 0.05,
+              width: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.width * 0.15),
+              height: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.height * 0.05),
               angle: 0,
               angleDeg: 0
             },
@@ -1063,9 +1103,11 @@ export class TemplateCalibrator {
           this.setPage(0);
 
           if (bcResult.found) {
-            UI.showToast(`バーコード「${bcResult.text}」を検出しました`, 'success');
+            const detectedLabel = bcResult.codeType === 'QR' ? 'QRコード' : 'バーコード';
+            UI.showToast(`${detectedLabel}「${bcResult.text}」を検出しました`, 'success');
           } else {
-            UI.showToast('⚠️ バーコードを検出できませんでした。画像の向き・鮮明さ・傾きをご確認ください。', 'warning');
+            const codeLabel = (this.codeType === 'qr') ? 'QRコード' : ((this.codeType === 'auto') ? 'コード (QR/バーコード)' : 'バーコード');
+            UI.showToast(`⚠️ ${codeLabel}を検出できませんでした。画像の向き・鮮明さ・規格設定をご確認ください。`, 'warning');
           }
         };
         img.src = url;
@@ -1166,22 +1208,24 @@ export class TemplateCalibrator {
       ctx.fillRect(bcX, bcY, bc.width, bc.height);
       ctx.strokeRect(bcX, bcY, bc.width, bc.height);
 
+      const codeLabel = (this.codeType === 'qr') ? 'QRコード' : 'コード';
       ctx.fillStyle = '#ef4444';
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('⚠️ バーコード未検出（位置未確定）', bc.centerX, bc.centerY + 5);
+      ctx.fillText(`⚠️ ${codeLabel}未検出（位置未確定）`, bc.centerX, bc.centerY + 5);
     }
     ctx.restore();
 
     // 未検出時の上部警告バナー
     if (!isDetected) {
+      const codeLabel = (this.codeType === 'qr') ? 'QRコード' : 'コード（バーコード/QR）';
       ctx.save();
       ctx.fillStyle = 'rgba(239, 68, 68, 0.90)';
       ctx.fillRect(0, 0, srcW, 36);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('⚠️ バーコードが読み取れていません。鮮明なファイルを選択するか、向きをご確認ください。', srcW / 2, 23);
+      ctx.fillText(`⚠️ ${codeLabel}が読み取れていません。鮮明なファイルを選択するか、規格設定をご確認ください。`, srcW / 2, 23);
       ctx.restore();
     }
 

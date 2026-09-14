@@ -53,14 +53,224 @@ export const ScannerEngine = {
   },
 
   /**
+   * ZXing 1Dバーコード（CODE_39 / CODE_128）専用リーダー初期化
+   */
+  init1DReader() {
+    if (this.reader1D) return this.reader1D;
+    if (typeof ZXing !== 'undefined') {
+      try {
+        const hints = new Map();
+        if (ZXing.BarcodeFormat && ZXing.BarcodeFormat.CODE_39 !== undefined) {
+          hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+            ZXing.BarcodeFormat.CODE_39,
+            ZXing.BarcodeFormat.CODE_128
+          ]);
+        }
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        this.reader1D = new ZXing.BrowserMultiFormatReader(hints);
+      } catch (e) {
+        console.warn('ZXing 1D reader initialization warning:', e);
+      }
+    }
+    return this.reader1D;
+  },
+
+  /**
+   * ZXing 専用 QRコードリーダー初期化（QRコードに特化して高速探索）
+   */
+  initQRReader() {
+    if (this.qrReader) return this.qrReader;
+    if (typeof ZXing !== 'undefined') {
+      try {
+        const hints = new Map();
+        if (ZXing.BarcodeFormat && ZXing.BarcodeFormat.QR_CODE !== undefined) {
+          hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+        }
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        this.qrReader = new ZXing.BrowserMultiFormatReader(hints);
+      } catch (e) {
+        console.warn('ZXing QR reader initialization warning:', e);
+      }
+    }
+    return this.qrReader;
+  },
+
+  /**
+   * QRコードのResultPoints（Finder Pattern 3点）から中心座標・外接枠・傾き角度（angle）を高精度に算出
+   */
+  calculateQRBox(points, regX, regY, canvasWidth, canvasHeight) {
+    const pts = (points || []).map(p => ({ x: p.getX() + regX, y: p.getY() + regY }));
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const pt of pts) {
+      if (pt.x < minX) minX = pt.x;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.y > maxY) maxY = pt.y;
+    }
+
+    let centerX = (minX + maxX) / 2;
+    let centerY = (minY + maxY) / 2;
+    let angleRad = 0;
+    let qrWidth = maxX - minX;
+    let qrHeight = maxY - minY;
+
+    if (pts.length >= 3) {
+      // 3点間の距離を算出
+      const d01 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const d12 = Math.hypot(pts[1].x - pts[2].x, pts[1].y - pts[2].y);
+      const d20 = Math.hypot(pts[2].x - pts[0].x, pts[2].y - pts[0].y);
+
+      // 最長対角線の向かいにある点が直角頂点（Top-Left）
+      let tl, pA, pB;
+      if (d01 >= d12 && d01 >= d20) {
+        tl = pts[2]; pA = pts[0]; pB = pts[1];
+      } else if (d12 >= d01 && d12 >= d20) {
+        tl = pts[0]; pA = pts[1]; pB = pts[2];
+      } else {
+        tl = pts[1]; pA = pts[2]; pB = pts[0];
+      }
+
+      // 2D外積により Top-Right と Bottom-Left を判定
+      const vAx = pA.x - tl.x;
+      const vAy = pA.y - tl.y;
+      const vBx = pB.x - tl.x;
+      const vBy = pB.y - tl.y;
+      const cross = vAx * vBy - vAy * vBx;
+
+      let tr, bl;
+      if (cross > 0) {
+        tr = pA; bl = pB;
+      } else {
+        tr = pB; bl = pA;
+      }
+
+      // 傾き角（Top-Left から Top-Right へのベクトル）
+      angleRad = Math.atan2(tr.y - tl.y, tr.x - tl.x);
+
+      // QR中心座標: tl + 0.5 * ((tr - tl) + (bl - tl))
+      centerX = tl.x + 0.5 * ((tr.x - tl.x) + (bl.x - tl.x));
+      centerY = tl.y + 0.5 * ((tr.y - tl.y) + (bl.y - tl.y));
+
+      // QRコードの1辺の推定サイズ（Finder Pattern間距離はおよそ外枠幅の (N-7)/N）
+      const side = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+      const estSide = Math.max(side * 1.30, 40);
+      qrWidth = estSide;
+      qrHeight = estSide;
+
+      minX = Math.max(0, centerX - qrWidth / 2);
+      maxX = Math.min(canvasWidth, centerX + qrWidth / 2);
+      minY = Math.max(0, centerY - qrHeight / 2);
+      maxY = Math.min(canvasHeight, centerY + qrHeight / 2);
+    } else {
+      qrWidth = Math.max(qrWidth, 40);
+      qrHeight = Math.max(qrHeight, 40);
+    }
+
+    const angleDeg = Math.round(angleRad * (180 / Math.PI) * 10) / 10;
+
+    return {
+      x: minX,
+      y: minY,
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width: qrWidth,
+      height: qrHeight,
+      centerX,
+      centerY,
+      angle: angleRad,
+      angleDeg,
+      isSquare: true
+    };
+  },
+
+  /**
+   * ZXing による高速 QR コード探索（上部領域優先 & 全体フォールバック）
+   */
+  async scanQRCodeZXing(canvas) {
+    const reader = this.initQRReader() || this.initReader();
+    if (!reader) return null;
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    // 帳票上部優先（上部52%）、必要に応じて全体
+    const regions = [
+      { name: 'top-half', x: 0, y: 0, w: cw, h: Math.min(ch, Math.round(ch * 0.52)) },
+      { name: 'full', x: 0, y: 0, w: cw, h: ch }
+    ];
+
+    for (const reg of regions) {
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = reg.w;
+      cropCanvas.height = reg.h;
+      const cropCtx = cropCanvas.getContext('2d');
+      cropCtx.drawImage(canvas, reg.x, reg.y, reg.w, reg.h, 0, 0, reg.w, reg.h);
+
+      // 通常画像とコントラスト強調画像の2パターン
+      const attempts = [cropCanvas];
+      try {
+        const enhancedCanvas = document.createElement('canvas');
+        enhancedCanvas.width = reg.w;
+        enhancedCanvas.height = reg.h;
+        const eCtx = enhancedCanvas.getContext('2d');
+        eCtx.drawImage(cropCanvas, 0, 0);
+        const imgData = eCtx.getImageData(0, 0, reg.w, reg.h);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          const val = lum < 135 ? 0 : 255;
+          d[i] = val; d[i + 1] = val; d[i + 2] = val;
+        }
+        eCtx.putImageData(imgData, 0, 0);
+        attempts.push(enhancedCanvas);
+      } catch (e) {}
+
+      for (const targetCanvas of attempts) {
+        try {
+          const dataUrl = targetCanvas.toDataURL('image/png');
+          const img = new Image();
+          img.src = dataUrl;
+          await new Promise((res, rej) => {
+            img.onload = res;
+            img.onerror = rej;
+          });
+
+          const result = await reader.decodeFromImageElement(img);
+          if (result) {
+            const rawText = (result.getText() || '').trim();
+            const points = result.getResultPoints() || [];
+            const box = this.calculateQRBox(points, reg.x, reg.y, cw, ch);
+
+            return {
+              found: true,
+              codeType: 'QR',
+              text: rawText,
+              rawText: rawText,
+              box
+            };
+          }
+        } catch (e) {
+          // 次のパターンへ
+        }
+      }
+    }
+
+    return null;
+  },
+
+  /**
    * PDFファイルを全ページ解析してスキャン結果リストを返す
    * 
    * @param {File|ArrayBuffer} pdfSource
    * @param {object} template 読取テンプレート
    * @param {(progress: { current: number, total: number, pageStatus: string }) => void} onProgress
+   * @param {object} [options] オプション ({ codeType: 'code39'|'qr'|'auto' })
    * @returns {Promise<Array<object>>}
    */
-  async processPdf(pdfSource, template, onProgress) {
+  async processPdf(pdfSource, template, onProgress, options = {}) {
     if (typeof pdfjsLib === 'undefined') {
       throw new Error('pdf.js ライブラリが読み込まれていません');
     }
@@ -102,7 +312,7 @@ export const ScannerEngine = {
 
       await page.render({ canvasContext: ctx, viewport }).promise;
 
-      const pageResult = await this.analyzeCanvas(canvas, template);
+      const pageResult = await this.analyzeCanvas(canvas, template, options);
       pageResult.pageNum = pageNum;
       results.push(pageResult);
     }
@@ -132,17 +342,17 @@ export const ScannerEngine = {
       const img = new Image();
       const url = URL.createObjectURL(fileOrBlob);
       img.onload = () => {
-        URL.revokeObjectURL(url);
         const canvas = document.createElement('canvas');
         canvas.width = img.naturalWidth || img.width;
         canvas.height = img.naturalHeight || img.height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
         resolve(canvas);
       };
-      img.onerror = (e) => {
+      img.onerror = (err) => {
         URL.revokeObjectURL(url);
-        reject(new Error('画像の読み込みに失敗しました'));
+        reject(err);
       };
       img.src = url;
     });
@@ -153,11 +363,12 @@ export const ScannerEngine = {
    * 
    * @param {File|Blob} imageFile
    * @param {object} template 読取テンプレート
+   * @param {object} [options] オプション ({ codeType: 'code39'|'qr'|'auto' })
    * @returns {Promise<object>}
    */
-  async processImage(imageFile, template) {
+  async processImage(imageFile, template, options = {}) {
     const canvas = await this.imageToCanvas(imageFile);
-    const result = await this.analyzeCanvas(canvas, template);
+    const result = await this.analyzeCanvas(canvas, template, options);
     result.pageNum = 1;
     result.fileName = imageFile.name || '画像ファイル';
     return result;
@@ -169,9 +380,10 @@ export const ScannerEngine = {
    * @param {FileList|Array<File>} fileList
    * @param {object} template 読取テンプレート
    * @param {(progress: { current: number, total: number, status: string }) => void} onProgress
+   * @param {object} [options] オプション ({ codeType: 'code39'|'qr'|'auto' })
    * @returns {Promise<Array<object>>}
    */
-  async processFiles(fileList, template, onProgress) {
+  async processFiles(fileList, template, onProgress, options = {}) {
     const results = [];
     const files = Array.from(fileList);
     const totalFiles = files.length;
@@ -189,7 +401,7 @@ export const ScannerEngine = {
               status: `[${i + 1}/${totalFiles}] ${file.name} (ページ ${prog.current} / ${prog.total})...`
             });
           }
-        });
+        }, options);
         results.push(...pdfResults);
       } else if (file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name)) {
         if (onProgress) {
@@ -199,7 +411,7 @@ export const ScannerEngine = {
             status: `[${i + 1}/${totalFiles}] ${file.name} を解析中...`
           });
         }
-        const imgResult = await this.processImage(file, template);
+        const imgResult = await this.processImage(file, template, options);
         imgResult.pageNum = results.length + 1;
         results.push(imgResult);
       }
@@ -214,17 +426,18 @@ export const ScannerEngine = {
   },
 
   /**
-   * 単一 Canvas に対するバーコード検出・チェックボックス判定の共通コアロジック
+   * 単一 Canvas に対するコード検出（QR / バーコード）・チェックボックス判定の共通コアロジック
    * 
    * @param {HTMLCanvasElement} canvas
    * @param {object} template
+   * @param {object} [options] オプション ({ codeType: 'code39'|'qr'|'auto' })
    * @returns {Promise<object>}
    */
-  async analyzeCanvas(canvas, template) {
+  async analyzeCanvas(canvas, template, options = {}) {
     this.initReader();
 
-    // 1. バーコード検出（Pure 1D 高速スキャン + バンド射影 + ZXing ROI ハイブリッド）
-    const barcodeResult = await this.detectBarcode(canvas);
+    // 1. コード検出（QRコード / CODE 39 / 自動判別）
+    const barcodeResult = await this.detectBarcode(canvas, options);
 
     // 2. チェックボックス判定
     let checkResult = { hasChange: false, noChangeChecked: false, hasChangeChecked: false, customChecks: {} };
@@ -265,11 +478,11 @@ export const ScannerEngine = {
       }
 
       checkResult = {
+        hasChange,
         noChangeChecked: noChangeEval.isChecked,
         hasChangeChecked: hasChangeEval.isChecked,
-        noChangeRatio: noChangeEval.darkRatio,
-        hasChangeRatio: hasChangeEval.darkRatio,
-        hasChange,
+        noChangeDarkRatio: noChangeEval.darkRatio,
+        hasChangeDarkRatio: hasChangeEval.darkRatio,
         customChecks
       };
       templateApplied = true;
@@ -286,14 +499,28 @@ export const ScannerEngine = {
       const pctx = previewCanvas.getContext('2d');
       pctx.drawImage(canvas, 0, 0);
 
-      // バーコード検出枠の描画（緑）
+      // コード検出枠の描画（緑）
       if (barcodeResult.found && barcodeResult.box) {
         const b = barcodeResult.box;
-        pctx.strokeStyle = '#22c55e';
-        pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
-        pctx.strokeRect(b.x, b.y, b.width, b.height);
-        pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
-        pctx.fillRect(b.x, b.y, b.width, b.height);
+        const bx = b.x !== undefined ? b.x : (b.centerX - b.width / 2);
+        const by = b.y !== undefined ? b.y : (b.centerY - b.height / 2);
+        pctx.save();
+        if (b.angle) {
+          pctx.translate(b.centerX, b.centerY);
+          pctx.rotate(b.angle);
+          pctx.strokeStyle = '#22c55e';
+          pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
+          pctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
+          pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+          pctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+        } else {
+          pctx.strokeStyle = '#22c55e';
+          pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
+          pctx.strokeRect(bx, by, b.width, b.height);
+          pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+          pctx.fillRect(bx, by, b.width, b.height);
+        }
+        pctx.restore();
       }
 
       // 標準チェックボックス枠の描画
@@ -341,6 +568,7 @@ export const ScannerEngine = {
 
     return {
       barcodeFound: barcodeResult.found,
+      codeType: barcodeResult.codeType || (barcodeResult.found ? 'CODE39' : null),
       rawNichinokenId: validation.cleaned || rawText.replace(/^\*+|\*+$/g, ''),
       validatedId: validation.isValid ? validation.cleaned : (validation.cleaned || rawText.replace(/^\*+|\*+$/g, '')),
       isIdValid: validation.isValid,
@@ -357,30 +585,63 @@ export const ScannerEngine = {
   },
 
   /**
-   * CanvasからCODE 39バーコードを高速・高精度に検出
+   * Canvasからコード（QRコード / CODE 39）を検出
+   * options.codeType ('qr' | 'code39' | 'auto') に応じて最適な探索パスを実行
    * 
-   * 1. 帳票上部領域を高密度水平スキャンライン解析（Pure JS Code39 Engine）
-   * 2. 必要に応じてZXingによるROI局所探索
-   * 3. 確実なバウンディングボックスとデコード文字列を返却
+   * @param {HTMLCanvasElement} canvas
+   * @param {object} [options] オプション ({ codeType: 'qr'|'code39'|'auto' })
+   * @returns {Promise<{ found: boolean, codeType: string|null, text: string, rawText?: string, box: object|null }>}
    */
-  async detectBarcode(canvas) {
+  async detectBarcode(canvas, options = {}) {
     if (!canvas || canvas.width === 0 || canvas.height === 0) {
-      return { found: false, text: '', box: null };
+      return { found: false, codeType: null, text: '', box: null };
     }
 
-    // --- ステージ1: Pure 1D 高密度スキャンライン探索 ---
+    const codeType = options.codeType || 'code39';
+
+    // 1. QRコード専用モード (最速・Code39探索スキップ)
+    if (codeType === 'qr') {
+      const qrResult = await this.scanQRCodeZXing(canvas);
+      if (qrResult && qrResult.found) {
+        return qrResult;
+      }
+      return { found: false, codeType: 'QR', text: '', box: null };
+    }
+
+    // 2. CODE 39 専用モード (従来ロジック・QRコード誤認識を防止)
+    if (codeType === 'code39') {
+      const pureResult = this.scanCode39Dense(canvas);
+      if (pureResult && pureResult.found) {
+        pureResult.codeType = 'CODE39';
+        return pureResult;
+      }
+      const zxingResult = await this.scanZXingMultiStage(canvas, '1d');
+      if (zxingResult && zxingResult.found) {
+        zxingResult.codeType = 'CODE39';
+        return zxingResult;
+      }
+      return { found: false, codeType: 'CODE39', text: '', box: null };
+    }
+
+    // 3. 自動判別モード (QRコード優先探索 -> 見つからなければ CODE 39)
+    const qrResult = await this.scanQRCodeZXing(canvas);
+    if (qrResult && qrResult.found) {
+      return qrResult;
+    }
+
     const pureResult = this.scanCode39Dense(canvas);
     if (pureResult && pureResult.found) {
+      pureResult.codeType = 'CODE39';
       return pureResult;
     }
 
-    // --- ステージ2: ZXing による局所ROIマルチステージ探索 ---
     const zxingResult = await this.scanZXingMultiStage(canvas);
     if (zxingResult && zxingResult.found) {
+      zxingResult.codeType = zxingResult.codeType || 'CODE39';
       return zxingResult;
     }
 
-    return { found: false, text: '', box: null };
+    return { found: false, codeType: null, text: '', box: null };
   },
 
   /**
@@ -539,6 +800,8 @@ export const ScannerEngine = {
       text: cleanedText,
       rawText: bestText,
       box: {
+        x: minX,
+        y: minY,
         minX,
         maxX,
         minY,
@@ -673,11 +936,11 @@ export const ScannerEngine = {
    * ZXing によるマルチステージ探索（ROI クロップ & コントラスト強調リトライ）
    * decodeFromImageElement により安定呼び出し
    */
-  async scanZXingMultiStage(canvas) {
-    if (!this.reader) {
-      this.initReader();
-    }
-    if (!this.reader) return null;
+  async scanZXingMultiStage(canvas, readerMode = 'auto') {
+    const reader = (readerMode === '1d')
+      ? (this.init1DReader() || this.initReader())
+      : (this.initReader());
+    if (!reader) return null;
 
     const cw = canvas.width;
     const ch = canvas.height;
@@ -728,10 +991,23 @@ export const ScannerEngine = {
             img.onerror = rej;
           });
 
-          const result = await this.reader.decodeFromImageElement(img);
+          const result = await reader.decodeFromImageElement(img);
           if (result) {
             const rawText = result.getText() || '';
             const points = result.getResultPoints() || [];
+            const format = result.getBarcodeFormat ? result.getBarcodeFormat() : null;
+            const isQR = (format === ZXing.BarcodeFormat.QR_CODE);
+
+            if (isQR) {
+              const box = this.calculateQRBox(points, reg.x, reg.y, cw, ch);
+              return {
+                found: true,
+                codeType: 'QR',
+                text: rawText.trim(),
+                rawText: rawText,
+                box
+              };
+            }
 
             let minX = reg.w, maxX = 0, minY = reg.h, maxY = 0;
             for (const pt of points) {
@@ -767,7 +1043,7 @@ export const ScannerEngine = {
                 }
               }
             }
-            const angleDeg = angleRad * (180 / Math.PI);
+            const angleDeg = Math.round(angleRad * (180 / Math.PI) * 10) / 10;
 
             // 親キャンバスのグローバル座標系に変換
             const gMinX = reg.x + minX;
@@ -784,9 +1060,12 @@ export const ScannerEngine = {
 
             return {
               found: true,
+              codeType: 'CODE39',
               text: cleanedText,
               rawText: rawText,
               box: {
+                x: gMinX,
+                y: gMinY,
                 minX: gMinX,
                 maxX: gMaxX,
                 minY: gMinY,

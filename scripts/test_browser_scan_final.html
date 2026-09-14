@@ -76,8 +76,18 @@
           print('\n>>> TEST FAILED: Barcode text mismatch or not found. <<<');
         }
 
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ output: log.join('\n') })
+        });
       } catch (err) {
         print(`\nERROR: ${err.message}\n${err.stack}`);
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ output: log.join('\n') })
+        });
       }
     }
 

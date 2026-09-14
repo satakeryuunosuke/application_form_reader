@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test QR Code & Engine</title>
+  <script src="../lib/dexie.min.js"></script>
+  <script src="../lib/pdf.min.js"></script>
+  <script src="../lib/zxing-library.min.js"></script>
+</head>
+<body>
+  <div id="status">Running...</div>
+  <pre id="output"></pre>
+
+  <script type="module">
+    import { ScannerEngine } from '../js/scanner.js';
+    import { DB } from '../js/db.js';
+    import { TemplateCalibrator } from '../js/components/calibrator.js';
+
+    const out = document.getElementById('output');
+    function log(msg) {
+      out.textContent += msg + '\n';
+      console.log(msg);
+    }
+
+    async function runTest() {
+      try {
+        log('--- 1. ZXing QR Writer Check ---');
+        log('ZXing exists: ' + (typeof ZXing !== 'undefined'));
+        log('BarcodeFormat.QR_CODE: ' + ZXing.BarcodeFormat.QR_CODE);
+
+        // QRコード画像を描画
+        let qrCanvas = document.createElement('canvas');
+        qrCanvas.width = 400;
+        qrCanvas.height = 400;
+        const qctx = qrCanvas.getContext('2d');
+        qctx.fillStyle = '#ffffff';
+        qctx.fillRect(0, 0, 400, 400);
+
+        if (typeof ZXing.BrowserQRCodeSvgWriter !== 'undefined') {
+          log('BrowserQRCodeSvgWriter is available!');
+          const writer = new ZXing.BrowserQRCodeSvgWriter();
+          const svgElem = writer.write('TDN99999', 200, 200);
+          const xml = new XMLSerializer().serializeToString(svgElem);
+          const svg64 = btoa(unescape(encodeURIComponent(xml)));
+          const b64Start = 'data:image/svg+xml;base64,';
+          const img = new Image();
+          img.src = b64Start + svg64;
+          await new Promise(r => { img.onload = r; });
+          qctx.drawImage(img, 100, 100, 200, 200);
+        } else if (typeof ZXing.QRCodeWriter !== 'undefined') {
+          log('QRCodeWriter is available!');
+          const writer = new ZXing.QRCodeWriter();
+          const bitMatrix = writer.encode('TDN99999', ZXing.BarcodeFormat.QR_CODE, 200, 200);
+          for (let x = 0; x < bitMatrix.getWidth(); x++) {
+            for (let y = 0; y < bitMatrix.getHeight(); y++) {
+              if (bitMatrix.get(x, y)) {
+                qctx.fillStyle = '#000000';
+                qctx.fillRect(100 + x, 100 + y, 1, 1);
+              }
+            }
+          }
+        } else {
+          log('Writer not directly found on ZXing root, checking properties...');
+          for (let k of Object.keys(ZXing)) {
+            if (k.toLowerCase().includes('writer') || k.toLowerCase().includes('qr')) {
+              log('ZXing prop: ' + k);
+            }
+          }
+        }
+
+        log('--- 2. Test ScannerEngine with QR Canvas ---');
+        // codeType: 'qr'
+        const resQR = await ScannerEngine.detectBarcode(qrCanvas, { codeType: 'qr' });
+        log('QR Mode Result: found=' + resQR.found + ', type=' + resQR.codeType + ', text=' + resQR.text);
+        if (resQR.found) {
+          log('Box details: centerX=' + resQR.box.centerX + ', centerY=' + resQR.box.centerY + ', angleDeg=' + resQR.box.angleDeg);
+        }
+
+        // codeType: 'code39' (QRコードは読めないはず)
+        const resC39 = await ScannerEngine.detectBarcode(qrCanvas, { codeType: 'code39' });
+        log('Code39 Mode Result (should be false): found=' + resC39.found);
+
+        // codeType: 'auto' (QRコードとして読めるはず)
+        const resAuto = await ScannerEngine.detectBarcode(qrCanvas, { codeType: 'auto' });
+        log('Auto Mode Result: found=' + resAuto.found + ', type=' + resAuto.codeType + ', text=' + resAuto.text);
+
+        log('--- 3. DB Settings codeType Check ---');
+        await DB.init();
+        const settings = await DB.getSettings();
+        log('DB settings.codeType: ' + settings.codeType);
+
+        settings.codeType = 'qr';
+        await DB.saveSettings(settings);
+        const updated = await DB.getSettings();
+        log('Updated DB settings.codeType: ' + updated.codeType);
+
+        // 元に戻す (code39)
+        settings.codeType = 'code39';
+        await DB.saveSettings(settings);
+
+        document.getElementById('status').textContent = 'SUCCESS';
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'SUCCESS', output: out.textContent })
+        });
+      } catch (err) {
+        log('ERROR: ' + err.message + '\n' + err.stack);
+        document.getElementById('status').textContent = 'ERROR';
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'ERROR', output: out.textContent })
+        });
+      }
+    }
+
+    runTest();
+  </script>
+</body>
+</html>
