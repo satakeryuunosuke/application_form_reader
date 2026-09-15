@@ -121,7 +121,7 @@ async def main():
             print(f"  -> Created project ID: {proj_id}")
 
             # 2. 手動入力画面のテスト
-            print("[TEST 2] Testing Manual Input with Course Selection, Quick Filters & Continuous Mode...")
+            print("[TEST 2] Testing Manual Input with Course Selection, Quick Filters & Save Reset...")
             # 手動入力画面を開く
             await eval_js(f"""
             (async () => {{
@@ -186,7 +186,7 @@ async def main():
             assert quick_test['zeroDisplay'] == 'block'
             assert quick_test['afterZoom'] == '1', f"Expected 1, got {quick_test['afterZoom']}"
 
-            # 担当者選択して保存（連続登録モードON）
+            # 担当者選択して保存
             save_test = await eval_js("""
             (async () => {
                 const staffSelect = document.querySelector('#man-sel-staff');
@@ -194,24 +194,23 @@ async def main():
                 staffSelect.dispatchEvent(new Event('change'));
 
                 const chkContinuous = document.querySelector('#chk-man-continuous');
-                chkContinuous.checked = true;
+                const hasContinuousCheckbox = !!chkContinuous;
 
                 const saveBtn = document.querySelector('#btn-save-manual');
                 saveBtn.click();
 
                 await new Promise(r => setTimeout(r, 600));
 
-                const searchVal = document.querySelector('#man-inp-search-student').value;
-                const cardHidden = document.querySelector('#man-selected-student-card').classList.contains('hidden');
-                const countAfter = document.querySelector('#man-sel-count').textContent;
+                const currentHash = window.location.hash;
+                const hasSearchInput = !!document.querySelector('#inp-search');
 
-                return { searchVal, cardHidden, countAfter };
+                return { hasContinuousCheckbox, currentHash, hasSearchInput };
             })()
             """)
-            print(f"  -> Continuous save reset test: {save_test}")
-            assert save_test['searchVal'] == '', "Search input should be cleared for next student"
-            assert save_test['cardHidden'] == True, "Student card should be reset"
-            assert save_test['countAfter'] == '0', "Course selection should be reset"
+            print(f"  -> Manual save navigation test: {save_test}")
+            assert save_test['hasContinuousCheckbox'] == False, "Continuous checkbox should be completely removed"
+            assert save_test['currentHash'].endswith('/list'), f"Expected navigation to list, got {save_test['currentHash']}"
+            assert save_test['hasSearchInput'] == True, "Submission list page should be rendered"
 
             # DB保存データの検証
             db_check = await eval_js(f"""

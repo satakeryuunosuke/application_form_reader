@@ -29,13 +29,18 @@ export class TemplateCalibrator {
     }
     this.defaultResetTemplate = this.options.defaultResetTemplate || CheckboxEngine.getDefaultTemplate();
     this.allowDeleteStandardBoxes = (this.options.allowDeleteStandardBoxes !== false);
+    this.allowStandardBoxes = (this.options.allowStandardBoxes !== false);
     this.template = initialTemplate ? JSON.parse(JSON.stringify(initialTemplate)) : JSON.parse(JSON.stringify(this.defaultResetTemplate));
     if (!this.template.customBoxes) {
       this.template.customBoxes = [];
     }
+    if (!this.allowStandardBoxes) {
+      delete this.template.noChangeBox;
+      delete this.template.hasChangeBox;
+    }
     this.onChange = onChange;
     
-    this.activeTab = 'noChange'; // 'noChange' | 'hasChange' | customBoxId
+    this.activeTab = this.allowStandardBoxes ? 'noChange' : (this.template.customBoxes[0]?.id || null);
     this.canvas = null;
     this.sourceCanvas = null; // 原寸大画像Canvas
     this.barcodeBox = null;
@@ -88,6 +93,10 @@ export class TemplateCalibrator {
     this.template = JSON.parse(JSON.stringify(newTemplate));
     if (!this.template.customBoxes) {
       this.template.customBoxes = [];
+    }
+    if (!this.allowStandardBoxes) {
+      delete this.template.noChangeBox;
+      delete this.template.hasChangeBox;
     }
     this.updateTabsUI();
     this.syncSlidersFromTemplate();
@@ -148,9 +157,11 @@ export class TemplateCalibrator {
             </div>
             <div class="calibrator-overlay-legend" id="calib-overlay-legend">
               <span class="legend-item"><span class="legend-box legend-barcode"></span> バーコード（基準点）</span>
-              <span class="legend-item" id="legend-item-no-change"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>
-              <span class="legend-item" id="legend-item-has-change"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>
-              <span class="legend-item" id="legend-item-custom"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>
+              ${this.allowStandardBoxes ? `
+                <span class="legend-item" id="legend-item-no-change" style="${this.template.noChangeBox ? '' : 'display: none;'}"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>
+                <span class="legend-item" id="legend-item-has-change" style="${this.template.hasChangeBox ? '' : 'display: none;'}"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>
+              ` : ''}
+              <span class="legend-item" id="legend-item-custom" style="${this.template.customBoxes && this.template.customBoxes.length > 0 ? '' : 'display: none;'}"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>
             </div>
           </div>
 
@@ -172,16 +183,18 @@ export class TemplateCalibrator {
 
             <!-- リアルタイム判定カード -->
             <div class="calibrator-eval-card">
-              <div class="eval-row" id="eval-no-change-row" style="${this.template.noChangeBox ? '' : 'display: none;'}">
-                <span class="eval-label">変更なし判定:</span>
-                <span id="eval-no-change-status" class="badge badge-gray">-</span>
-                <span class="text-mono eval-ratio" id="eval-no-change-ratio">黒画素: 0%</span>
-              </div>
-              <div class="eval-row" id="eval-has-change-row" style="${this.template.hasChangeBox ? '' : 'display: none;'}">
-                <span class="eval-label">変更あり判定:</span>
-                <span id="eval-has-change-status" class="badge badge-gray">-</span>
-                <span class="text-mono eval-ratio" id="eval-has-change-ratio">黒画素: 0%</span>
-              </div>
+              ${this.allowStandardBoxes ? `
+                <div class="eval-row" id="eval-no-change-row" style="${this.template.noChangeBox ? '' : 'display: none;'}">
+                  <span class="eval-label">変更なし判定:</span>
+                  <span id="eval-no-change-status" class="badge badge-gray">-</span>
+                  <span class="text-mono eval-ratio" id="eval-no-change-ratio">黒画素: 0%</span>
+                </div>
+                <div class="eval-row" id="eval-has-change-row" style="${this.template.hasChangeBox ? '' : 'display: none;'}">
+                  <span class="eval-label">変更あり判定:</span>
+                  <span id="eval-has-change-status" class="badge badge-gray">-</span>
+                  <span class="text-mono eval-ratio" id="eval-has-change-ratio">黒画素: 0%</span>
+                </div>
+              ` : ''}
               <div id="eval-custom-rows"></div>
               <div id="eval-empty-row" style="${!this.template.noChangeBox && !this.template.hasChangeBox && (!this.template.customBoxes || this.template.customBoxes.length === 0) ? '' : 'display: none;'} font-size: 0.8rem; color: var(--gray-500); text-align: center; padding: 4px;">
                 読取枠がありません
@@ -192,7 +205,7 @@ export class TemplateCalibrator {
             <div class="calibrator-sliders-card">
               <div id="calib-no-target-msg" style="${this.getTargetBox() ? 'display: none;' : 'display: block;'} padding: 18px 12px; text-align: center; color: var(--gray-500); font-size: 0.85rem;">
                 ⚠️ 読取対象の枠がありません。<br>
-                上の「➕ 枠を追加」ボタン、または管理パネルから追加してください。
+                ${this.allowStandardBoxes ? '上の「➕ 枠を追加」ボタン、または管理パネルから追加してください。' : '管理パネルから講座・チェック項目を追加してください。'}
               </div>
 
               <div id="calib-sliders-body" style="${this.getTargetBox() ? 'display: block;' : 'display: none;'}">
@@ -276,18 +289,20 @@ export class TemplateCalibrator {
   }
 
   getTargetBox() {
-    if (this.activeTab === 'noChange' && this.template.noChangeBox) return this.template.noChangeBox;
-    if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return this.template.hasChangeBox;
+    if (this.allowStandardBoxes) {
+      if (this.activeTab === 'noChange' && this.template.noChangeBox) return this.template.noChangeBox;
+      if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return this.template.hasChangeBox;
+    }
     if (this.template.customBoxes && this.template.customBoxes.length > 0) {
       const found = this.template.customBoxes.find(b => b.id === this.activeTab);
       if (found) return found;
     }
     // activeTabが見つからない場合、存在する最初の枠をフォールバック
-    if (this.template.noChangeBox) {
+    if (this.allowStandardBoxes && this.template.noChangeBox) {
       this.activeTab = 'noChange';
       return this.template.noChangeBox;
     }
-    if (this.template.hasChangeBox) {
+    if (this.allowStandardBoxes && this.template.hasChangeBox) {
       this.activeTab = 'hasChange';
       return this.template.hasChangeBox;
     }
@@ -300,8 +315,10 @@ export class TemplateCalibrator {
   }
 
   getActiveBoxLabel() {
-    if (this.activeTab === 'noChange' && this.template.noChangeBox) return '🟩 「変更なし」枠';
-    if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return '🟧 「変更あり」枠';
+    if (this.allowStandardBoxes) {
+      if (this.activeTab === 'noChange' && this.template.noChangeBox) return '🟩 「変更なし」枠';
+      if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return '🟧 「変更あり」枠';
+    }
     if (this.template.customBoxes) {
       const found = this.template.customBoxes.find(b => b.id === this.activeTab);
       if (found) return `🟪 「${found.label}」枠`;
@@ -310,8 +327,8 @@ export class TemplateCalibrator {
   }
 
   renderTabsHtml() {
-    const hasNoChange = !!this.template.noChangeBox;
-    const hasHasChange = !!this.template.hasChangeBox;
+    const hasNoChange = this.allowStandardBoxes && !!this.template.noChangeBox;
+    const hasHasChange = this.allowStandardBoxes && !!this.template.hasChangeBox;
     const customBoxes = this.template.customBoxes || [];
 
     let tabsHtml = '';
@@ -347,19 +364,21 @@ export class TemplateCalibrator {
     }
 
     let actionsHtml = '';
-    if (!hasNoChange) {
-      actionsHtml += `
-        <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="noChange" style="font-size: 0.72rem; padding: 2px 8px; color: #16a34a; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
-          ➕ 「変更なし」枠を追加
-        </button>
-      `;
-    }
-    if (!hasHasChange) {
-      actionsHtml += `
-        <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="hasChange" style="font-size: 0.72rem; padding: 2px 8px; color: #ea580c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
-          ➕ 「変更あり」枠を追加
-        </button>
-      `;
+    if (this.allowStandardBoxes) {
+      if (!hasNoChange) {
+        actionsHtml += `
+          <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="noChange" style="font-size: 0.72rem; padding: 2px 8px; color: #16a34a; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
+            ➕ 「変更なし」枠を追加
+          </button>
+        `;
+      }
+      if (!hasHasChange) {
+        actionsHtml += `
+          <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="hasChange" style="font-size: 0.72rem; padding: 2px 8px; color: #ea580c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
+            ➕ 「変更あり」枠を追加
+          </button>
+        `;
+      }
     }
 
     return `
@@ -411,6 +430,9 @@ export class TemplateCalibrator {
   }
 
   deleteBox(typeOrId) {
+    if (!this.allowStandardBoxes && (typeOrId === 'noChange' || typeOrId === 'hasChange')) {
+      return;
+    }
     if (!this.allowDeleteStandardBoxes && (typeOrId === 'noChange' || typeOrId === 'hasChange')) {
       return;
     }
@@ -431,9 +453,9 @@ export class TemplateCalibrator {
 
     // activeTab の更新
     if (this.activeTab === typeOrId) {
-      if (this.template.noChangeBox) {
+      if (this.allowStandardBoxes && this.template.noChangeBox) {
         this.activeTab = 'noChange';
-      } else if (this.template.hasChangeBox) {
+      } else if (this.allowStandardBoxes && this.template.hasChangeBox) {
         this.activeTab = 'hasChange';
       } else if (this.template.customBoxes && this.template.customBoxes.length > 0) {
         this.activeTab = this.template.customBoxes[0].id;
@@ -454,6 +476,7 @@ export class TemplateCalibrator {
   }
 
   addStandardBox(type) {
+    if (!this.allowStandardBoxes) return;
     const def = CheckboxEngine.getDefaultTemplate();
     if (type === 'noChange') {
       this.template.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
@@ -479,10 +502,10 @@ export class TemplateCalibrator {
     const legend = this.container.querySelector('#calib-overlay-legend');
     if (!legend) return;
     let html = `<span class="legend-item"><span class="legend-box legend-barcode"></span> バーコード（基準点）</span>`;
-    if (this.template.noChangeBox) {
+    if (this.allowStandardBoxes && this.template.noChangeBox) {
       html += `<span class="legend-item"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>`;
     }
-    if (this.template.hasChangeBox) {
+    if (this.allowStandardBoxes && this.template.hasChangeBox) {
       html += `<span class="legend-item"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>`;
     }
     if (this.template.customBoxes && this.template.customBoxes.length > 0) {
@@ -569,7 +592,15 @@ export class TemplateCalibrator {
       resetBtn.onclick = () => {
         this.template = JSON.parse(JSON.stringify(this.defaultResetTemplate));
         if (!this.template.customBoxes) this.template.customBoxes = [];
-        this.activeTab = this.template.noChangeBox ? 'noChange' : (this.template.hasChangeBox ? 'hasChange' : null);
+        if (!this.allowStandardBoxes) {
+          delete this.template.noChangeBox;
+          delete this.template.hasChangeBox;
+        }
+        if (this.allowStandardBoxes) {
+          this.activeTab = this.template.noChangeBox ? 'noChange' : (this.template.hasChangeBox ? 'hasChange' : null);
+        } else {
+          this.activeTab = (this.template.customBoxes && this.template.customBoxes.length > 0) ? this.template.customBoxes[0].id : null;
+        }
         this.updateTabsUI();
         this.syncSlidersFromTemplate();
         this.drawOverlay();
@@ -1241,17 +1272,17 @@ export class TemplateCalibrator {
 
     // 4. 黒画素率の評価
     const threshold = this.template.threshold !== undefined ? this.template.threshold : 0.25;
-    const noChangeEval = rects.noChangeRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.noChangeRect, threshold) : null;
-    const hasChangeEval = rects.hasChangeRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.hasChangeRect, threshold) : null;
+    const noChangeEval = (this.allowStandardBoxes && rects.noChangeRect) ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.noChangeRect, threshold) : null;
+    const hasChangeEval = (this.allowStandardBoxes && rects.hasChangeRect) ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.hasChangeRect, threshold) : null;
 
     // 5. 「変更なし」枠（緑）
-    if (rects.noChangeRect) {
+    if (this.allowStandardBoxes && rects.noChangeRect) {
       const isNoChangeActive = this.activeTab === 'noChange';
       this.drawTargetBox(ctx, rects.noChangeRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '変更なし (正方形)', isNoChangeActive);
     }
 
     // 6. 「変更あり」枠（橙）
-    if (rects.hasChangeRect) {
+    if (this.allowStandardBoxes && rects.hasChangeRect) {
       const isHasChangeActive = this.activeTab === 'hasChange';
       this.drawTargetBox(ctx, rects.hasChangeRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', '変更あり (正方形)', isHasChangeActive);
     }

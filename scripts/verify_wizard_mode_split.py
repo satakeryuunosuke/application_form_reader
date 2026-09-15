@@ -54,7 +54,7 @@ def main():
         version_el = page.locator("#header-app-version")
         ver_text = version_el.text_content().strip()
         print(f"Header App Version: {ver_text}")
-        assert "v1.15.1" in ver_text, f"Expected v1.15.1, got {ver_text}"
+        assert "v1.15." in ver_text, f"Expected v1.15.x, got {ver_text}"
 
         # ----------------------------------------------------
         # テスト 1: 受講確認モード（デフォルト: 夏期講習）

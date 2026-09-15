@@ -1000,6 +1000,10 @@ export const ProjectPage = {
     const isSelectionMode = (project.projectType === 'selection');
     let currentTemplate = JSON.parse(JSON.stringify(project.scanTemplate || defaultTemplate));
     if (!currentTemplate.customBoxes) currentTemplate.customBoxes = [];
+    if (isSelectionMode) {
+      delete currentTemplate.noChangeBox;
+      delete currentTemplate.hasChangeBox;
+    }
     const coursePresets = settings.coursePresets || [];
     const methodPresets = settings.methodPresets || [];
 
@@ -1026,11 +1030,13 @@ export const ProjectPage = {
           <!-- 読取チェックボックス項目管理パネル -->
           <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
             <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-              <span>🎯 読取チェックボックス項目管理（標準・志望校別講座）</span>
+              <span>🎯 ${isSelectionMode ? '読取チェックボックス項目管理（志望校別講座）' : '読取チェックボックス項目管理（標準・志望校別講座）'}</span>
               <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト個別設定</span>
             </div>
             <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
-              このプロジェクトで読み取るチェックボックス（標準の変更なし・変更あり、志望校別対策講座、自由項目）を調整・削除・追加できます。
+              ${isSelectionMode
+                ? 'このプロジェクトで読み取るチェックボックス（志望校別対策講座、自由項目）を調整・削除・追加できます。'
+                : 'このプロジェクトで読み取るチェックボックス（標準の変更なし・変更あり、志望校別対策講座、自由項目）を調整・削除・追加できます。'}
             </p>
 
             <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
@@ -1108,6 +1114,7 @@ export const ProjectPage = {
         defaultResetTemplate: defaultTemplate,
         resetLabel: '🔄 共通既定書式に戻す',
         resetToastMsg: '共通既定書式の位置に復元しました',
+        allowStandardBoxes: !isSelectionMode,
         allowDeleteStandardBoxes: isSelectionMode
       }
     );
@@ -1117,41 +1124,50 @@ export const ProjectPage = {
       const container = modal.querySelector('#proj-custom-boxes-container');
       if (!container) return;
       const boxes = currentTemplate.customBoxes || [];
-      const hasNoChange = !!currentTemplate.noChangeBox;
-      const hasHasChange = !!currentTemplate.hasChangeBox;
-      const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + boxes.length;
 
       let standardBoxesHtml = '';
-      if (hasNoChange) {
-        standardBoxesHtml += `
-          <div style="background: #fff; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-            <span style="font-weight: 700; font-size: 0.85rem; color: #15803d;">🟩 変更なし</span>
-            <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-              🎯 調整
-            </button>
-            ${isSelectionMode ? `
-              <button type="button" class="btn-ghost proj-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
-                ✕
+      let restoreButtonsHtml = '';
+
+      if (!isSelectionMode) {
+        const hasNoChange = !!currentTemplate.noChangeBox;
+        const hasHasChange = !!currentTemplate.hasChangeBox;
+        if (hasNoChange) {
+          standardBoxesHtml += `
+            <div style="background: #fff; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="font-weight: 700; font-size: 0.85rem; color: #15803d;">🟩 変更なし</span>
+              <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                🎯 調整
               </button>
-            ` : ''}
-          </div>
-        `;
-      }
-      if (hasHasChange) {
-        standardBoxesHtml += `
-          <div style="background: #fff; border: 1px solid #fdba74; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-            <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
-            <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-              🎯 調整
-            </button>
-            ${isSelectionMode ? `
-              <button type="button" class="btn-ghost proj-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
-                ✕
+            </div>
+          `;
+        }
+        if (hasHasChange) {
+          standardBoxesHtml += `
+            <div style="background: #fff; border: 1px solid #fdba74; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+              <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
+              <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                🎯 調整
               </button>
-            ` : ''}
-          </div>
-        `;
+            </div>
+          `;
+        }
+        if (!hasNoChange) {
+          restoreButtonsHtml += `
+            <button type="button" class="btn btn-secondary btn-sm proj-btn-restore-box" data-type="noChange" style="padding: 3px 8px; font-size: 0.75rem; color: #15803d; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
+              ➕ 「変更なし」枠を追加
+            </button>
+          `;
+        }
+        if (!hasHasChange) {
+          restoreButtonsHtml += `
+            <button type="button" class="btn btn-secondary btn-sm proj-btn-restore-box" data-type="hasChange" style="padding: 3px 8px; font-size: 0.75rem; color: #c2410c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
+              ➕ 「変更あり」枠を追加
+            </button>
+          `;
+        }
       }
+
+      const totalBoxes = (isSelectionMode ? 0 : ((currentTemplate.noChangeBox ? 1 : 0) + (currentTemplate.hasChangeBox ? 1 : 0))) + boxes.length;
 
       const customBoxesHtml = boxes.map(box => `
         <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
@@ -1165,26 +1181,10 @@ export const ProjectPage = {
         </div>
       `).join('');
 
-      let restoreButtonsHtml = '';
-      if (!hasNoChange) {
-        restoreButtonsHtml += `
-          <button type="button" class="btn btn-secondary btn-sm proj-btn-restore-box" data-type="noChange" style="padding: 3px 8px; font-size: 0.75rem; color: #15803d; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
-            ➕ 「変更なし」枠を追加
-          </button>
-        `;
-      }
-      if (!hasHasChange) {
-        restoreButtonsHtml += `
-          <button type="button" class="btn btn-secondary btn-sm proj-btn-restore-box" data-type="hasChange" style="padding: 3px 8px; font-size: 0.75rem; color: #c2410c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
-            ➕ 「変更あり」枠を追加
-          </button>
-        `;
-      }
-
       if (totalBoxes === 0) {
         container.innerHTML = `
           <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center; margin-bottom: 8px;">
-            現在、読取チェックボックスはありません
+            ${isSelectionMode ? '現在、読取チェックボックス（志望校別講座）はありません。上のフォームから講座を追加してください。' : '現在、読取チェックボックスはありません'}
           </div>
           ${restoreButtonsHtml ? `<div style="display: flex; gap: 8px; align-items: center;">${restoreButtonsHtml}</div>` : ''}
         `;
@@ -1335,6 +1335,10 @@ export const ProjectPage = {
         return;
       }
       const templateToSave = calibrator.getTemplate();
+      if (isSelectionMode) {
+        delete templateToSave.noChangeBox;
+        delete templateToSave.hasChangeBox;
+      }
       UI.setButtonLoading(saveTemplateBtn, true, '保存中...');
       try {
         await DB.updateProject(projectId, { scanTemplate: templateToSave });

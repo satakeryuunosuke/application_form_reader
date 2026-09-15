@@ -218,11 +218,7 @@ export const ManualPage = {
           <textarea id="man-txt-remarks" class="form-control" placeholder="例: 紙紛失のため口頭連絡。12/28はZoom受講希望など" ${isCompleted ? 'disabled' : ''}></textarea>
         </div>
 
-        <div style="margin-top: var(--spacing-xl); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-          <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer; user-select: none;">
-            <input type="checkbox" id="chk-man-continuous" checked ${isCompleted ? 'disabled' : ''}>
-            <span>⚡ 登録後、続けて次の生徒を入力する</span>
-          </label>
+        <div style="margin-top: var(--spacing-xl); display: flex; justify-content: flex-end; align-items: center; gap: 12px;">
           <button id="btn-save-manual" class="btn ${isCompleted ? 'btn-secondary' : 'btn-primary'} btn-lg" style="min-width: 160px;" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
             ${isCompleted ? '🔒 完了のため保存不可' : '💾 登録を保存する'}
           </button>
@@ -591,27 +587,8 @@ export const ManualPage = {
           ProjectPage.updateHeaderStats();
         }
 
-        const isContinuous = this.container.querySelector('#chk-man-continuous')?.checked;
-        if (isContinuous) {
-          if (saveBtn) UI.setButtonLoading(saveBtn, false);
-          // 連続登録モード: フォームをクリアして即座に検索へフォーカス
-          this.selectedStudent = null;
-          selectedStudentCard.classList.add('hidden');
-          searchInput.value = '';
-          searchInput.focus();
-
-          // 生徒リストを最新状態に非同期同期
-          this.studentsList = await DB.getProjectStudentsWithSubmissions(this.project.id);
-
-          // 講座選択状態をリセット
-          manCustomChecks.forEach(chk => { chk.checked = false; });
-          updateManCount();
-          const remarksInput = this.container.querySelector('#man-txt-remarks');
-          if (remarksInput) remarksInput.value = '';
-        } else {
-          // 通常モード: 再レンダリング
-          await this.render(this.container, this.project);
-        }
+        // 保存完了後、提出状況一覧画面へ戻る
+        window.location.hash = `#project/${this.project.id}/list`;
       } catch (err) {
         UI.showToast(`保存エラー: ${err.message}`, 'error');
         if (saveBtn) UI.setButtonLoading(saveBtn, false);
