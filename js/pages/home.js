@@ -607,77 +607,101 @@ export const HomePage = {
           </div>
         `;
       } else if (wizardStep === 3) {
-        bodyContent = `
-          <div style="margin-bottom: var(--spacing-sm);">
-            <div style="display: flex; align-items: center; justify-content: space-between; background: var(--primary-50); border: 1px solid var(--primary-200); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;">
-              <div>
-                <span class="badge badge-info">${selectedYear}年度</span>
-                <span class="badge badge-purple">${selectedGrade}年生</span>
-                <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
-                <span class="badge ${selectedProjectType === 'selection' ? 'badge-purple font-bold' : 'badge-info'}">
-                  ${selectedProjectType === 'selection' ? '🎯 講座選択モード（志望校別）' : '📝 受講確認モード'}
-                </span>
-                <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
-                  受講確認票の書式・スキャン読取位置設定
-                </span>
-              </div>
-              <div style="font-size: 0.85rem; color: var(--primary-700);">
-                登録生徒: <span class="text-mono font-bold">${parsedStudents.length}</span> 名
-              </div>
-            </div>
-            <p style="font-size: 0.88rem; color: var(--gray-700); margin-bottom: 12px;">
-              ${selectedProjectType === 'selection'
-                ? '志望校別対策講座用の読取枠設定を行います。「変更なし/あり」標準枠は使用せず、講座名と受講方法を選んで読取枠を追加・位置調整してください。'
-                : '受講確認票のチェックボックス位置と判定閾値の調整を行います。志望校別対策講座などの追加枠もこのプロジェクト専用に設定できます。'}
-            </p>
+        const isSelectionMode = (selectedProjectType === 'selection');
 
-            <!-- 読取チェックボックス項目管理パネル -->
-            <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
-              <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-                <span>🎯 読取チェックボックス項目管理（標準・志望校別講座）</span>
-                <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト設定</span>
+        if (isSelectionMode) {
+          bodyContent = `
+            <div style="margin-bottom: var(--spacing-sm);">
+              <div style="display: flex; align-items: center; justify-content: space-between; background: var(--primary-50); border: 1px solid var(--primary-200); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;">
+                <div>
+                  <span class="badge badge-info">${selectedYear}年度</span>
+                  <span class="badge badge-purple">${selectedGrade}年生</span>
+                  <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                  <span class="badge badge-purple font-bold">🎯 講座選択モード（志望校別）</span>
+                  <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
+                    受講確認票の書式・スキャン読取位置設定
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--primary-700);">
+                  登録生徒: <span class="text-mono font-bold">${parsedStudents.length}</span> 名
+                </div>
               </div>
-              <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
-                このプロジェクトで読み取るチェックボックス（標準の変更なし・変更あり、志望校別対策講座、自由項目）を調整・削除・追加できます。
+              <p style="font-size: 0.88rem; color: var(--gray-700); margin-bottom: 12px;">
+                志望校別対策講座用の読取枠設定を行います。「変更なし/あり」標準枠は使用せず、講座名と受講方法を選んで読取枠を追加・位置調整してください。
               </p>
 
-              <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; align-items: end;">
-                <div>
-                  <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
-                  <select id="wiz-sel-course" class="form-control" style="font-size: 0.85rem;">
-                    <option value="">-- 講座名を選択 --</option>
-                    ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
-                  </select>
+              <!-- 読取チェックボックス項目管理パネル（講座選択モードのみ） -->
+              <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
+                <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                  <span>🎯 読取チェックボックス項目管理（志望校別講座）</span>
+                  <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト設定</span>
                 </div>
-                <div>
-                  <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
-                  <select id="wiz-sel-method" class="form-control" style="font-size: 0.85rem;">
-                    <option value="">-- 受講方法を選択 --</option>
-                    ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
-                  </select>
+                <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
+                  このプロジェクトで読み取るチェックボックス（志望校別対策講座、自由項目）を調整・削除・追加できます。
+                </p>
+
+                <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; align-items: end;">
+                  <div>
+                    <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
+                    <select id="wiz-sel-course" class="form-control" style="font-size: 0.85rem;">
+                      <option value="">-- 講座名を選択 --</option>
+                      ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
+                    <select id="wiz-sel-method" class="form-control" style="font-size: 0.85rem;">
+                      <option value="">-- 受講方法を選択 --</option>
+                      ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <button type="button" id="wiz-btn-add-course" class="btn btn-primary btn-sm" style="width: 100%; height: 38px;">
+                      ➕ 志望校別講座を追加
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <button type="button" id="wiz-btn-add-course" class="btn btn-primary btn-sm" style="width: 100%; height: 38px;">
-                    ➕ 志望校別講座を追加
+
+                <!-- 自由記述追加フォーム -->
+                <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center;">
+                  <input type="text" id="wiz-inp-custom-name" class="form-control" placeholder="自由記述で項目名を入力（例: 特別講習A、Zoom振替希望 など）" style="font-size: 0.85rem;">
+                  <button type="button" id="wiz-btn-add-free" class="btn btn-secondary btn-sm" style="white-space: nowrap; height: 38px;">
+                    ➕ 自由項目を追加
                   </button>
                 </div>
-              </div>
 
-              <!-- 自由記述追加フォーム -->
-              <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center;">
-                <input type="text" id="wiz-inp-custom-name" class="form-control" placeholder="自由記述で項目名を入力（例: 特別講習A、Zoom振替希望 など）" style="font-size: 0.85rem;">
-                <button type="button" id="wiz-btn-add-free" class="btn btn-secondary btn-sm" style="white-space: nowrap; height: 38px;">
-                  ➕ 自由項目を追加
-                </button>
+                <!-- 登録中カスタムボックス一覧 -->
+                <div id="wiz-custom-boxes-container"></div>
               </div>
-
-              <!-- 登録中カスタムボックス一覧 -->
-              <div id="wiz-custom-boxes-container"></div>
             </div>
-          </div>
-          <div id="wizard-calib-mount" style="min-height: 380px;"></div>
-        `;
+            <div id="wizard-calib-mount" style="min-height: 380px;"></div>
+          `;
+        } else {
+          // 受講確認モード（講義追加モード追加前の状態）
+          bodyContent = `
+            <div style="margin-bottom: var(--spacing-sm);">
+              <div style="display: flex; align-items: center; justify-content: space-between; background: var(--primary-50); border: 1px solid var(--primary-200); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;">
+                <div>
+                  <span class="badge badge-info">${selectedYear}年度</span>
+                  <span class="badge badge-purple">${selectedGrade}年生</span>
+                  <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                  <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
+                    受講確認票の書式・スキャン読取位置設定
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--primary-700);">
+                  登録生徒: <span class="text-mono font-bold">${parsedStudents.length}</span> 名
+                </div>
+              </div>
+              <p style="font-size: 0.88rem; color: var(--gray-700); margin-bottom: 8px;">
+                受講確認票のチェックボックス位置と判定閾値の調整を行います。<br>
+                通常は共通既定書式が自動適用されるため、必要に応じて微調整してください。
+              </p>
+            </div>
+            <div id="wizard-calib-mount" style="min-height: 380px;"></div>
+          `;
+        }
       }
 
       modal.innerHTML = `
@@ -732,6 +756,9 @@ export const HomePage = {
 
       let calibratorInstance = null;
       if (wizardStep === 3) {
+        const isSelectionMode = (selectedProjectType === 'selection');
+        let renderWizCustomBoxes = null;
+
         const mount = modal.querySelector('#wizard-calib-mount');
         if (mount) {
           calibratorInstance = new TemplateCalibrator(
@@ -739,219 +766,228 @@ export const HomePage = {
             customTemplate,
             (t) => {
               customTemplate = t;
-              renderWizCustomBoxes();
+              if (isSelectionMode && renderWizCustomBoxes) {
+                renderWizCustomBoxes();
+              }
             },
             {
               defaultResetTemplate: defaultTemplate,
               resetLabel: '🔄 共通既定書式に戻す',
-              resetToastMsg: '共通既定書式の位置に復元しました'
+              resetToastMsg: '共通既定書式の位置に復元しました',
+              allowDeleteStandardBoxes: isSelectionMode
             }
           );
         }
 
-        // ウィザード用チェックボックス一覧描画
-        const renderWizCustomBoxes = () => {
-          const container = modal.querySelector('#wiz-custom-boxes-container');
-          if (!container) return;
-          const boxes = customTemplate.customBoxes || [];
-          const hasNoChange = !!customTemplate.noChangeBox;
-          const hasHasChange = !!customTemplate.hasChangeBox;
-          const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + boxes.length;
+        // 講座選択モードの場合のみ講座追加・カスタムボックス管理を有効化
+        if (isSelectionMode) {
+          // ウィザード用チェックボックス一覧描画
+          renderWizCustomBoxes = () => {
+            const container = modal.querySelector('#wiz-custom-boxes-container');
+            if (!container) return;
+            const boxes = customTemplate.customBoxes || [];
+            const hasNoChange = !!customTemplate.noChangeBox;
+            const hasHasChange = !!customTemplate.hasChangeBox;
+            const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + boxes.length;
 
-          let standardBoxesHtml = '';
-          if (hasNoChange) {
-            standardBoxesHtml += `
-              <div style="background: #fff; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                <span style="font-weight: 700; font-size: 0.85rem; color: #15803d;">🟩 変更なし</span>
-                <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+            let standardBoxesHtml = '';
+            if (hasNoChange) {
+              standardBoxesHtml += `
+                <div style="background: #fff; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                  <span style="font-weight: 700; font-size: 0.85rem; color: #15803d;">🟩 変更なし</span>
+                  <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                    🎯 調整
+                  </button>
+                  <button type="button" class="btn-ghost wiz-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
+                    ✕
+                  </button>
+                </div>
+              `;
+            }
+            if (hasHasChange) {
+              standardBoxesHtml += `
+                <div style="background: #fff; border: 1px solid #fdba74; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                  <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
+                  <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                    🎯 調整
+                  </button>
+                  <button type="button" class="btn-ghost wiz-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
+                    ✕
+                  </button>
+                </div>
+              `;
+            }
+
+            const customBoxesHtml = boxes.map(box => `
+              <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
+                <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
                   🎯 調整
                 </button>
-                <button type="button" class="btn-ghost wiz-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
+                <button type="button" class="btn-ghost wiz-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
                   ✕
                 </button>
               </div>
-            `;
-          }
-          if (hasHasChange) {
-            standardBoxesHtml += `
-              <div style="background: #fff; border: 1px solid #fdba74; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
-                <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-                  🎯 調整
+            `).join('');
+
+            let restoreButtonsHtml = '';
+            if (!hasNoChange) {
+              restoreButtonsHtml += `
+                <button type="button" class="btn btn-secondary btn-sm wiz-btn-restore-box" data-type="noChange" style="padding: 3px 8px; font-size: 0.75rem; color: #15803d; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
+                  ➕ 「変更なし」枠を追加
                 </button>
-                <button type="button" class="btn-ghost wiz-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
-                  ✕
+              `;
+            }
+            if (!hasHasChange) {
+              restoreButtonsHtml += `
+                <button type="button" class="btn btn-secondary btn-sm wiz-btn-restore-box" data-type="hasChange" style="padding: 3px 8px; font-size: 0.75rem; color: #c2410c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
+                  ➕ 「変更あり」枠を追加
                 </button>
-              </div>
-            `;
-          }
+              `;
+            }
 
-          const customBoxesHtml = boxes.map(box => `
-            <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-              <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
-              <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-                🎯 調整
-              </button>
-              <button type="button" class="btn-ghost wiz-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
-                ✕
-              </button>
-            </div>
-          `).join('');
+            if (totalBoxes === 0) {
+              container.innerHTML = `
+                <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center; margin-bottom: 8px;">
+                  現在、読取チェックボックスはありません
+                </div>
+                ${restoreButtonsHtml ? `<div style="display: flex; gap: 8px; align-items: center;">${restoreButtonsHtml}</div>` : ''}
+              `;
+            } else {
+              container.innerHTML = `
+                <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                  <span>登録中の読取チェックボックス（全 ${totalBoxes} 個）:</span>
+                  ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  ${standardBoxesHtml}
+                  ${customBoxesHtml}
+                </div>
+              `;
+            }
 
-          let restoreButtonsHtml = '';
-          if (!hasNoChange) {
-            restoreButtonsHtml += `
-              <button type="button" class="btn btn-secondary btn-sm wiz-btn-restore-box" data-type="noChange" style="padding: 3px 8px; font-size: 0.75rem; color: #15803d; border-color: #86efac;" title="「変更なし」読取枠を標準位置で再追加">
-                ➕ 「変更なし」枠を追加
-              </button>
-            `;
-          }
-          if (!hasHasChange) {
-            restoreButtonsHtml += `
-              <button type="button" class="btn btn-secondary btn-sm wiz-btn-restore-box" data-type="hasChange" style="padding: 3px 8px; font-size: 0.75rem; color: #c2410c; border-color: #fdba74;" title="「変更あり」読取枠を標準位置で再追加">
-                ➕ 「変更あり」枠を追加
-              </button>
-            `;
-          }
+            // 削除ボタンイベント
+            container.querySelectorAll('.wiz-btn-del-box').forEach(btn => {
+              btn.onclick = () => {
+                const id = btn.dataset.id;
+                if (!isSelectionMode && (id === 'noChange' || id === 'hasChange')) {
+                  return;
+                }
+                if (calibratorInstance) {
+                  calibratorInstance.deleteBox(id);
+                } else {
+                  if (id === 'noChange') delete customTemplate.noChangeBox;
+                  else if (id === 'hasChange') delete customTemplate.hasChangeBox;
+                  else customTemplate.customBoxes = (customTemplate.customBoxes || []).filter(b => b.id !== id);
+                  renderWizCustomBoxes();
+                }
+              };
+            });
 
-          if (totalBoxes === 0) {
-            container.innerHTML = `
-              <div style="font-size: 0.8rem; color: var(--gray-500); padding: 8px 12px; background: #fff; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300); text-align: center; margin-bottom: 8px;">
-                現在、読取チェックボックスはありません
-              </div>
-              ${restoreButtonsHtml ? `<div style="display: flex; gap: 8px; align-items: center;">${restoreButtonsHtml}</div>` : ''}
-            `;
-          } else {
-            container.innerHTML = `
-              <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-                <span>登録中の読取チェックボックス（全 ${totalBoxes} 個）:</span>
-                ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
-              </div>
-              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                ${standardBoxesHtml}
-                ${customBoxesHtml}
-              </div>
-            `;
-          }
+            // 調整フォーカスボタンイベント
+            container.querySelectorAll('.wiz-btn-focus-box').forEach(btn => {
+              btn.onclick = () => {
+                const id = btn.dataset.id;
+                if (calibratorInstance) {
+                  calibratorInstance.activeTab = id;
+                  calibratorInstance.updateTabsUI();
+                  calibratorInstance.syncSlidersFromTemplate();
+                  calibratorInstance.drawOverlay();
+                  calibratorInstance.focusTargetArea();
+                }
+              };
+            });
 
-          // 削除ボタンイベント
-          container.querySelectorAll('.wiz-btn-del-box').forEach(btn => {
-            btn.onclick = () => {
-              const id = btn.dataset.id;
-              if (calibratorInstance) {
-                calibratorInstance.deleteBox(id);
-              } else {
-                if (id === 'noChange') delete customTemplate.noChangeBox;
-                else if (id === 'hasChange') delete customTemplate.hasChangeBox;
-                else customTemplate.customBoxes = (customTemplate.customBoxes || []).filter(b => b.id !== id);
-                renderWizCustomBoxes();
-              }
-            };
-          });
-
-          // 調整フォーカスボタンイベント
-          container.querySelectorAll('.wiz-btn-focus-box').forEach(btn => {
-            btn.onclick = () => {
-              const id = btn.dataset.id;
-              if (calibratorInstance) {
-                calibratorInstance.activeTab = id;
-                calibratorInstance.updateTabsUI();
-                calibratorInstance.syncSlidersFromTemplate();
-                calibratorInstance.drawOverlay();
-                calibratorInstance.focusTargetArea();
-              }
-            };
-          });
-
-          // 復元・再追加ボタンイベント
-          container.querySelectorAll('.wiz-btn-restore-box').forEach(btn => {
-            btn.onclick = () => {
-              const type = btn.dataset.type;
-              if (calibratorInstance) {
-                calibratorInstance.addStandardBox(type);
-              } else {
-                const def = CheckboxEngine.getDefaultTemplate();
-                if (type === 'noChange') customTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
-                else if (type === 'hasChange') customTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
-                renderWizCustomBoxes();
-              }
-            };
-          });
-        };
-
-        const addWizCustomBox = (label) => {
-          if (!customTemplate.customBoxes) customTemplate.customBoxes = [];
-          if (customTemplate.customBoxes.some(b => b.label === label)) {
-            UI.showToast(`「${label}」は既に追加されています`, 'warning');
-            return;
-          }
-          const id = 'cbox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-          const count = customTemplate.customBoxes.length;
-          const newBox = {
-            id,
-            label,
-            dx: -0.058,
-            dy: Math.round((0.360 + count * 0.050) * 1000) / 1000,
-            size: 0.032
+            // 復元・再追加ボタンイベント
+            container.querySelectorAll('.wiz-btn-restore-box').forEach(btn => {
+              btn.onclick = () => {
+                const type = btn.dataset.type;
+                if (calibratorInstance) {
+                  calibratorInstance.addStandardBox(type);
+                } else {
+                  const def = CheckboxEngine.getDefaultTemplate();
+                  if (type === 'noChange') customTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+                  else if (type === 'hasChange') customTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+                  renderWizCustomBoxes();
+                }
+              };
+            });
           };
-          customTemplate.customBoxes.push(newBox);
-          if (calibratorInstance) {
-            calibratorInstance.activeTab = id;
-            calibratorInstance.setTemplate(customTemplate);
-            calibratorInstance.updateTabsUI();
-            calibratorInstance.syncSlidersFromTemplate();
-            calibratorInstance.drawOverlay();
-            calibratorInstance.focusTargetArea();
-          }
+
+          const addWizCustomBox = (label) => {
+            if (!customTemplate.customBoxes) customTemplate.customBoxes = [];
+            if (customTemplate.customBoxes.some(b => b.label === label)) {
+              UI.showToast(`「${label}」は既に追加されています`, 'warning');
+              return;
+            }
+            const id = 'cbox_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+            const count = customTemplate.customBoxes.length;
+            const newBox = {
+              id,
+              label,
+              dx: -0.058,
+              dy: Math.round((0.360 + count * 0.050) * 1000) / 1000,
+              size: 0.032
+            };
+            customTemplate.customBoxes.push(newBox);
+            if (calibratorInstance) {
+              calibratorInstance.activeTab = id;
+              calibratorInstance.setTemplate(customTemplate);
+              calibratorInstance.updateTabsUI();
+              calibratorInstance.syncSlidersFromTemplate();
+              calibratorInstance.drawOverlay();
+              calibratorInstance.focusTargetArea();
+            }
+            renderWizCustomBoxes();
+            UI.showToast(`「${label}」を追加しました。枠線の位置を調整してください。`, 'success');
+          };
+
           renderWizCustomBoxes();
-          UI.showToast(`「${label}」を追加しました。枠線の位置を調整してください。`, 'success');
-        };
 
-        renderWizCustomBoxes();
+          // 講座名×受講方法追加
+          const addCourseBtn = modal.querySelector('#wiz-btn-add-course');
+          const selCourse = modal.querySelector('#wiz-sel-course');
+          const selMethod = modal.querySelector('#wiz-sel-method');
 
-        // 講座名×受講方法追加
-        const addCourseBtn = modal.querySelector('#wiz-btn-add-course');
-        const selCourse = modal.querySelector('#wiz-sel-course');
-        const selMethod = modal.querySelector('#wiz-sel-method');
-
-        if (addCourseBtn) {
-          addCourseBtn.onclick = () => {
-            const course = (selCourse?.value || '').trim();
-            const method = (selMethod?.value || '').trim();
-            if (!course) {
-              UI.showToast('講座名を選択してください', 'warning');
-              return;
-            }
-            if (!method) {
-              UI.showToast('受講方法を選択してください', 'warning');
-              return;
-            }
-            const label = `${course}（${method}）`;
-            addWizCustomBox(label);
-            selCourse.value = '';
-            selMethod.value = '';
-          };
-        }
-
-        // 自由項目追加
-        const addFreeBtn = modal.querySelector('#wiz-btn-add-free');
-        const freeInput = modal.querySelector('#wiz-inp-custom-name');
-
-        const handleFreeAdd = () => {
-          const label = (freeInput?.value || '').trim();
-          if (!label) {
-            UI.showToast('項目名を入力してください', 'warning');
-            return;
+          if (addCourseBtn) {
+            addCourseBtn.onclick = () => {
+              const course = (selCourse?.value || '').trim();
+              const method = (selMethod?.value || '').trim();
+              if (!course) {
+                UI.showToast('講座名を選択してください', 'warning');
+                return;
+              }
+              if (!method) {
+                UI.showToast('受講方法を選択してください', 'warning');
+                return;
+              }
+              const label = `${course}（${method}）`;
+              addWizCustomBox(label);
+              selCourse.value = '';
+              selMethod.value = '';
+            };
           }
-          addWizCustomBox(label);
-          freeInput.value = '';
-        };
 
-        if (addFreeBtn) addFreeBtn.onclick = handleFreeAdd;
-        if (freeInput) {
-          freeInput.onkeydown = (e) => {
-            if (e.key === 'Enter') handleFreeAdd();
+          // 自由項目追加
+          const addFreeBtn = modal.querySelector('#wiz-btn-add-free');
+          const freeInput = modal.querySelector('#wiz-inp-custom-name');
+
+          const handleFreeAdd = () => {
+            const label = (freeInput?.value || '').trim();
+            if (!label) {
+              UI.showToast('項目名を入力してください', 'warning');
+              return;
+            }
+            addWizCustomBox(label);
+            freeInput.value = '';
           };
+
+          if (addFreeBtn) addFreeBtn.onclick = handleFreeAdd;
+          if (freeInput) {
+            freeInput.onkeydown = (e) => {
+              if (e.key === 'Enter') handleFreeAdd();
+            };
+          }
         }
       }
 
@@ -1082,6 +1118,12 @@ export const HomePage = {
                 customTemplate.noChangeBox = null;
                 customTemplate.hasChangeBox = null;
               }
+            } else {
+              // 受講確認モードの場合、講座追加前の状態（標準枠保持・customBoxes空）にする
+              const def = CheckboxEngine.getDefaultTemplate();
+              if (!customTemplate.noChangeBox) customTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+              if (!customTemplate.hasChangeBox) customTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+              customTemplate.customBoxes = [];
             }
             wizardStep = 3;
             renderStep();

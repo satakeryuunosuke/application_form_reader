@@ -997,6 +997,7 @@ export const ProjectPage = {
 
     const settings = await DB.getSettings();
     const defaultTemplate = settings.defaultScanTemplate || CheckboxEngine.getDefaultTemplate();
+    const isSelectionMode = (project.projectType === 'selection');
     let currentTemplate = JSON.parse(JSON.stringify(project.scanTemplate || defaultTemplate));
     if (!currentTemplate.customBoxes) currentTemplate.customBoxes = [];
     const coursePresets = settings.coursePresets || [];
@@ -1106,7 +1107,8 @@ export const ProjectPage = {
       {
         defaultResetTemplate: defaultTemplate,
         resetLabel: '🔄 共通既定書式に戻す',
-        resetToastMsg: '共通既定書式の位置に復元しました'
+        resetToastMsg: '共通既定書式の位置に復元しました',
+        allowDeleteStandardBoxes: isSelectionMode
       }
     );
 
@@ -1127,9 +1129,11 @@ export const ProjectPage = {
             <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
               🎯 調整
             </button>
-            <button type="button" class="btn-ghost proj-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
-              ✕
-            </button>
+            ${isSelectionMode ? `
+              <button type="button" class="btn-ghost proj-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
+                ✕
+              </button>
+            ` : ''}
           </div>
         `;
       }
@@ -1140,9 +1144,11 @@ export const ProjectPage = {
             <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
               🎯 調整
             </button>
-            <button type="button" class="btn-ghost proj-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
-              ✕
-            </button>
+            ${isSelectionMode ? `
+              <button type="button" class="btn-ghost proj-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
+                ✕
+              </button>
+            ` : ''}
           </div>
         `;
       }
@@ -1199,6 +1205,9 @@ export const ProjectPage = {
       container.querySelectorAll('.proj-btn-del-box').forEach(btn => {
         btn.onclick = () => {
           const id = btn.dataset.id;
+          if (!isSelectionMode && (id === 'noChange' || id === 'hasChange')) {
+            return;
+          }
           if (calibrator) {
             calibrator.deleteBox(id);
           } else {

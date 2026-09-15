@@ -28,6 +28,7 @@ export class TemplateCalibrator {
       }).catch(() => {});
     }
     this.defaultResetTemplate = this.options.defaultResetTemplate || CheckboxEngine.getDefaultTemplate();
+    this.allowDeleteStandardBoxes = (this.options.allowDeleteStandardBoxes !== false);
     this.template = initialTemplate ? JSON.parse(JSON.stringify(initialTemplate)) : JSON.parse(JSON.stringify(this.defaultResetTemplate));
     if (!this.template.customBoxes) {
       this.template.customBoxes = [];
@@ -160,8 +161,7 @@ export class TemplateCalibrator {
               <div class="hint-title">💡 領域設定のポイント</div>
               <div class="hint-body">
                 チェックボックスの<strong>【枠線全体が判定領域（正方形）の中に完全に収まる】</strong>ように設定してください。<br>
-                ※ 枠線の黒画素が含まれるため、判定閾値は高め（推奨: <strong>25%〜30%</strong>、デフォルト: 25%）に設定されています。<br>
-                ※ 「変更なし」「変更あり」が不要な帳票では、枠を<strong>✕ボタン</strong>で削除できます。
+                ※ 枠線の黒画素が含まれるため、判定閾値は高め（推奨: <strong>25%〜30%</strong>、デフォルト: 25%）に設定されています。
               </div>
             </div>
 
@@ -319,7 +319,9 @@ export class TemplateCalibrator {
       tabsHtml += `
         <div class="calib-tab-item ${this.activeTab === 'noChange' ? 'active' : ''}" style="${this.activeTab === 'noChange' ? 'border-color: #16a34a;' : ''}">
           <button type="button" class="calib-tab-btn" data-tab="noChange">🟩 「変更なし」枠</button>
-          <button type="button" class="calib-tab-del-btn" data-del="noChange" title="「変更なし」読取枠を削除">✕</button>
+          ${this.allowDeleteStandardBoxes ? `
+            <button type="button" class="calib-tab-del-btn" data-del="noChange" title="「変更なし」読取枠を削除">✕</button>
+          ` : ''}
         </div>
       `;
     }
@@ -327,7 +329,9 @@ export class TemplateCalibrator {
       tabsHtml += `
         <div class="calib-tab-item ${this.activeTab === 'hasChange' ? 'active' : ''}" style="${this.activeTab === 'hasChange' ? 'border-color: #ea580c;' : ''}">
           <button type="button" class="calib-tab-btn" data-tab="hasChange">🟧 「変更あり」枠</button>
-          <button type="button" class="calib-tab-del-btn" data-del="hasChange" title="「変更あり」読取枠を削除">✕</button>
+          ${this.allowDeleteStandardBoxes ? `
+            <button type="button" class="calib-tab-del-btn" data-del="hasChange" title="「変更あり」読取枠を削除">✕</button>
+          ` : ''}
         </div>
       `;
     }
@@ -407,6 +411,9 @@ export class TemplateCalibrator {
   }
 
   deleteBox(typeOrId) {
+    if (!this.allowDeleteStandardBoxes && (typeOrId === 'noChange' || typeOrId === 'hasChange')) {
+      return;
+    }
     let label = '';
     if (typeOrId === 'noChange') {
       if (!this.template.noChangeBox) return;

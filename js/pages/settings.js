@@ -506,7 +506,8 @@ export const SettingsPage = {
           defaultResetTemplate: systemDefaultTemplate,
           codeType: currentCodeType,
           resetLabel: '🔄 システム標準初期値に戻す',
-          resetToastMsg: 'システム標準初期値に復元しました（「共通既定書式を保存」で確定してください）'
+          resetToastMsg: 'システム標準初期値に復元しました（「共通既定書式を保存」で確定してください）',
+          allowDeleteStandardBoxes: false
         }
       );
     }
@@ -1142,9 +1143,6 @@ export const SettingsPage = {
           <button type="button" class="btn btn-secondary btn-sm btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
             🎯 調整
           </button>
-          <button type="button" class="btn-ghost btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
-            ✕
-          </button>
         </div>
       `;
     }
@@ -1154,9 +1152,6 @@ export const SettingsPage = {
           <span style="font-weight: 700; font-size: 0.85rem; color: #c2410c;">🟧 変更あり</span>
           <button type="button" class="btn btn-secondary btn-sm btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
             🎯 調整
-          </button>
-          <button type="button" class="btn-ghost btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
-            ✕
           </button>
         </div>
       `;
@@ -1214,6 +1209,9 @@ export const SettingsPage = {
     listContainer.querySelectorAll('.btn-del-box').forEach(btn => {
       btn.onclick = () => {
         const id = btn.dataset.id;
+        if (id === 'noChange' || id === 'hasChange') {
+          return;
+        }
         if (this.calibrator) {
           this.calibrator.deleteBox(id);
           this.currentDefaultTemplate = this.calibrator.getTemplate();

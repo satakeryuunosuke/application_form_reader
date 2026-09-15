@@ -542,6 +542,7 @@ export const ScanPage = {
         const settings = await DB.getSettings();
         const coursePresets = settings.coursePresets || [];
         const methodPresets = settings.methodPresets || [];
+        const isSelectionMode = (this.project?.projectType === 'selection');
         let currentTemplate = JSON.parse(JSON.stringify(this.project.scanTemplate || CheckboxEngine.getDefaultTemplate()));
         if (!currentTemplate.customBoxes) currentTemplate.customBoxes = [];
 
@@ -638,10 +639,20 @@ export const ScanPage = {
         }
 
         const mount = modal.querySelector('#scan-calib-container');
-        const calibrator = new TemplateCalibrator(mount, currentTemplate, (t) => {
-          currentTemplate = t;
-          renderScanCustomBoxes();
-        });
+        const calibrator = new TemplateCalibrator(
+          mount,
+          currentTemplate,
+          (t) => {
+            currentTemplate = t;
+            renderScanCustomBoxes();
+          },
+          {
+            defaultResetTemplate: settings.defaultScanTemplate || CheckboxEngine.getDefaultTemplate(),
+            resetLabel: '🔄 共通既定書式に戻す',
+            resetToastMsg: '共通既定書式の位置に復元しました',
+            allowDeleteStandardBoxes: isSelectionMode
+          }
+        );
 
         // チェックボックス一覧描画 & 操作
         const renderScanCustomBoxes = () => {
@@ -660,9 +671,11 @@ export const ScanPage = {
                 <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="noChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
                   🎯 調整
                 </button>
-                <button type="button" class="btn-ghost scan-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
-                  ✕
-                </button>
+                ${isSelectionMode ? `
+                  <button type="button" class="btn-ghost scan-btn-del-box" data-id="noChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更なし」枠を削除">
+                    ✕
+                  </button>
+                ` : ''}
               </div>
             `;
           }
@@ -673,9 +686,11 @@ export const ScanPage = {
                 <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="hasChange" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
                   🎯 調整
                 </button>
-                <button type="button" class="btn-ghost scan-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
-                  ✕
-                </button>
+                ${isSelectionMode ? `
+                  <button type="button" class="btn-ghost scan-btn-del-box" data-id="hasChange" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="「変更あり」枠を削除">
+                    ✕
+                  </button>
+                ` : ''}
               </div>
             `;
           }
@@ -732,6 +747,9 @@ export const ScanPage = {
           container.querySelectorAll('.scan-btn-del-box').forEach(btn => {
             btn.onclick = () => {
               const id = btn.dataset.id;
+              if (!isSelectionMode && (id === 'noChange' || id === 'hasChange')) {
+                return;
+              }
               if (calibrator) {
                 calibrator.deleteBox(id);
               } else {
