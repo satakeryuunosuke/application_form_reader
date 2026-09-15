@@ -486,6 +486,50 @@ export const ProjectPage = {
           </div>
         </div>
 
+        <!-- 共有フォルダ格納情報バナー / プロジェクト識別情報 -->
+        <div class="dashboard-folder-info-card">
+          <div class="folder-info-header">
+            <div class="folder-info-title-group">
+              <span class="folder-info-icon">📁</span>
+              <div>
+                <div class="folder-info-title">
+                  <span>共有フォルダ格納情報（プロジェクトフォルダ名）</span>
+                </div>
+                <div class="folder-info-sub">
+                  共有フォルダ内やWindowsエクスプローラー上で、このプロジェクトが保存されているフォルダ名です
+                </div>
+              </div>
+            </div>
+            <div class="folder-info-status-badges">
+              <span class="badge ${isFolderConnected ? 'badge-success' : (FolderConnector.isPermissionPending() ? 'badge-warning' : 'badge-gray')}">
+                ${isFolderConnected ? `🟢 共有フォルダ: ${FolderConnector.getFolderName() || FolderConnector.folderName || '接続中'}` : (FolderConnector.isPermissionPending() ? '🟡 要再認可' : '⚪ 共有フォルダ未接続')}
+              </span>
+              <span class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}">
+                ${isCompleted ? '🏁 完了 (archive/)' : '🟢 進行中'}
+              </span>
+            </div>
+          </div>
+          <div class="folder-info-body">
+            <div class="folder-info-row">
+              <span class="folder-info-label">格納名 (ID):</span>
+              <div class="folder-name-box">
+                <code class="folder-name-code text-mono" id="dash-project-folder-name" title="クリックして全選択">${projectId}</code>
+                <button type="button" id="btn-copy-folder-name" class="btn btn-secondary btn-xs btn-copy-folder" title="フォルダ名「${projectId}」をクリップボードにコピー">
+                  📋 コピー
+                </button>
+              </div>
+            </div>
+            <div class="folder-info-path-hint">
+              ${isFolderConnected ? `
+                <span style="color: var(--gray-500);">エクスプローラー上の場所:</span>
+                <code class="text-mono">${FolderConnector.getFolderName() || FolderConnector.folderName || '共有フォルダ'}\\${isCompleted ? 'archive\\' : ''}${projectId}\\</code>
+              ` : `
+                <span style="color: var(--gray-500);">※ 共有フォルダに接続すると、ルート直下に <code class="text-mono">${projectId}\\</code> として作成・同期されます</span>
+              `}
+            </div>
+          </div>
+        </div>
+
         ${isSelectionMode ? `
           <!-- 講座選択モード専用: 講座別申込サマリー -->
           <div class="dashboard-section">
@@ -687,6 +731,7 @@ export const ProjectPage = {
                 </div>
                 <p class="dashboard-card-desc">
                   共有フォルダから、他のPCが追加した生徒や提出・変更イベントの最新差分を手動で取り込んでデータを最新化します。
+                  <span style="display: block; margin-top: 8px; font-size: 0.8rem; color: var(--gray-600); background: var(--gray-100); padding: 4px 8px; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300);">対象フォルダ: <code class="text-mono font-bold" style="color: var(--primary-700);">${projectId}</code></span>
                 </p>
               </div>
               <div>
@@ -708,6 +753,7 @@ export const ProjectPage = {
                 </div>
                 <p class="dashboard-card-desc">
                   このPCのローカルデータを正として、共有フォルダのプロジェクト情報（meta.json）および生徒名簿（students.json）を強制的に再出力・検証します。他PCで取り込めない場合の修復に使用します。
+                  <span style="display: block; margin-top: 8px; font-size: 0.8rem; color: var(--gray-600); background: var(--gray-100); padding: 4px 8px; border-radius: var(--radius-sm); border: 1px dashed var(--gray-300);">出力先フォルダ: <code class="text-mono font-bold" style="color: var(--primary-700);">${projectId}</code></span>
                 </p>
               </div>
               <div>
@@ -769,6 +815,39 @@ export const ProjectPage = {
     content.querySelector('#btn-dash-back-list').onclick = () => {
       window.location.hash = `#project/${projectId}/list`;
     };
+
+    const copyFolderBtn = content.querySelector('#btn-copy-folder-name');
+    if (copyFolderBtn) {
+      copyFolderBtn.onclick = async () => {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(projectId);
+          } else {
+            const tempInput = document.createElement('input');
+            tempInput.value = projectId;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+          }
+          const originalText = copyFolderBtn.innerHTML;
+          copyFolderBtn.innerHTML = '✓ コピー完了';
+          copyFolderBtn.classList.add('btn-success');
+          copyFolderBtn.classList.remove('btn-secondary');
+          UI.showToast(`共有フォルダ格納名「${projectId}」をコピーしました`, 'success', 3000);
+          setTimeout(() => {
+            if (copyFolderBtn) {
+              copyFolderBtn.innerHTML = originalText;
+              copyFolderBtn.classList.remove('btn-success');
+              copyFolderBtn.classList.add('btn-secondary');
+            }
+          }, 2000);
+        } catch (err) {
+          console.error('クリップボードコピー失敗:', err);
+          UI.showToast(`コピーに失敗しました: ${err.message}`, 'warning');
+        }
+      };
+    }
 
     const scanBtn = content.querySelector('#btn-dash-open-scan');
     if (scanBtn) {
