@@ -216,7 +216,7 @@ export class TemplateCalibrator {
                   </div>
                   <div class="calib-input-row">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dx" data-delta="-0.002">◀</button>
-                    <input type="range" id="rng-dx" min="-0.30" max="0.30" step="0.001" class="form-range">
+                    <input type="range" id="rng-dx" min="-1.00" max="1.00" step="0.001" class="form-range">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dx" data-delta="0.002">▶</button>
                   </div>
                 </div>
@@ -228,7 +228,7 @@ export class TemplateCalibrator {
                   </div>
                   <div class="calib-input-row">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dy" data-delta="-0.002">▲</button>
-                    <input type="range" id="rng-dy" min="0.05" max="0.60" step="0.001" class="form-range">
+                    <input type="range" id="rng-dy" min="-1.00" max="1.00" step="0.001" class="form-range">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="dy" data-delta="0.002">▼</button>
                   </div>
                 </div>
@@ -241,7 +241,7 @@ export class TemplateCalibrator {
                   </div>
                   <div class="calib-input-row">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="-0.001">➖</button>
-                    <input type="range" id="rng-size" min="0.015" max="0.070" step="0.001" class="form-range">
+                    <input type="range" id="rng-size" min="0.005" max="0.150" step="0.001" class="form-range">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="0.001">➕</button>
                   </div>
                 </div>
@@ -566,11 +566,15 @@ export class TemplateCalibrator {
         const targetBox = this.getTargetBox();
         if (!targetBox) return;
         const currentVal = target === 'size' ? (targetBox.size || targetBox.w || 0.022) : targetBox[target];
-        targetBox[target] = Math.round((currentVal + delta) * 1000) / 1000;
-        if (target === 'size') {
+        let newVal = Math.round((currentVal + delta) * 1000) / 1000;
+        if (target === 'dx' || target === 'dy') {
+          newVal = Math.max(-1.00, Math.min(1.00, newVal));
+        } else if (target === 'size') {
+          newVal = Math.max(0.005, Math.min(0.150, newVal));
           delete targetBox.w;
           delete targetBox.h;
         }
+        targetBox[target] = newVal;
         this.syncSlidersFromTemplate();
         this.drawOverlay();
         if (this.onChange) this.onChange(this.template);
