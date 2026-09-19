@@ -190,6 +190,181 @@ export const ScannerEngine = {
   },
 
   /**
+   * パターンA: 帳票の下端外枠罫線（Bottom Border）を高速・高精度に検出
+   * 用紙下部の水平罫線をサンプリングし、超長基線長（1000px以上）から
+   * 0.05度以下の高精度な傾き角度とQRコードからの距離を算出
+   * 
+   * @param {HTMLCanvasElement} canvas
+   * @param {{ centerX: number, centerY: number, width: number, height: number }} qrBox
+   * @returns {{ found: boolean, angle?: number, angleDeg?: number, slope?: number, intercept?: number, qrToBorderDist?: number, inliers?: Array<{x: number, y: number}>, yLeft?: number, yRight?: number }}
+   */
+  detectBottomBorder(canvas, qrBox) {
+    if (!canvas || !qrBox) return { found: false };
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return { found: false };
+
+    // 1. 探索領域: 用紙下部（68%〜97%）
+    const searchStartY = Math.round(ch * 0.68);
+    const searchEndY = Math.round(ch * 0.97);
+    const searchH = searchEndY - searchStartY;
+    if (searchH <= 30) return { found: false };
+
+    let imgData;
+    try {
+      imgData = ctx.getImageData(0, searchStartY, cw, searchH);
+    } catch (e) {
+      console.warn('detectBottomBorder getImageData error:', e);
+      return { found: false };
+    }
+
+    const data = imgData.data;
+    const getBrightness = (x, localY) => {
+      if (x < 0 || x >= cw || localY < 0 || localY >= searchH) return 255;
+      const idx = (localY * cw + x) * 4;
+      return 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+    };
+
+    // 2. 複数の垂直サンプリング列（11箇所: 12%〜88%）
+    const sampleCols = [0.12, 0.18, 0.25, 0.33, 0.42, 0.50, 0.58, 0.67, 0.75, 0.82, 0.88].map(ratio => Math.round(cw * ratio));
+    const candidates = [];
+
+    // 最下端の罫線を探すため、下（searchH - 6）から上（6）へ逆方向に走査
+    for (const cx of sampleCols) {
+      const stripHalfW = 2;
+      let foundLocalY = -1;
+
+      for (let ly = searchH - 6; ly >= 6; ly--) {
+        let bSum = 0;
+        let count = 0;
+        for (let dx = -stripHalfW; dx <= stripHalfW; dx++) {
+          bSum += getBrightness(cx + dx, ly);
+          count++;
+        }
+        const bMid = bSum / count;
+
+        // 暗いピクセル（罫線候補: 輝度 < 135）
+        if (bMid < 135) {
+          // 上下が白い（背景）であることを確認（線の太さ 1〜12px の検証）
+          let upperB = 0, lowerB = 0;
+          for (let dx = -stripHalfW; dx <= stripHalfW; dx++) {
+            upperB += getBrightness(cx + dx, Math.max(0, ly - 10));
+            lowerB += getBrightness(cx + dx, Math.min(searchH - 1, ly + 10));
+          }
+          upperB /= count;
+          lowerB /= count;
+
+          // 周囲が白背景で中心部が明確に暗い
+          if ((upperB > 165 || lowerB > 165) && (upperB - bMid > 35 || lowerB - bMid > 35)) {
+            // 最暗点（線の中心）を探す
+            let bestLy = ly;
+            let minB = bMid;
+            for (let testLy = Math.max(0, ly - 4); testLy <= Math.min(searchH - 1, ly + 4); testLy++) {
+              let tSum = 0;
+              for (let dx = -stripHalfW; dx <= stripHalfW; dx++) {
+                tSum += getBrightness(cx + dx, testLy);
+              }
+              const tb = tSum / count;
+              if (tb < minB) {
+                minB = tb;
+                bestLy = testLy;
+              }
+            }
+            foundLocalY = bestLy;
+            break; // この列の最下端線が確定
+          }
+        }
+      }
+
+      if (foundLocalY !== -1) {
+        candidates.push({
+          x: cx,
+          y: searchStartY + foundLocalY
+        });
+      }
+    }
+
+    if (candidates.length < 5) {
+      return { found: false };
+    }
+
+    // 3. RANSACによる外れ値除去付き直線フィッティング（文字・印鑑・ノイズの完全排除）
+    let bestLine = null;
+    let bestInliers = [];
+    const maxIterations = 50;
+
+    for (let it = 0; it < maxIterations; it++) {
+      const idx1 = Math.floor(Math.random() * candidates.length);
+      const idx2 = Math.floor(Math.random() * candidates.length);
+      if (idx1 === idx2) continue;
+      const p1 = candidates[idx1];
+      const p2 = candidates[idx2];
+      if (Math.abs(p2.x - p1.x) < cw * 0.15) continue; // 2点間が近すぎるペアはスキップ
+
+      const m = (p2.y - p1.y) / (p2.x - p1.x);
+      const b = p1.y - m * p1.x;
+
+      // 水平から ±8度 以内か確認
+      if (Math.abs(Math.atan(m) * (180 / Math.PI)) > 8.0) continue;
+
+      const inliers = [];
+      for (const p of candidates) {
+        if (Math.abs(m * p.x + b - p.y) <= 7.0) {
+          inliers.push(p);
+        }
+      }
+
+      if (inliers.length > bestInliers.length) {
+        bestInliers = inliers;
+        bestLine = { slope: m, intercept: b };
+      }
+    }
+
+    if (!bestLine || bestInliers.length < 5) {
+      return { found: false };
+    }
+
+    // インライア全点を用いて最小二乗法で最終フィッティング
+    const n = bestInliers.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (const p of bestInliers) {
+      sumX += p.x;
+      sumY += p.y;
+      sumXY += p.x * p.y;
+      sumXX += p.x * p.x;
+    }
+    const denom = (n * sumXX - sumX * sumX);
+    const finalSlope = Math.abs(denom) > 1e-6 ? (n * sumXY - sumX * sumY) / denom : bestLine.slope;
+    const finalIntercept = Math.abs(denom) > 1e-6 ? (sumY - finalSlope * sumX) / n : bestLine.intercept;
+
+    const angleRad = Math.atan(finalSlope);
+    const angleDeg = Math.round(angleRad * (180 / Math.PI) * 100) / 100;
+
+    // QRコード中心のX座標における下端線のY位置
+    const borderYAtQrX = finalSlope * qrBox.centerX + finalIntercept;
+    const qrToBorderDist = borderYAtQrX - qrBox.centerY;
+
+    // QRコードからの距離が近すぎる場合は外枠線ではない（帳票下部にあるべき）
+    if (qrToBorderDist < ch * 0.45) {
+      return { found: false };
+    }
+
+    return {
+      found: true,
+      slope: finalSlope,
+      intercept: finalIntercept,
+      angle: angleRad,
+      angleDeg,
+      qrToBorderDist,
+      inliers: bestInliers,
+      yLeft: finalSlope * (cw * 0.08) + finalIntercept,
+      yRight: finalSlope * (cw * 0.92) + finalIntercept
+    };
+  },
+
+  /**
    * ZXing による高速 QR コード探索（上部領域優先 & 全体フォールバック）
    */
   async scanQRCodeZXing(canvas) {
@@ -442,13 +617,19 @@ export const ScannerEngine = {
     // 1. コード検出（QRコード / CODE 39 / 自動判別）
     const barcodeResult = await this.detectBarcode(canvas, options);
 
-    // 2. チェックボックス判定
+    // 1.5. パターンA: 帳票外枠罫線（下端水平線）検出
+    let bottomBorder = null;
+    if (barcodeResult.found && barcodeResult.box) {
+      bottomBorder = this.detectBottomBorder(canvas, barcodeResult.box);
+    }
+
+    // 2. チェックボックス判定（外枠罫線アシスト補正を適用）
     let checkResult = { hasChange: false, noChangeChecked: false, hasChangeChecked: false, customChecks: {} };
     let templateApplied = false;
     let targetRects = null;
 
     if (barcodeResult.found && template) {
-      targetRects = CheckboxEngine.calculateTargetRects(canvas, barcodeResult.box, template);
+      targetRects = CheckboxEngine.calculateTargetRects(canvas, barcodeResult.box, template, bottomBorder);
       const noChangeEval = targetRects.noChangeRect
         ? CheckboxEngine.evaluateCheckbox(canvas, targetRects.noChangeRect, targetRects.threshold)
         : { isChecked: false, darkRatio: 0 };
@@ -560,6 +741,24 @@ export const ScannerEngine = {
           });
         }
       }
+
+      // パターンA: 検出された外枠下端線の描画（水色ライン）
+      if (bottomBorder && bottomBorder.found) {
+        pctx.save();
+        pctx.strokeStyle = '#06b6d4';
+        pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
+        pctx.setLineDash([8, 4]);
+        pctx.beginPath();
+        const x1 = canvas.width * 0.08;
+        const y1 = bottomBorder.slope * x1 + bottomBorder.intercept;
+        const x2 = canvas.width * 0.92;
+        const y2 = bottomBorder.slope * x2 + bottomBorder.intercept;
+        pctx.moveTo(x1, y1);
+        pctx.lineTo(x2, y2);
+        pctx.stroke();
+        pctx.restore();
+      }
+
       overlayDataUrl = previewCanvas.toDataURL('image/jpeg', 0.85);
     } catch (e) {
       console.warn('Overlay preview generation failed:', e);
@@ -577,6 +776,7 @@ export const ScannerEngine = {
       isIdValid: validation.isValid,
       idValidationReason: validation.reason || '',
       barcodeBox: barcodeResult.box,
+      bottomBorder,
       targetRects,
       checkResult,
       templateApplied,

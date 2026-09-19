@@ -44,7 +44,8 @@ export class TemplateCalibrator {
     this.canvas = null;
     this.sourceCanvas = null; // 原寸大画像Canvas
     this.barcodeBox = null;
-    this.loadedPages = []; // [{ canvas, barcodeBox, pageNum }]
+    this.bottomBorder = null; // パターンA: 外枠下端罫線情報
+    this.loadedPages = []; // [{ canvas, barcodeBox, bottomBorder, pageNum }]
     this.currentPageIndex = 0;
 
     // ズーム＆パン状態
@@ -73,19 +74,26 @@ export class TemplateCalibrator {
           page.barcodeType = bcResult.codeType || null;
           if (bcResult.box) {
             page.barcodeBox = bcResult.box;
+            page.bottomBorder = ScannerEngine.detectBottomBorder(page.canvas, bcResult.box);
           }
         }
       }
       const cur = this.loadedPages[this.currentPageIndex];
       if (cur) {
         this.barcodeBox = cur.barcodeBox;
+        this.bottomBorder = cur.bottomBorder || null;
         this.drawOverlay();
       }
     }
   }
 
   getTemplate() {
-    return JSON.parse(JSON.stringify(this.template));
+    const t = JSON.parse(JSON.stringify(this.template));
+    // 外枠下端線が検出されている場合は、基準距離（refQrToBorderDist）を自動保存
+    if (this.bottomBorder && this.bottomBorder.found && this.bottomBorder.qrToBorderDist) {
+      t.refQrToBorderDist = Math.round(this.bottomBorder.qrToBorderDist * 10) / 10;
+    }
+    return t;
   }
 
   setTemplate(newTemplate) {
@@ -510,6 +518,9 @@ export class TemplateCalibrator {
     }
     if (this.template.customBoxes && this.template.customBoxes.length > 0) {
       html += `<span class="legend-item"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>`;
+    }
+    if (this.bottomBorder && this.bottomBorder.found) {
+      html += `<span class="legend-item"><span class="legend-box" style="background: #06b6d4; border: 1px dashed #0891b2;"></span> 📐 外枠下端線 (傾き: ${this.bottomBorder.angleDeg}° 補正有効)</span>`;
     }
     legend.innerHTML = html;
   }
@@ -1078,18 +1089,22 @@ export class TemplateCalibrator {
 
           const bcResult = await ScannerEngine.detectBarcode(cv, { codeType: this.codeType });
           const isQR = bcResult.codeType === 'QR' || this.codeType === 'qr';
+          const barcodeBox = bcResult.box || {
+            centerX: cv.width * 0.13,
+            centerY: cv.height * 0.10,
+            width: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.width * 0.15),
+            height: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.height * 0.05),
+            angle: 0,
+            angleDeg: 0
+          };
+          const bottomBorder = barcodeBox ? ScannerEngine.detectBottomBorder(cv, barcodeBox) : null;
+
           this.loadedPages.push({
             canvas: cv,
             barcodeFound: bcResult.found,
             barcodeType: bcResult.codeType || (isQR ? 'QR' : 'CODE39'),
-            barcodeBox: bcResult.box || {
-              centerX: cv.width * 0.13,
-              centerY: cv.height * 0.10,
-              width: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.width * 0.15),
-              height: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.height * 0.05),
-              angle: 0,
-              angleDeg: 0
-            },
+            barcodeBox,
+            bottomBorder,
             barcodeText: bcResult.text || '',
             pageNum: i
           });
@@ -1124,19 +1139,22 @@ export class TemplateCalibrator {
           ScannerEngine.initReader();
           const bcResult = await ScannerEngine.detectBarcode(cv, { codeType: this.codeType });
           const isQR = bcResult.codeType === 'QR' || this.codeType === 'qr';
+          const barcodeBox = bcResult.box || {
+            centerX: cv.width * 0.13,
+            centerY: cv.height * 0.10,
+            width: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.width * 0.15),
+            height: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.height * 0.05),
+            angle: 0,
+            angleDeg: 0
+          };
+          const bottomBorder = barcodeBox ? ScannerEngine.detectBottomBorder(cv, barcodeBox) : null;
 
           this.loadedPages = [{
             canvas: cv,
             barcodeFound: bcResult.found,
             barcodeType: bcResult.codeType || (isQR ? 'QR' : 'CODE39'),
-            barcodeBox: bcResult.box || {
-              centerX: cv.width * 0.13,
-              centerY: cv.height * 0.10,
-              width: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.width * 0.15),
-              height: isQR ? Math.round(cv.width * 0.08) : Math.round(cv.height * 0.05),
-              angle: 0,
-              angleDeg: 0
-            },
+            barcodeBox,
+            bottomBorder,
             barcodeText: bcResult.text || '',
             pageNum: 1
           }];
@@ -1197,8 +1215,10 @@ export class TemplateCalibrator {
     const cur = this.loadedPages[index];
     this.sourceCanvas = cur.canvas;
     this.barcodeBox = cur.barcodeBox;
+    this.bottomBorder = cur.bottomBorder || null;
     this.updatePaginationUI();
     this.drawOverlay();
+    this.updateLegend();
   }
 
   /**
@@ -1271,8 +1291,31 @@ export class TemplateCalibrator {
       ctx.restore();
     }
 
-    // 3. 読取枠の計算（完全な正方形＋傾きアフィン変換）
-    const rects = CheckboxEngine.calculateTargetRects(this.sourceCanvas, this.barcodeBox, this.template);
+    // 2.5. パターンA: 検出された外枠下端線の描画（水色ライン）
+    if (this.bottomBorder && this.bottomBorder.found) {
+      ctx.save();
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = Math.max(2.5, Math.round(srcW * 0.0028));
+      ctx.setLineDash([8, 5]);
+      ctx.beginPath();
+      const x1 = srcW * 0.06;
+      const y1 = this.bottomBorder.slope * x1 + this.bottomBorder.intercept;
+      const x2 = srcW * 0.94;
+      const y2 = this.bottomBorder.slope * x2 + this.bottomBorder.intercept;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      // 外枠線ラベル
+      ctx.fillStyle = '#0891b2';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`📐 外枠下端線検出（傾き: ${this.bottomBorder.angleDeg}° 補正有効）`, x1 + 8, y1 - 8);
+      ctx.restore();
+    }
+
+    // 3. 読取枠の計算（完全な正方形＋外枠罫線アシスト補正）
+    const rects = CheckboxEngine.calculateTargetRects(this.sourceCanvas, this.barcodeBox, this.template, this.bottomBorder);
 
     // 4. 黒画素率の評価
     const threshold = this.template.threshold !== undefined ? this.template.threshold : 0.25;

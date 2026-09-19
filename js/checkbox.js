@@ -110,8 +110,9 @@ export const CheckboxEngine = {
    * @param {HTMLCanvasElement} canvas
    * @param {{ centerX: number, centerY: number, width: number, height: number, angle?: number }} barcodeBox
    * @param {object} template テンプレート設定 (noChangeBox, hasChangeBox)
+   * @param {object} [bottomBorder] パターンA 外枠下端罫線の検出結果
    */
-  calculateTargetRects(canvas, barcodeBox, template) {
+  calculateTargetRects(canvas, barcodeBox, template, bottomBorder = null) {
     const cw = canvas.width;
     const ch = canvas.height;
     const t = template || this.getDefaultTemplate();
@@ -119,7 +120,22 @@ export const CheckboxEngine = {
     // アンカー基準点（バーコードの中心ピクセル座標）
     const anchorX = barcodeBox.centerX;
     const anchorY = barcodeBox.centerY;
-    const angle = barcodeBox.angle || 0; // ラジアン（時計回り正）
+
+    // パターンA: 外枠下端罫線（bottomBorder）による傾き・縦スケール補正
+    // 1. 傾き角度: 外枠線が検出されている場合はその超長基線長（1000px以上）傾き角を採用、無ければ barcodeBox.angle（水平固定時は0）
+    const angle = (bottomBorder && bottomBorder.found && bottomBorder.angle !== undefined)
+      ? bottomBorder.angle
+      : (barcodeBox.angle || 0);
+
+    // 2. 縦スケール比率: テンプレートに基準外枠距離があり、今回も外枠線が検出された場合
+    let scaleY = 1.0;
+    if (bottomBorder && bottomBorder.found && t.refQrToBorderDist && bottomBorder.qrToBorderDist) {
+      const ratio = bottomBorder.qrToBorderDist / t.refQrToBorderDist;
+      // 0.85〜1.15 の妥当なスケーリング範囲内でのみ補正を適用
+      if (ratio >= 0.85 && ratio <= 1.15) {
+        scaleY = ratio;
+      }
+    }
 
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
@@ -130,9 +146,9 @@ export const CheckboxEngine = {
       const w = side;
       const h = side;
 
-      // 未回転オフセット
+      // 未回転オフセット（縦方向は外枠線スケーリング比率 scaleY を適用して余白差を完全吸収）
       const unrotDx = def.dx * cw;
-      const unrotDy = def.dy * ch;
+      const unrotDy = def.dy * ch * scaleY;
 
       // 回転行列による座標変換
       const rotDx = unrotDx * cosA - unrotDy * sinA;
@@ -163,6 +179,8 @@ export const CheckboxEngine = {
       hasChangeRect: t.hasChangeBox ? getPixelRect(t.hasChangeBox) : null,
       customRects,
       threshold: t.threshold !== undefined ? t.threshold : 0.20,
+      bottomBorder,
+      scaleY,
       angle
     };
   }
