@@ -200,9 +200,16 @@ export const SettingsPage = {
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
             <!-- 講座名マスタ -->
             <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px;">
-              <div style="font-weight: 700; font-size: 0.92rem; color: var(--gray-800); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                <span>🏫 講座名マスタ</span>
-                <span class="badge badge-gray" style="font-size: 0.75rem;">${coursePresets.length} 件</span>
+              <div style="font-weight: 700; font-size: 0.92rem; color: var(--gray-800); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span>🏫 講座名マスタ</span>
+                  <span class="badge badge-gray" style="font-size: 0.75rem;">${coursePresets.length} 件</span>
+                </div>
+                ${coursePresets.length > 1 ? `
+                  <button type="button" id="btn-sort-course-presets" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="講座名を名前順（昇順）に並び替え">
+                    🔤 名前順に並び替え
+                  </button>
+                ` : ''}
               </div>
               <div style="display: flex; gap: 6px; margin-bottom: 10px;">
                 <input type="text" id="inp-new-course" class="form-control" placeholder="新しい講座名（例: 東海Ⅱ）" style="font-size: 0.85rem;">
@@ -210,7 +217,11 @@ export const SettingsPage = {
               </div>
               <div id="course-tags-list" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px;">
                 ${coursePresets.map((name, index) => `
-                  <div class="badge badge-purple" style="font-size: 0.84rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px;">
+                  <div class="badge badge-purple" style="font-size: 0.84rem; padding: 4px 8px; display: inline-flex; align-items: center; gap: 6px;">
+                    <div style="display: inline-flex; gap: 2px;">
+                      <button type="button" class="btn-ghost btn-move-course" data-index="${index}" data-dir="-1" ${index === 0 ? 'disabled style="opacity:0.3;"' : ''} style="padding:0; font-size:10px; cursor:pointer;" title="前へ">◀</button>
+                      <button type="button" class="btn-ghost btn-move-course" data-index="${index}" data-dir="1" ${index === coursePresets.length - 1 ? 'disabled style="opacity:0.3;"' : ''} style="padding:0; font-size:10px; cursor:pointer;" title="次へ">▶</button>
+                    </div>
                     <span>${name}</span>
                     <button class="btn-ghost btn-del-course" data-index="${index}" style="padding: 0; color: #dc2626; font-size: 13px; line-height: 1; cursor: pointer;" title="削除">✕</button>
                   </div>
@@ -706,6 +717,31 @@ export const SettingsPage = {
       };
     });
 
+    // 講座名マスタ順序変更（◀ / ▶）
+    this.container.querySelectorAll('.btn-move-course').forEach(btn => {
+      btn.onclick = async () => {
+        const idx = parseInt(btn.dataset.index, 10);
+        const dir = parseInt(btn.dataset.dir, 10);
+        const targetIdx = idx + dir;
+        if (targetIdx < 0 || targetIdx >= coursePresets.length) return;
+        const [item] = coursePresets.splice(idx, 1);
+        coursePresets.splice(targetIdx, 0, item);
+        await DB.saveSettings({ ...settings, staffNames: staffList, coursePresets, methodPresets });
+        this.render(this.container);
+      };
+    });
+
+    // 講座名マスタ名前順ソート
+    const sortCoursesBtn = this.container.querySelector('#btn-sort-course-presets');
+    if (sortCoursesBtn) {
+      sortCoursesBtn.onclick = async () => {
+        coursePresets.sort((a, b) => a.localeCompare(b, 'ja'));
+        await DB.saveSettings({ ...settings, staffNames: staffList, coursePresets, methodPresets });
+        UI.showToast('講座名マスタを名前順に並び替えました', 'success');
+        this.render(this.container);
+      };
+    }
+
     // 受講方法マスタ追加
     const methodInput = this.container.querySelector('#inp-new-method');
     const addMethodPresetBtn = this.container.querySelector('#btn-add-method-preset');
@@ -1125,15 +1161,19 @@ export const SettingsPage = {
   /**
    * 登録中カスタムチェックボックスの一覧を描画
    */
+  settingsSearchFilter: '',
   renderCustomBoxesList() {
     const listContainer = this.container.querySelector('#custom-boxes-list-container');
     if (!listContainer) return;
 
     const currentTemplate = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
-    const customBoxes = currentTemplate.customBoxes || [];
+    const allCustomBoxes = currentTemplate.customBoxes || [];
+    const customBoxes = this.settingsSearchFilter
+      ? allCustomBoxes.filter(b => (b.label || '').toLowerCase().includes(this.settingsSearchFilter.toLowerCase()))
+      : allCustomBoxes;
     const hasNoChange = !!currentTemplate.noChangeBox;
     const hasHasChange = !!currentTemplate.hasChangeBox;
-    const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + customBoxes.length;
+    const totalBoxes = (hasNoChange ? 1 : 0) + (hasHasChange ? 1 : 0) + allCustomBoxes.length;
 
     let standardBoxesHtml = '';
     if (hasNoChange) {
@@ -1157,17 +1197,28 @@ export const SettingsPage = {
       `;
     }
 
-    const customBoxesHtml = customBoxes.map(box => `
-      <div class="custom-box-tag" style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-        <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
-        <button type="button" class="btn btn-secondary btn-sm btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-          🎯 調整
-        </button>
-        <button type="button" class="btn-ghost btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
-          ✕
-        </button>
-      </div>
-    `).join('');
+    const customBoxesHtml = customBoxes.map(box => {
+      const originalIndex = allCustomBoxes.findIndex(b => b.id === box.id);
+      const isFirst = originalIndex <= 0;
+      const isLast = originalIndex >= allCustomBoxes.length - 1;
+      return `
+        <div class="custom-box-item-card ${this.calibrator && this.calibrator.activeTab === box.id ? 'is-active' : ''}">
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${box.label}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 3px;">
+            <button type="button" class="custom-box-order-btn btn-settings-move-box" data-id="${box.id}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
+            <button type="button" class="custom-box-order-btn btn-settings-move-box" data-id="${box.id}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
+            <button type="button" class="btn btn-secondary btn-sm btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+              🎯 調整
+            </button>
+            <button type="button" class="btn-ghost btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+              ✕
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
 
     let restoreButtonsHtml = '';
     if (!hasNoChange) {
@@ -1194,16 +1245,85 @@ export const SettingsPage = {
       `;
     } else {
       listContainer.innerHTML = `
-        <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-          <span>登録中の読取チェックボックス（全 ${totalBoxes} 個）:</span>
-          ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+        <div class="custom-box-manager-toolbar">
+          <div style="font-size: 0.82rem; font-weight: bold; color: var(--gray-700); display: flex; align-items: center; gap: 8px;">
+            <span>登録中の読取チェックボックス (全 ${totalBoxes} 個):</span>
+            ${allCustomBoxes.length > 1 ? `
+              <button type="button" id="btn-settings-sort-custom" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="講座名を名前順（昇順）に一括並び替え">
+                🔤 名前順に並び替え
+              </button>
+            ` : ''}
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            ${allCustomBoxes.length > 5 ? `
+              <input type="text" id="inp-settings-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${this.settingsSearchFilter}">
+            ` : ''}
+            ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+          </div>
         </div>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <div class="custom-box-cards-grid">
           ${standardBoxesHtml}
           ${customBoxesHtml}
         </div>
       `;
     }
+
+    // 検索フィルター入力イベント
+    const filterInput = listContainer.querySelector('#inp-settings-custom-filter');
+    if (filterInput) {
+      filterInput.oninput = (e) => {
+        this.settingsSearchFilter = e.target.value.trim();
+        this.renderCustomBoxesList();
+        const newInp = listContainer.querySelector('#inp-settings-custom-filter');
+        if (newInp) {
+          newInp.focus();
+          newInp.selectionStart = newInp.selectionEnd = newInp.value.length;
+        }
+      };
+    }
+
+    // 名前順ソートボタン
+    const sortBtn = listContainer.querySelector('#btn-settings-sort-custom');
+    if (sortBtn) {
+      sortBtn.onclick = () => {
+        const cur = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
+        if (!cur.customBoxes || cur.customBoxes.length <= 1) return;
+        cur.customBoxes.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'ja'));
+        this.currentDefaultTemplate = cur;
+        if (this.calibrator) {
+          this.calibrator.setTemplate(cur);
+          this.calibrator.updateTabsUI();
+          this.calibrator.drawOverlay();
+        }
+        this.renderCustomBoxesList();
+        UI.showToast('講座を名前順に並び替えました', 'success');
+      };
+    }
+
+    // 並び替えボタン（▲ / ▼）
+    listContainer.querySelectorAll('.btn-settings-move-box').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.id;
+        const dir = parseInt(btn.dataset.dir, 10);
+        const cur = this.calibrator ? this.calibrator.getTemplate() : this.currentDefaultTemplate;
+        if (!cur.customBoxes || cur.customBoxes.length <= 1) return;
+        const idx = cur.customBoxes.findIndex(b => b.id === id);
+        if (idx < 0) return;
+        const targetIdx = idx + dir;
+        if (targetIdx < 0 || targetIdx >= cur.customBoxes.length) return;
+
+        const [item] = cur.customBoxes.splice(idx, 1);
+        cur.customBoxes.splice(targetIdx, 0, item);
+        this.currentDefaultTemplate = cur;
+        if (this.calibrator) {
+          this.calibrator.setTemplate(cur);
+          this.calibrator.activeTab = item.id;
+          this.calibrator.updateTabsUI();
+          this.calibrator.drawOverlay();
+        }
+        this.renderCustomBoxesList();
+      };
+    });
 
     // 削除ボタン
     listContainer.querySelectorAll('.btn-del-box').forEach(btn => {

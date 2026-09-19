@@ -870,6 +870,105 @@ textarea.form-control {
   border-top: 1px dashed var(--gray-300);
 }
 
+/* 志望校別講座など多数枠向け スマートセレクタ */
+.calib-smart-selector {
+  background: #ffffff;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.calib-smart-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.calib-smart-selector-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calib-smart-selector-nav .btn-nav {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+  border: 1px solid var(--gray-300);
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.calib-smart-selector-nav .btn-nav:hover:not(:disabled) {
+  background: var(--primary-50);
+  border-color: var(--primary-300);
+  color: var(--primary-700);
+}
+
+.calib-smart-selector-nav .btn-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.calib-smart-select-wrapper {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.calib-smart-select {
+  flex: 1;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--gray-900);
+  padding: 6px 10px;
+  border: 1.5px solid var(--primary-300);
+  border-radius: var(--radius-sm);
+  background-color: #fff;
+  cursor: pointer;
+}
+
+.calib-smart-select:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.calib-order-btns {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.calib-order-btn {
+  padding: 3px 7px;
+  font-size: 0.72rem;
+  font-weight: bold;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--gray-700);
+  transition: all var(--transition-fast);
+}
+
+.calib-order-btn:hover:not(:disabled) {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  border-color: var(--primary-300);
+}
+
+.calib-order-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .calibrator-eval-card {
   background: #ffffff;
   border: 1px solid var(--gray-200);
@@ -878,6 +977,67 @@ textarea.form-control {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* 選択中枠の注目判定バナー */
+.eval-active-focus {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+  border: 1px solid #c4b5fd;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.eval-active-focus-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6d28d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.eval-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: var(--gray-600);
+  padding: 2px 4px;
+  border-bottom: 1px dashed var(--gray-200);
+  padding-bottom: 4px;
+}
+
+.eval-accordion-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 0.74rem;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.eval-accordion-toggle:hover {
+  background: var(--gray-100);
+  color: var(--gray-900);
+}
+
+.eval-accordion-body {
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 4px;
 }
 
 .eval-row {
@@ -1495,4 +1655,80 @@ textarea.form-control {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ==========================================================================
+   Custom Box Manager & Ordering Styles
+   ========================================================================== */
+.custom-box-manager-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.custom-box-search-input {
+  max-width: 220px;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gray-300);
+}
+
+.custom-box-cards-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.custom-box-item-card {
+  background: #ffffff;
+  border: 1px solid #c4b5fd;
+  border-radius: var(--radius-md);
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.custom-box-item-card:hover {
+  border-color: #8b5cf6;
+  transform: translateY(-1px);
+}
+
+.custom-box-item-card.is-active {
+  border-color: #7c3aed;
+  background: #f5f3ff;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25);
+}
+
+.custom-box-order-btn {
+  padding: 1px 4px;
+  font-size: 10px;
+  line-height: 1.1;
+  background: var(--gray-100);
+  border: 1px solid var(--gray-300);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--gray-600);
+  transition: all var(--transition-fast);
+}
+
+.custom-box-order-btn:hover:not(:disabled) {
+  background: var(--primary-100);
+  color: var(--primary-800);
+  border-color: var(--primary-400);
+}
+
+.custom-box-order-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 

@@ -190,7 +190,18 @@ export class TemplateCalibrator {
             </div>
 
             <!-- リアルタイム判定カード -->
-            <div class="calibrator-eval-card">
+            <div class="calibrator-eval-card" id="calib-eval-card-main">
+              <!-- 選択中枠の注目判定バナー -->
+              <div id="eval-active-focus-container" class="eval-active-focus" style="display: none;">
+                <div style="min-width: 0;">
+                  <div class="eval-active-focus-title" id="eval-active-title">🎯 選択中の枠</div>
+                  <div class="text-mono" id="eval-active-ratio" style="font-size: 0.76rem; color: #4c1d95;">黒画素: -</div>
+                </div>
+                <div id="eval-active-badge">
+                  <span class="badge badge-gray">-</span>
+                </div>
+              </div>
+
               ${this.allowStandardBoxes ? `
                 <div class="eval-row" id="eval-no-change-row" style="${this.template.noChangeBox ? '' : 'display: none;'}">
                   <span class="eval-label">変更なし判定:</span>
@@ -203,7 +214,19 @@ export class TemplateCalibrator {
                   <span class="text-mono eval-ratio" id="eval-has-change-ratio">黒画素: 0%</span>
                 </div>
               ` : ''}
-              <div id="eval-custom-rows"></div>
+
+              <!-- 講座選択モード・多数枠用 アコーディオン展開 -->
+              <div id="eval-custom-summary-bar" class="eval-summary-bar" style="display: none;">
+                <span id="eval-summary-text">全 0 枠</span>
+                <button type="button" id="btn-toggle-eval-list" class="eval-accordion-toggle">
+                  <span id="eval-toggle-label">📋 全件判定一覧を表示</span>
+                  <span id="eval-toggle-icon">▼</span>
+                </button>
+              </div>
+              <div id="eval-accordion-body" class="eval-accordion-body" style="display: none;">
+                <div id="eval-custom-rows"></div>
+              </div>
+
               <div id="eval-empty-row" style="${!this.template.noChangeBox && !this.template.hasChangeBox && (!this.template.customBoxes || this.template.customBoxes.length === 0) ? '' : 'display: none;'} font-size: 0.8rem; color: var(--gray-500); text-align: center; padding: 4px;">
                 読取枠がありません
               </div>
@@ -334,11 +357,69 @@ export class TemplateCalibrator {
     return '';
   }
 
+  getAllBoxesList() {
+    const list = [];
+    if (this.allowStandardBoxes && this.template.noChangeBox) {
+      list.push({ id: 'noChange', label: '「変更なし」枠', type: 'standard', color: '#16a34a', icon: '🟩' });
+    }
+    if (this.allowStandardBoxes && this.template.hasChangeBox) {
+      list.push({ id: 'hasChange', label: '「変更あり」枠', type: 'standard', color: '#ea580c', icon: '🟧' });
+    }
+    if (this.template.customBoxes) {
+      this.template.customBoxes.forEach((b, idx) => {
+        list.push({ id: b.id, label: b.label, type: 'custom', color: '#8b5cf6', icon: '🟪', customIndex: idx });
+      });
+    }
+    return list;
+  }
+
   renderTabsHtml() {
     const hasNoChange = this.allowStandardBoxes && !!this.template.noChangeBox;
     const hasHasChange = this.allowStandardBoxes && !!this.template.hasChangeBox;
     const customBoxes = this.template.customBoxes || [];
+    const allBoxes = this.getAllBoxesList();
 
+    // 講座選択モード、または全項目数が4個以上ある場合は「スマート枠セレクタ」を表示
+    const useSmartSelector = !this.allowStandardBoxes || allBoxes.length >= 4;
+
+    if (useSmartSelector) {
+      const currentIndex = allBoxes.findIndex(b => b.id === this.activeTab);
+      const activeItem = allBoxes[currentIndex];
+      const isCustom = activeItem && activeItem.type === 'custom';
+      const customIdx = isCustom ? customBoxes.findIndex(b => b.id === activeItem.id) : -1;
+
+      return `
+        <div class="calib-smart-selector">
+          <div class="calib-smart-selector-header">
+            <div style="font-size: 0.8rem; font-weight: 700; color: var(--gray-800); display: flex; align-items: center; gap: 6px;">
+              <span>🎯 調整枠を選択</span>
+              <span class="badge badge-purple" style="font-size: 0.72rem;">${allBoxes.length > 0 ? (currentIndex >= 0 ? currentIndex + 1 : 1) : 0} / ${allBoxes.length}</span>
+            </div>
+            <div class="calib-smart-selector-nav">
+              <button type="button" class="btn-nav" id="btn-calib-prev-target" ${currentIndex <= 0 ? 'disabled' : ''} title="前の枠へ切り替え (◀)">◀ 前へ</button>
+              <button type="button" class="btn-nav" id="btn-calib-next-target" ${currentIndex < 0 || currentIndex >= allBoxes.length - 1 ? 'disabled' : ''} title="次の枠へ切り替え (▶)">次へ ▶</button>
+            </div>
+          </div>
+
+          <div class="calib-smart-select-wrapper">
+            <select id="calib-smart-box-select" class="calib-smart-select">
+              ${allBoxes.map((b, idx) => `
+                <option value="${b.id}" ${b.id === this.activeTab ? 'selected' : ''}>
+                  ${idx + 1}. ${b.icon} ${b.label}
+                </option>
+              `).join('')}
+            </select>
+            <div class="calib-order-btns">
+              <button type="button" class="calib-order-btn" id="btn-calib-box-up" ${!isCustom || customIdx <= 0 ? 'disabled' : ''} title="選択中の講座の順番を上へ移動">▲</button>
+              <button type="button" class="calib-order-btn" id="btn-calib-box-down" ${!isCustom || customIdx >= customBoxes.length - 1 ? 'disabled' : ''} title="選択中の講座の順番を下へ移動">▼</button>
+              <button type="button" class="calib-order-btn" id="btn-calib-box-sort" ${customBoxes.length <= 1 ? 'disabled' : ''} title="全講座を名前順（昇順）に並び替え">🔤</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 従来の受講確認モード（項目数が少数（3個以下）の場合）
     let tabsHtml = '';
     if (hasNoChange) {
       tabsHtml += `
@@ -406,7 +487,76 @@ export class TemplateCalibrator {
   }
 
   bindTabEvents() {
-    // タブ切り替えボタン
+    const allBoxes = this.getAllBoxesList();
+    const currentIndex = allBoxes.findIndex(b => b.id === this.activeTab);
+
+    // スマートセレクタ：ドロップダウン切り替え
+    const smartSelect = this.container.querySelector('#calib-smart-box-select');
+    if (smartSelect) {
+      smartSelect.onchange = () => {
+        this.activeTab = smartSelect.value;
+        this.updateTabsUI();
+        this.syncSlidersFromTemplate();
+        this.drawOverlay();
+      };
+    }
+
+    // スマートセレクタ：前へボタン
+    const prevTargetBtn = this.container.querySelector('#btn-calib-prev-target');
+    if (prevTargetBtn) {
+      prevTargetBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (currentIndex > 0) {
+          this.activeTab = allBoxes[currentIndex - 1].id;
+          this.updateTabsUI();
+          this.syncSlidersFromTemplate();
+          this.drawOverlay();
+        }
+      };
+    }
+
+    // スマートセレクタ：次へボタン
+    const nextTargetBtn = this.container.querySelector('#btn-calib-next-target');
+    if (nextTargetBtn) {
+      nextTargetBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (currentIndex < allBoxes.length - 1) {
+          this.activeTab = allBoxes[currentIndex + 1].id;
+          this.updateTabsUI();
+          this.syncSlidersFromTemplate();
+          this.drawOverlay();
+        }
+      };
+    }
+
+    // 並び替え：上へ
+    const moveUpBtn = this.container.querySelector('#btn-calib-box-up');
+    if (moveUpBtn) {
+      moveUpBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.moveCustomBox(this.activeTab, -1);
+      };
+    }
+
+    // 並び替え：下へ
+    const moveDownBtn = this.container.querySelector('#btn-calib-box-down');
+    if (moveDownBtn) {
+      moveDownBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.moveCustomBox(this.activeTab, 1);
+      };
+    }
+
+    // 並び替え：名前順ソート
+    const sortBtn = this.container.querySelector('#btn-calib-box-sort');
+    if (sortBtn) {
+      sortBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.sortCustomBoxes();
+      };
+    }
+
+    // 従来のタブ切り替えボタン
     const tabBtns = this.container.querySelectorAll('.calib-tab-btn');
     tabBtns.forEach(btn => {
       btn.onclick = (e) => {
@@ -435,6 +585,37 @@ export class TemplateCalibrator {
         this.addStandardBox(btn.dataset.restore);
       };
     });
+  }
+
+  moveCustomBox(id, delta) {
+    if (!this.template.customBoxes || this.template.customBoxes.length <= 1) return;
+    const idx = this.template.customBoxes.findIndex(b => b.id === id);
+    if (idx < 0) return;
+    const targetIdx = idx + delta;
+    if (targetIdx < 0 || targetIdx >= this.template.customBoxes.length) return;
+
+    const [item] = this.template.customBoxes.splice(idx, 1);
+    this.template.customBoxes.splice(targetIdx, 0, item);
+    this.activeTab = item.id;
+
+    this.updateTabsUI();
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    if (this.onChange) {
+      this.onChange(this.template);
+    }
+  }
+
+  sortCustomBoxes() {
+    if (!this.template.customBoxes || this.template.customBoxes.length <= 1) return;
+    this.template.customBoxes.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'ja'));
+    this.updateTabsUI();
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    if (this.onChange) {
+      this.onChange(this.template);
+    }
+    UI.showToast('全講座を名前順に並び替えました', 'success');
   }
 
   deleteBox(typeOrId) {
@@ -531,6 +712,21 @@ export class TemplateCalibrator {
   bindEvents() {
     // タブ切り替え
     this.bindTabEvents();
+
+    // 判定一覧アコーディオン開閉
+    this.isEvalListOpen = false;
+    const toggleBtn = this.container.querySelector('#btn-toggle-eval-list');
+    const accordionBody = this.container.querySelector('#eval-accordion-body');
+    const toggleLabel = this.container.querySelector('#eval-toggle-label');
+    const toggleIcon = this.container.querySelector('#eval-toggle-icon');
+    if (toggleBtn && accordionBody) {
+      toggleBtn.onclick = () => {
+        this.isEvalListOpen = !this.isEvalListOpen;
+        accordionBody.style.display = this.isEvalListOpen ? 'flex' : 'none';
+        if (toggleLabel) toggleLabel.textContent = this.isEvalListOpen ? '折りたたむ' : '📋 全件判定一覧を表示';
+        if (toggleIcon) toggleIcon.textContent = this.isEvalListOpen ? '▲' : '▼';
+      };
+    }
 
     // スライダー変更
     const rngDx = this.container.querySelector('#rng-dx');
@@ -1402,6 +1598,12 @@ export class TemplateCalibrator {
     const hasStatusEl = this.container.querySelector('#eval-has-change-status');
     const hasRatioEl = this.container.querySelector('#eval-has-change-ratio');
     const customRowsEl = this.container.querySelector('#eval-custom-rows');
+    const activeFocusContainer = this.container.querySelector('#eval-active-focus-container');
+    const activeTitleEl = this.container.querySelector('#eval-active-title');
+    const activeRatioEl = this.container.querySelector('#eval-active-ratio');
+    const activeBadgeEl = this.container.querySelector('#eval-active-badge');
+    const summaryBar = this.container.querySelector('#eval-custom-summary-bar');
+    const summaryText = this.container.querySelector('#eval-summary-text');
 
     if (noRow) noRow.style.display = noChangeEval ? '' : 'none';
     if (hasRow) hasRow.style.display = hasChangeEval ? '' : 'none';
@@ -1419,6 +1621,8 @@ export class TemplateCalibrator {
       }
       if (hasRatioEl) hasRatioEl.textContent = '黒画素: -';
       if (customRowsEl) customRowsEl.innerHTML = '';
+      if (activeFocusContainer) activeFocusContainer.style.display = 'none';
+      if (summaryBar) summaryBar.style.display = 'none';
       return;
     }
 
@@ -1443,6 +1647,53 @@ export class TemplateCalibrator {
       } else {
         hasStatusEl.className = 'badge badge-gray';
         hasStatusEl.textContent = '⬜ なし';
+      }
+    }
+
+    // 講座選択モード または customEvals がある場合のサマリーバー & 選択中枠ハイライト表示
+    const allBoxes = this.getAllBoxesList();
+    const useSmart = !this.allowStandardBoxes || allBoxes.length >= 4;
+
+    if (useSmart && activeFocusContainer && activeTitleEl && activeRatioEl && activeBadgeEl) {
+      activeFocusContainer.style.display = 'flex';
+      let activeLabel = '未選択';
+      let activePct = 0;
+      let isChk = false;
+
+      if (this.activeTab === 'noChange' && noChangeEval) {
+        activeLabel = '🟩 「変更なし」枠';
+        activePct = Math.round(noChangeEval.darkRatio * 100);
+        isChk = noChangeEval.isChecked;
+      } else if (this.activeTab === 'hasChange' && hasChangeEval) {
+        activeLabel = '🟧 「変更あり」枠';
+        activePct = Math.round(hasChangeEval.darkRatio * 100);
+        isChk = hasChangeEval.isChecked;
+      } else {
+        const found = customEvals.find(c => c.id === this.activeTab);
+        if (found) {
+          activeLabel = `🟪 ${found.label}`;
+          activePct = Math.round(found.eval.darkRatio * 100);
+          isChk = found.eval.isChecked;
+        }
+      }
+
+      activeTitleEl.textContent = activeLabel;
+      activeRatioEl.textContent = `黒画素率: ${activePct}%（判定閾値: ${Math.round((this.template.threshold || 0.25) * 100)}%）`;
+      activeBadgeEl.innerHTML = isChk
+        ? `<span class="badge badge-purple font-bold" style="background:#8b5cf6; color:#fff; font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
+        : `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 4px 8px;">⬜ なし</span>`;
+    } else if (activeFocusContainer) {
+      activeFocusContainer.style.display = 'none';
+    }
+
+    // サマリーバーの表示
+    if (summaryBar && summaryText) {
+      if (customEvals.length > 0) {
+        summaryBar.style.display = 'flex';
+        const checkedCount = customEvals.filter(c => c.eval.isChecked).length;
+        summaryText.innerHTML = `全 <strong>${customEvals.length}</strong> 枠（✅ あり: <strong style="color: #6d28d9;">${checkedCount}</strong> 件）`;
+      } else {
+        summaryBar.style.display = 'none';
       }
     }
 

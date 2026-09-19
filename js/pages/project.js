@@ -1125,10 +1125,14 @@ export const ProjectPage = {
     );
 
     // チェックボックス一覧描画 & 操作
+    let projSearchFilter = '';
     const renderProjCustomBoxes = () => {
       const container = modal.querySelector('#proj-custom-boxes-container');
       if (!container) return;
-      const boxes = currentTemplate.customBoxes || [];
+      const allBoxes = currentTemplate.customBoxes || [];
+      const boxes = projSearchFilter
+        ? allBoxes.filter(b => (b.label || '').toLowerCase().includes(projSearchFilter.toLowerCase()))
+        : allBoxes;
 
       let standardBoxesHtml = '';
       let restoreButtonsHtml = '';
@@ -1172,19 +1176,30 @@ export const ProjectPage = {
         }
       }
 
-      const totalBoxes = (isSelectionMode ? 0 : ((currentTemplate.noChangeBox ? 1 : 0) + (currentTemplate.hasChangeBox ? 1 : 0))) + boxes.length;
+      const totalBoxes = (isSelectionMode ? 0 : ((currentTemplate.noChangeBox ? 1 : 0) + (currentTemplate.hasChangeBox ? 1 : 0))) + allBoxes.length;
 
-      const customBoxesHtml = boxes.map(box => `
-        <div style="background: #fff; border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 5px 10px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-          <span style="font-weight: 700; font-size: 0.85rem; color: #6d28d9;">🟪 ${box.label}</span>
-          <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
-            🎯 調整
-          </button>
-          <button type="button" class="btn-ghost proj-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
-            ✕
-          </button>
-        </div>
-      `).join('');
+      const customBoxesHtml = boxes.map(box => {
+        const originalIndex = allBoxes.findIndex(b => b.id === box.id);
+        const isFirst = originalIndex <= 0;
+        const isLast = originalIndex >= allBoxes.length - 1;
+        return `
+          <div class="custom-box-item-card ${calibrator && calibrator.activeTab === box.id ? 'is-active' : ''}">
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${box.label}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <button type="button" class="custom-box-order-btn proj-btn-move-box" data-id="${box.id}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
+              <button type="button" class="custom-box-order-btn proj-btn-move-box" data-id="${box.id}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
+              <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                🎯 調整
+              </button>
+              <button type="button" class="btn-ghost proj-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+                ✕
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
 
       if (totalBoxes === 0) {
         container.innerHTML = `
@@ -1195,16 +1210,81 @@ export const ProjectPage = {
         `;
       } else {
         container.innerHTML = `
-          <div style="font-size: 0.8rem; font-weight: bold; color: var(--gray-700); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-            <span>登録中の読取チェックボックス（全 ${totalBoxes} 個）:</span>
-            ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+          <div class="custom-box-manager-toolbar">
+            <div style="font-size: 0.82rem; font-weight: bold; color: var(--gray-700); display: flex; align-items: center; gap: 8px;">
+              <span>登録中チェックボックス (${totalBoxes} 個):</span>
+              ${allBoxes.length > 1 ? `
+                <button type="button" id="proj-btn-sort-custom" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="講座名を名前順（昇順）に一括並び替え">
+                  🔤 名前順に並び替え
+                </button>
+              ` : ''}
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              ${allBoxes.length > 5 ? `
+                <input type="text" id="proj-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${projSearchFilter}">
+              ` : ''}
+              ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
+            </div>
           </div>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <div class="custom-box-cards-grid">
             ${standardBoxesHtml}
             ${customBoxesHtml}
           </div>
         `;
       }
+
+      // 検索フィルター入力イベント
+      const filterInput = container.querySelector('#proj-custom-filter');
+      if (filterInput) {
+        filterInput.oninput = (e) => {
+          projSearchFilter = e.target.value.trim();
+          renderProjCustomBoxes();
+          const newInp = container.querySelector('#proj-custom-filter');
+          if (newInp) {
+            newInp.focus();
+            newInp.selectionStart = newInp.selectionEnd = newInp.value.length;
+          }
+        };
+      }
+
+      // 名前順ソートボタン
+      const sortBtn = container.querySelector('#proj-btn-sort-custom');
+      if (sortBtn) {
+        sortBtn.onclick = () => {
+          if (!currentTemplate.customBoxes || currentTemplate.customBoxes.length <= 1) return;
+          currentTemplate.customBoxes.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'ja'));
+          if (calibrator) {
+            calibrator.template = currentTemplate;
+            calibrator.updateTabsUI();
+            calibrator.drawOverlay();
+          }
+          renderProjCustomBoxes();
+          UI.showToast('講座を名前順に並び替えました', 'success');
+        };
+      }
+
+      // 並び替えボタン（▲ / ▼）
+      container.querySelectorAll('.proj-btn-move-box').forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.dataset.id;
+          const dir = parseInt(btn.dataset.dir, 10);
+          if (!currentTemplate.customBoxes || currentTemplate.customBoxes.length <= 1) return;
+          const idx = currentTemplate.customBoxes.findIndex(b => b.id === id);
+          if (idx < 0) return;
+          const targetIdx = idx + dir;
+          if (targetIdx < 0 || targetIdx >= currentTemplate.customBoxes.length) return;
+
+          const [item] = currentTemplate.customBoxes.splice(idx, 1);
+          currentTemplate.customBoxes.splice(targetIdx, 0, item);
+          if (calibrator) {
+            calibrator.template = currentTemplate;
+            calibrator.activeTab = item.id;
+            calibrator.updateTabsUI();
+            calibrator.drawOverlay();
+          }
+          renderProjCustomBoxes();
+        };
+      });
 
       // 削除ボタンイベント
       container.querySelectorAll('.proj-btn-del-box').forEach(btn => {
