@@ -387,6 +387,11 @@ export const ProjectPage = {
     const content = this.container.querySelector('#project-tab-content');
     if (!content) return;
 
+    // スキャン画面離脱時の安全クリーンアップ（未完了バッチの自動バックグラウンドフラッシュ）
+    if (typeof ScanPage.cleanup === 'function') {
+      ScanPage.cleanup();
+    }
+
     this.updateHeaderStats();
     content.innerHTML = '';
 

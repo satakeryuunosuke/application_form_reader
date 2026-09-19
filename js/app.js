@@ -68,6 +68,20 @@ class App {
 
       await DB.init();
       this.updateSyncIndicator();
+
+      // バックグラウンド一括アップロードの進捗をヘッダーに連動表示
+      SyncManager.addProgressListener((p) => {
+        const indicator = document.getElementById('header-sync-indicator');
+        if (!indicator) return;
+        if (p.type === 'start' || p.type === 'progress') {
+          indicator.textContent = `📤 送信中: ${p.flushed || 0}/${p.total}`;
+          indicator.className = 'badge badge-purple';
+          indicator.title = `共有フォルダへスキャンデータをバックグラウンド送信中 (${p.flushed || 0} / ${p.total} 件)`;
+        } else if (p.type === 'complete' || p.type === 'error') {
+          this.updateSyncIndicator();
+        }
+      });
+
       window.addEventListener('hashchange', () => this.handleRoute());
       this.handleRoute();
     } catch (err) {

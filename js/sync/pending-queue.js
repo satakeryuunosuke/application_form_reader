@@ -27,16 +27,20 @@ export const PendingQueue = {
   /**
    * キュー内の未送信イベントを共有フォルダへ一括フラッシュ
    * @param {Function} writeFn (projectId, event) => Promise<boolean> 書き込み成功時に true を返す関数
-   * @returns {Promise<{ flushed: number, failed: number }>}
+   * @param {Function} [onProgress] ({ current, total, flushed, failed, item, success }) => void
+   * @returns {Promise<{ flushed: number, failed: number, total: number }>}
    */
-  async flush(writeFn) {
+  async flush(writeFn, onProgress = null) {
     const items = await db.pendingEvents.orderBy('timestamp').toArray();
+    const total = items.length;
     let flushed = 0;
     let failed = 0;
 
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      let ok = false;
       try {
-        const ok = await writeFn(item.projectId, item.event);
+        ok = await writeFn(item.projectId, item.event);
         if (ok) {
           await db.pendingEvents.delete(item.id);
           flushed++;
@@ -47,9 +51,24 @@ export const PendingQueue = {
         console.warn(`イベント ${item.eventId} の送信失敗:`, err);
         failed++;
       }
+
+      if (typeof onProgress === 'function') {
+        try {
+          onProgress({
+            current: i + 1,
+            total,
+            flushed,
+            failed,
+            item,
+            success: ok
+          });
+        } catch (progErr) {
+          console.warn('onProgress callback error:', progErr);
+        }
+      }
     }
 
-    return { flushed, failed };
+    return { flushed, failed, total };
   },
 
   /**

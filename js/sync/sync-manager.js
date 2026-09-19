@@ -12,6 +12,76 @@ export const SyncManager = {
   lastSyncTimes: new Map(), // projectId -> Date
   _activeSyncPromises: new Map(), // projectId -> Promise
   _lockMap: new Map(), // key -> Promise
+  _isBatchMode: false,
+  _isFlushing: false,
+  _progressListeners: new Set(),
+
+  /**
+   * バッチ同期モード（スキャン連続処理時など）を開始
+   * 1件ごとの共有フォルダ直接書き込みを抑止し、未送信キューに高速蓄積する
+   */
+  startBatchMode() {
+    this._isBatchMode = true;
+  },
+
+  /**
+   * バッチ同期モードを終了し、必要に応じてバックグラウンドアップロードを開始
+   * @param {Object} [options]
+   * @param {boolean} [options.flush=true] 蓄積されたイベントをバックグラウンドで共有フォルダへ送信するか
+   * @param {boolean} [options.notify=true] 完了時に通知するか
+   */
+  endBatchMode({ flush = true, notify = true } = {}) {
+    this._isBatchMode = false;
+    if (flush) {
+      this.flushPendingQueueInBackground({ notify });
+    }
+  },
+
+  /**
+   * 現在バッチモード中かどうか
+   * @returns {boolean}
+   */
+  isBatchMode() {
+    return !!this._isBatchMode;
+  },
+
+  /**
+   * 現在バックグラウンドアップロード中かどうか
+   * @returns {boolean}
+   */
+  isFlushing() {
+    return !!this._isFlushing;
+  },
+
+  /**
+   * 進捗リスナーを登録
+   * @param {Function} listener ({ type: 'start'|'progress'|'complete'|'error', current, total, flushed, failed }) => void
+   */
+  addProgressListener(listener) {
+    if (typeof listener === 'function') {
+      this._progressListeners.add(listener);
+    }
+  },
+
+  /**
+   * 進捗リスナーを解除
+   */
+  removeProgressListener(listener) {
+    this._progressListeners.delete(listener);
+  },
+
+  /**
+   * リスナーへ進捗イベントを通知
+   */
+  _notifyProgress(data) {
+    for (const listener of this._progressListeners) {
+      try {
+        listener(data);
+      } catch (err) {
+        console.warn('SyncManager progress listener error:', err);
+      }
+    }
+  },
 
   /**
    * 現在同期処理が実行中かどうか
@@ -453,6 +523,13 @@ export const SyncManager = {
       console.warn('syncEvents キャッシュ書き込み失敗:', err);
     }
 
+    // バッチモード中（一連のスキャン作業中など）は、共有フォルダへの即時直接書き込みを抑止して
+    // 未送信キュー（PendingQueue）に高速蓄積する
+    if (this._isBatchMode) {
+      await PendingQueue.enqueue(projectId, event);
+      return { success: true, eventId, queued: true, batch: true };
+    }
+
     // 共有フォルダへ書き出し試行
     if (FolderConnector.isConnected()) {
       const ok = await this.writeEventDirectly(projectId, event);
@@ -469,15 +546,64 @@ export const SyncManager = {
   },
 
   /**
-   * 未送信キューのバックグラウンド送信
+   * 未送信キューのバックグラウンド送信（排他制御・進捗通知付き）
+   * @param {Object} [options]
+   * @param {boolean} [options.notify=false] 完了時にトースト通知を表示するか
+   * @returns {Promise<{ flushed: number, failed: number, total: number }>}
    */
-  async flushPendingQueueInBackground() {
+  async flushPendingQueueInBackground(options = {}) {
+    if (this._isFlushing) {
+      return { flushed: 0, failed: 0, total: 0, busy: true };
+    }
+    if (!FolderConnector.isConnected()) {
+      return { flushed: 0, failed: 0, total: 0, connected: false };
+    }
+
+    this._isFlushing = true;
+    const notify = options.notify !== undefined ? options.notify : false;
+
     try {
-      await PendingQueue.flush(async (pId, ev) => {
-        return await this.writeEventDirectly(pId, ev);
+      const count = await PendingQueue.getPendingCount();
+      if (count === 0) {
+        return { flushed: 0, failed: 0, total: 0 };
+      }
+
+      this._notifyProgress({ type: 'start', current: 0, total: count, flushed: 0, failed: 0 });
+
+      const res = await PendingQueue.flush(
+        async (pId, ev) => {
+          return await this.writeEventDirectly(pId, ev);
+        },
+        (prog) => {
+          this._notifyProgress({
+            type: 'progress',
+            current: prog.current,
+            total: prog.total,
+            flushed: prog.flushed,
+            failed: prog.failed
+          });
+        }
+      );
+
+      this._notifyProgress({
+        type: 'complete',
+        current: res.total,
+        total: res.total,
+        flushed: res.flushed,
+        failed: res.failed
       });
+
+      if (notify && res.flushed > 0) {
+        UI.showToast(`共有フォルダへ ${res.flushed} 件のスキャンデータをアップロードしました`, 'success', 3000);
+      }
+
+      return res;
     } catch (e) {
       console.warn('バックグラウンドフラッシュ失敗:', e);
+      this._notifyProgress({ type: 'error', error: e });
+      return { flushed: 0, failed: 0, total: 0, error: e };
+    } finally {
+      this._isFlushing = false;
     }
   },
 

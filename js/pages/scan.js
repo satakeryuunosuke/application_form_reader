@@ -5,6 +5,7 @@ import { Validator } from '../utils/validator.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
 import { ProjectPage } from './project.js';
 import { FolderConnector } from '../sync/folder-connector.js';
+import { SyncManager } from '../sync/sync-manager.js';
 
 export const ScanPage = {
   container: null,
@@ -36,6 +37,10 @@ export const ScanPage = {
    * PDFアップロード・読取開始ビュー
    */
   renderUploadView() {
+    if (SyncManager.isBatchMode()) {
+      SyncManager.endBatchMode({ flush: true, notify: true });
+    }
+
     const isCompleted = this.project.status === '完了';
 
     if (isCompleted) {
@@ -200,6 +205,9 @@ export const ScanPage = {
       }
 
       this.currentIndex = 0;
+      // 一連のスキャン承認フロー開始: 共有フォルダへの即時アップロードを抑止しバッチ蓄積モードにする
+      SyncManager.startBatchMode();
+
       UI.showToast(`${scanResults.length} ページの受講確認票を読み込みました`, 'success');
       this.renderApprovalView();
     } catch (err) {
@@ -216,14 +224,47 @@ export const ScanPage = {
    */
   async renderApprovalView() {
     if (this.pendingQueue.length === 0 || this.currentIndex >= this.pendingQueue.length) {
-      // 承認完了
+      // 承認完了: バッチモードを終了し、バックグラウンドでの一括アップロードを開始
+      const wasBatch = SyncManager.isBatchMode();
+      if (wasBatch) {
+        SyncManager.endBatchMode({ flush: true, notify: false });
+      }
+
+      const isConnected = FolderConnector.isConnected();
+      const approvedCount = this.pendingQueue.filter(p => p.approved).length;
+
       this.container.innerHTML = `
-        <div class="card" style="max-width: 600px; margin: 0 auto; text-align: center; padding: var(--spacing-2xl);">
+        <div class="card" style="max-width: 640px; margin: 0 auto; text-align: center; padding: var(--spacing-2xl);">
           <div style="font-size: 3rem; margin-bottom: 12px;">🎉</div>
           <h2 class="card-title font-bold" style="font-size: 1.4rem; margin-bottom: 8px;">すべての確認票の承認が完了しました！</h2>
-          <p style="color: var(--gray-600); margin-bottom: var(--spacing-xl);">
-            スキャンしたデータはIndexedDBに正常に保存・更新されました。
+          <p style="color: var(--gray-600); margin-bottom: var(--spacing-lg);">
+            スキャンしたデータはローカルIndexedDBに高速・安全に保存されました。
           </p>
+
+          <!-- 共有フォルダ一括バックグラウンドアップロード進捗カード -->
+          <div id="scan-sync-card" style="margin-bottom: var(--spacing-xl); padding: 14px 18px; border-radius: var(--radius-md); background: var(--gray-50); border: 1px solid var(--gray-200); text-align: left;">
+            ${isConnected ? `
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.9rem; color: var(--gray-800);">
+                  <span id="scan-sync-spinner" class="spinner-sm"></span>
+                  <span id="scan-sync-label">共有フォルダへバックグラウンド一括アップロード中...</span>
+                </div>
+                <span id="scan-sync-count" class="badge badge-purple font-mono font-bold" style="font-size: 0.82rem;">0 / ${approvedCount}</span>
+              </div>
+              <div style="height: 6px; background: var(--gray-200); border-radius: 999px; overflow: hidden; margin-bottom: 6px;">
+                <div id="scan-sync-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary-500), var(--secondary)); transition: width 0.2s;"></div>
+              </div>
+              <div id="scan-sync-hint" style="font-size: 0.78rem; color: var(--gray-500);">
+                ※ アップロードはバックグラウンドで安全に実行されます。完了を待たずに別画面へ移動して問題ありません。
+              </div>
+            ` : `
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--gray-700);">
+                <span>⚪</span>
+                <span>共有フォルダ未接続のため、ローカルDBに安全に保存されました。（次回接続時に自動アップロードされます）</span>
+              </div>
+            `}
+          </div>
+
           <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
             <button id="btn-re-upload" class="btn btn-secondary">
               ➕ 別のPDFをスキャン
@@ -238,17 +279,77 @@ export const ScanPage = {
         </div>
       `;
 
+      // バックグラウンド進捗の監視とカード更新
+      if (isConnected) {
+        const syncSpinner = this.container.querySelector('#scan-sync-spinner');
+        const syncLabel = this.container.querySelector('#scan-sync-label');
+        const syncCount = this.container.querySelector('#scan-sync-count');
+        const syncBar = this.container.querySelector('#scan-sync-progress-bar');
+        const syncHint = this.container.querySelector('#scan-sync-hint');
+
+        // すでにフラッシュが完了していた場合やキューが空だった場合の初期チェック
+        if (!SyncManager.isFlushing()) {
+          if (syncSpinner) { syncSpinner.className = ''; syncSpinner.textContent = '✅'; }
+          if (syncLabel) syncLabel.innerHTML = '<span style="color: var(--success-700); font-weight: bold;">共有フォルダへの一括アップロードが完了しました</span>';
+          if (syncBar) syncBar.style.width = '100%';
+          if (syncCount) syncCount.textContent = `${approvedCount} / ${approvedCount}`;
+          if (syncHint) syncHint.textContent = `全 ${approvedCount} 件のデータが共有フォルダに同期されました。`;
+        }
+
+        const progressHandler = (p) => {
+          if (!this.container || !this.container.contains(syncBar)) {
+            SyncManager.removeProgressListener(progressHandler);
+            return;
+          }
+          if (p.type === 'progress' || p.type === 'complete') {
+            const total = p.total || approvedCount || 1;
+            const current = p.flushed || 0;
+            const pct = Math.min(100, Math.round((current / total) * 100));
+            if (syncBar) syncBar.style.width = `${pct}%`;
+            if (syncCount) syncCount.textContent = `${current} / ${total}`;
+
+            if (p.type === 'complete') {
+              if (syncSpinner) {
+                syncSpinner.className = '';
+                syncSpinner.textContent = '✅';
+              }
+              if (syncLabel) syncLabel.innerHTML = `<span style="color: var(--success-700); font-weight: bold;">共有フォルダへの一括アップロードが完了しました</span>`;
+              if (syncHint) syncHint.textContent = `全 ${current} 件のデータが共有フォルダに同期されました。`;
+              SyncManager.removeProgressListener(progressHandler);
+            }
+          } else if (p.type === 'error') {
+            if (syncSpinner) {
+              syncSpinner.className = '';
+              syncSpinner.textContent = '⚠️';
+            }
+            if (syncLabel) syncLabel.innerHTML = `<span style="color: var(--danger-solid); font-weight: bold;">一部のアップロードに失敗しました</span>`;
+            if (syncHint) syncHint.textContent = '未送信データはローカルに保持されています。次回通信時に自動再送されます。';
+            SyncManager.removeProgressListener(progressHandler);
+          }
+        };
+
+        SyncManager.addProgressListener(progressHandler);
+      }
+
       this.container.querySelector('#btn-re-upload').onclick = () => {
         this.pendingQueue = [];
         this.renderUploadView();
       };
       this.container.querySelector('#btn-go-review').onclick = () => {
         const revTabBtn = document.querySelector('.tab-btn[data-tab="review"]');
-        if (revTabBtn) revTabBtn.click();
+        if (revTabBtn) {
+          revTabBtn.click();
+        } else if (this.project?.id) {
+          window.location.hash = `#project/${this.project.id}/review`;
+        }
       };
       this.container.querySelector('#btn-go-list').onclick = () => {
         const listTabBtn = document.querySelector('.tab-btn[data-tab="list"]');
-        if (listTabBtn) listTabBtn.click();
+        if (listTabBtn) {
+          listTabBtn.click();
+        } else if (this.project?.id) {
+          window.location.hash = `#project/${this.project.id}/list`;
+        }
       };
       return;
     }
@@ -1274,13 +1375,16 @@ export const ScanPage = {
 
     await DB.saveSubmission(submissionId, dataToSave);
 
-    const syncNote = FolderConnector.isConnected() ? '（共有フォルダ同期済）' : '';
+    const syncNote = SyncManager.isBatchMode()
+      ? '（完了後一括同期）'
+      : (FolderConnector.isConnected() ? '（共有フォルダ同期済）' : '');
+
     UI.showToast(
       isOverwrite 
         ? `${student.name} 様の確認票を上書き承認しました${syncNote}`
         : `${student.name} 様の受講内容を承認しました${syncNote}`,
       'success',
-      2000
+      1500
     );
 
     this.pendingQueue[this.currentIndex].approved = true;
@@ -1424,6 +1528,19 @@ export const ScanPage = {
       cleanup();
       onOverwrite();
     };
+  },
+
+  /**
+   * 画面離脱時・破棄時のクリーンアップ
+   */
+  cleanup() {
+    if (this._currentKeyHandler) {
+      document.removeEventListener('keydown', this._currentKeyHandler);
+      this._currentKeyHandler = null;
+    }
+    if (SyncManager.isBatchMode()) {
+      SyncManager.endBatchMode({ flush: true, notify: true });
+    }
   }
 };
 
