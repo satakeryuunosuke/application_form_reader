@@ -145,8 +145,11 @@ export const ScannerEngine = {
         tr = pB; bl = pA;
       }
 
-      // 傾き角（Top-Left から Top-Right へのベクトル）
-      angleRad = Math.atan2(tr.y - tl.y, tr.x - tl.x);
+      // QRコードによる傾き角補正の無効化（水平固定）:
+      // A4縦全体などの長距離チェックボックスにおいて、小さなQRコードのファインダパターンから算出される
+      // 微小な検出誤差（0.5°〜1°）がテコの原理（レバーアーム効果）により大きな横ズレを引き起こすため、
+      // QRコード時は角度補正を行わず水平固定（angle = 0）とします。
+      angleRad = 0;
 
       // QR中心座標: tl + 0.5 * ((tr - tl) + (bl - tl))
       centerX = tl.x + 0.5 * ((tr.x - tl.x) + (bl.x - tl.x));
@@ -167,7 +170,7 @@ export const ScannerEngine = {
       qrHeight = Math.max(qrHeight, 40);
     }
 
-    const angleDeg = Math.round(angleRad * (180 / Math.PI) * 10) / 10;
+    const angleDeg = 0;
 
     return {
       x: minX,
@@ -180,8 +183,8 @@ export const ScannerEngine = {
       height: qrHeight,
       centerX,
       centerY,
-      angle: angleRad,
-      angleDeg,
+      angle: 0,
+      angleDeg: 0,
       isSquare: true
     };
   },
