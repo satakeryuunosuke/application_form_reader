@@ -21,18 +21,24 @@ export const ProjectPage = {
   currentTab: 'list',
 
   async render(container, projectId, tab = 'list') {
+    // 同一プロジェクト内のタブ切り替え時はヘッダーを再描画せずタブの中身のみ差し替え（高速化・ちらつき防止）
+    const isSameProject = this.currentProject && this.currentProject.id === projectId && this.container === container && this.container.querySelector('#project-tab-content');
+    if (isSameProject) {
+      this.currentTab = tab || 'list';
+      const dashBtn = this.container.querySelector('#btn-go-dashboard');
+      if (dashBtn) {
+        dashBtn.className = this.currentTab === 'dashboard' ? 'btn btn-primary btn-md' : 'btn btn-secondary btn-md';
+      }
+      await this.renderActiveTab();
+      // 同一プロジェクト内のタブ遷移でもバックグラウンド同期をスロットル付きで実行
+      this._startBackgroundSync(projectId);
+      return;
+    }
+
     this.container = container;
     this.currentTab = tab || 'list';
 
-    // 共有フォルダ接続中なら最新状態（新規生徒・修正・提出イベント等）を自動同期
-    if (FolderConnector.isConnected()) {
-      try {
-        await SyncManager.syncFromSharedFolder(projectId);
-      } catch (syncErr) {
-        console.warn('画面表示時の共有同期スキップ:', syncErr);
-      }
-    }
-
+    // ローカルIndexedDBから即座にプロジェクト情報を取得して描画
     const project = await DB.getProject(projectId);
     if (!project) {
       UI.showToast('プロジェクトが見つかりません', 'error');
@@ -80,8 +86,10 @@ export const ProjectPage = {
 
           <!-- ヘッダー右側: 主要ボタン群 -->
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <button id="btn-header-sync" class="btn btn-secondary btn-md" style="font-weight: 600;" title="${isFolderConnected ? '共有フォルダから最新の受講変更・提出データや生徒名簿を取り込んで更新' : '共有フォルダに接続して最新データに更新'}">
-              🔄 更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}
+            <button id="btn-header-sync" class="btn btn-secondary btn-md" style="font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" title="${isFolderConnected ? '共有フォルダから最新の受講変更・提出データや生徒名簿を取り込んで更新' : '共有フォルダに接続して最新データに更新'}">
+              <span id="header-sync-pulse" class="sync-pulse-dot" style="display: ${isFolderConnected ? 'inline-block' : 'none'};"></span>
+              <span class="sync-btn-icon">🔄</span>
+              <span class="sync-btn-text">更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}</span>
             </button>
             <button id="btn-go-manual" class="btn btn-primary btn-md" style="font-weight: 700; box-shadow: var(--shadow-sm);" title="電話や口頭での受講変更、手動でのデータ登録・追加画面を開く">
               ✏️ 手動登録・変更
@@ -108,6 +116,45 @@ export const ProjectPage = {
 
     this.bindEvents(projectId);
     await this.renderActiveTab();
+
+    // 共有フォルダ接続中なら最新状態を非同期バックグラウンド同期（画面遷移のブロッキングを完全解消）
+    if (FolderConnector.isConnected()) {
+      this._startBackgroundSync(projectId);
+    }
+  },
+
+  /**
+   * 画面遷移をブロックしない非同期バックグラウンド同期処理
+   */
+  async _startBackgroundSync(projectId) {
+    if (!FolderConnector.isConnected()) return;
+    if (this._isSyncing || SyncManager.isSyncing(projectId)) return;
+
+    const syncBtn = this.container ? this.container.querySelector('#btn-header-sync') : null;
+    const dot = this.container ? this.container.querySelector('#header-sync-pulse') : null;
+    const icon = syncBtn ? syncBtn.querySelector('.sync-btn-icon') : null;
+
+    if (dot) {
+      dot.classList.add('pulse');
+      dot.style.display = 'inline-block';
+    }
+    if (icon) icon.classList.add('spin-icon');
+
+    try {
+      const res = await SyncManager.syncFromSharedFolder(projectId);
+      if (res && !res.skippedThrottle) {
+        await this.updateHeaderStats();
+        if (this.currentTab === 'list' && typeof ListPage.notifyBackgroundSyncComplete === 'function') {
+          ListPage.notifyBackgroundSyncComplete(res);
+        }
+      }
+    } catch (syncErr) {
+      console.warn('バックグラウンド共有同期スキップ/失敗:', syncErr);
+    } finally {
+      if (dot) dot.classList.remove('pulse');
+      if (icon) icon.classList.remove('spin-icon');
+      this.updateHeaderStats();
+    }
   },
 
   /**
@@ -132,7 +179,12 @@ export const ProjectPage = {
       if (syncBtn && !syncBtn.disabled) {
         const lastSync = SyncManager.getLastSyncTime(this.currentProject.id);
         const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-        syncBtn.innerHTML = `🔄 更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+        const textEl = syncBtn.querySelector('.sync-btn-text');
+        if (textEl) {
+          textEl.innerHTML = `更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+        } else {
+          syncBtn.innerHTML = `🔄 更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+        }
       }
     } catch (e) {
       console.error('Failed to update header stats:', e);
@@ -142,7 +194,7 @@ export const ProjectPage = {
   _isSyncing: false,
 
   /**
-   * 共有フォルダとの手動同期・データ更新を実行
+   * 共有フォルダとの手動同期・データ更新を実行（キャッシュを無効化して最新データを強制取得）
    */
   async handleSync(projectId) {
     if (this._isSyncing) {
@@ -191,7 +243,7 @@ export const ProjectPage = {
           try {
             await FolderConnector.connect();
             UI.showToast(`共有フォルダ「${FolderConnector.getFolderName()}」に接続しました`, 'success');
-            await SyncManager.readSharedSettings();
+            await SyncManager.readSharedSettings({ force: true });
           } catch (connErr) {
             if (connErr.name !== 'AbortError') {
               UI.showToast(`接続エラー: ${connErr.message}`, 'warning');
@@ -216,7 +268,9 @@ export const ProjectPage = {
 
       try {
         await SyncManager.flushPendingQueueInBackground();
-        const res = await SyncManager.syncFromSharedFolder(projectId);
+        // 手動更新時はキャッシュを破棄して強制同期
+        SyncManager.invalidateSyncCache(projectId);
+        const res = await SyncManager.syncFromSharedFolder(projectId, { force: true });
         const parts = [];
         if (res.studentsAdded > 0) parts.push(`生徒追加: ${res.studentsAdded}名`);
         if (res.studentsUpdated > 0) parts.push(`生徒更新: ${res.studentsUpdated}名`);
@@ -242,7 +296,12 @@ export const ProjectPage = {
       const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
       if (syncBtn) {
         UI.setButtonLoading(syncBtn, false);
-        syncBtn.innerHTML = `🔄 更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+        const textEl = syncBtn.querySelector('.sync-btn-text');
+        if (textEl) {
+          textEl.innerHTML = `更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+        } else {
+          syncBtn.innerHTML = `🔄 更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}`;
+        }
       }
       if (dashSyncBtn) {
         UI.setButtonLoading(dashSyncBtn, false);

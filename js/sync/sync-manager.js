@@ -9,12 +9,47 @@ import { FolderConnector } from './folder-connector.js';
 import { PendingQueue } from './pending-queue.js';
 
 export const SyncManager = {
+  SYNC_THROTTLE_MS: 30000, // 同期スロットル間隔（30秒以内の重複同期をスキップ）
   lastSyncTimes: new Map(), // projectId -> Date
+  _lastSyncResults: new Map(), // projectId -> Object (直近の同期結果キャッシュ)
+  _scanSharedProjectsCache: { timestamp: 0, data: null },
+  _scanArchivedProjectsCache: { timestamp: 0, data: null },
+  _readSharedSettingsCache: { timestamp: 0, data: null },
   _activeSyncPromises: new Map(), // projectId -> Promise
   _lockMap: new Map(), // key -> Promise
   _isBatchMode: false,
   _isFlushing: false,
   _progressListeners: new Set(),
+
+  /**
+   * 指定プロジェクトの同期をスキップすべきか（直近30秒以内に同期成功していればスキップ）
+   * @param {string} projectId
+   * @returns {boolean}
+   */
+  shouldSkipSync(projectId) {
+    if (!projectId) return false;
+    const lastSync = this.lastSyncTimes.get(projectId);
+    if (!lastSync) return false;
+    const elapsed = Date.now() - (lastSync instanceof Date ? lastSync.getTime() : lastSync);
+    return elapsed < this.SYNC_THROTTLE_MS;
+  },
+
+  /**
+   * 同期キャッシュの破棄（手動更新ボタン押下時、アーカイブ変更時など）
+   * @param {string} [projectId]
+   */
+  invalidateSyncCache(projectId = null) {
+    if (projectId) {
+      this.lastSyncTimes.delete(projectId);
+      this._lastSyncResults.delete(projectId);
+    } else {
+      this.lastSyncTimes.clear();
+      this._lastSyncResults.clear();
+      this._scanSharedProjectsCache = { timestamp: 0, data: null };
+      this._scanArchivedProjectsCache = { timestamp: 0, data: null };
+      this._readSharedSettingsCache = { timestamp: 0, data: null };
+    }
+  },
 
   /**
    * バッチ同期モード（スキャン連続処理時など）を開始
@@ -318,8 +353,11 @@ export const SyncManager = {
    * 共有フォルダから settings.json を読み込み、ローカルDBにマージ
    * （職員名と共通書式、講座名・受講方法マスタを全PCで同期）
    */
-  async readSharedSettings() {
+  async readSharedSettings({ force = false } = {}) {
     if (!FolderConnector.isConnected()) return null;
+    if (!force && this._readSharedSettingsCache.data && (Date.now() - this._readSharedSettingsCache.timestamp < this.SYNC_THROTTLE_MS)) {
+      return this._readSharedSettingsCache.data;
+    }
     const rootHandle = FolderConnector.getDirHandle();
     if (!rootHandle) return null;
 
@@ -379,6 +417,10 @@ export const SyncManager = {
         await DB.saveSettings(localSettings);
       }
 
+      this._readSharedSettingsCache = {
+        timestamp: Date.now(),
+        data: sharedSettings
+      };
       return sharedSettings;
     } catch (err) {
       console.warn('settings.json 読み込み・マージ失敗:', err);
@@ -615,9 +657,26 @@ export const SyncManager = {
    * @param {string} projectId
    * @returns {Promise<{ newEventsCount: number, totalEvents: number }>}
    */
-  async syncFromSharedFolder(projectId) {
+  async syncFromSharedFolder(projectId, { force = false } = {}) {
     if (!projectId) {
       return { newEventsCount: 0, totalEvents: 0, connected: false };
+    }
+
+    // 直近30秒以内に同期成功していれば重複同期をスキップして高速化
+    if (!force && this.shouldSkipSync(projectId)) {
+      const cached = this._lastSyncResults.get(projectId);
+      if (cached) {
+        return { ...cached, skippedThrottle: true };
+      }
+      return {
+        newEventsCount: 0,
+        totalEvents: 0,
+        studentsAdded: 0,
+        studentsUpdated: 0,
+        connected: true,
+        skippedThrottle: true,
+        lastSync: this.getLastSyncTime(projectId)
+      };
     }
 
     // 既に同一プロジェクトの同期が実行中の場合は、既存のPromiseを共有（二重処理を完全防止）
@@ -709,8 +768,7 @@ export const SyncManager = {
           await this.replayEventsToSubmissions(projectId);
         }
 
-        this.lastSyncTimes.set(projectId, new Date());
-        return {
+        const syncResult = {
           newEventsCount,
           totalEvents: existingEventIds.size,
           studentsAdded,
@@ -718,6 +776,9 @@ export const SyncManager = {
           connected: true,
           lastSync: new Date()
         };
+        this.lastSyncTimes.set(projectId, syncResult.lastSync);
+        this._lastSyncResults.set(projectId, syncResult);
+        return syncResult;
       } catch (err) {
         console.error(`同期エラー (${projectId}):`, err);
         throw err;
@@ -927,8 +988,11 @@ export const SyncManager = {
   /**
    * 共有フォルダ内のすべてのプロジェクトをスキャンして一覧取得
    */
-  async scanSharedProjects() {
+  async scanSharedProjects({ force = false } = {}) {
     if (!FolderConnector.isConnected()) return [];
+    if (!force && this._scanSharedProjectsCache.data && (Date.now() - this._scanSharedProjectsCache.timestamp < this.SYNC_THROTTLE_MS)) {
+      return this._scanSharedProjectsCache.data;
+    }
     const rootHandle = FolderConnector.getDirHandle();
     if (!rootHandle) return [];
 
@@ -952,6 +1016,10 @@ export const SyncManager = {
       console.error('共有フォルダプロジェクト一覧取得失敗:', err);
     }
 
+    this._scanSharedProjectsCache = {
+      timestamp: Date.now(),
+      data: sharedProjects
+    };
     return sharedProjects;
   },
 
@@ -1147,6 +1215,7 @@ export const SyncManager = {
 
     // 4. ローカル IndexedDB から削除（他PCの手元からも後で削除される）
     await DB.deleteProject(projectId);
+    this.invalidateSyncCache();
 
     return true;
   },
@@ -1186,14 +1255,18 @@ export const SyncManager = {
     await this.moveDirectory(archiveDir, projectId, rootHandle);
 
     // 3. ローカル IndexedDB に取り込み
+    this.invalidateSyncCache();
     return await this.importProjectFromShared(projectId);
   },
 
   /**
    * 共有フォルダの archive/ フォルダ内のプロジェクト一覧を走査
    */
-  async scanArchivedProjects() {
+  async scanArchivedProjects({ force = false } = {}) {
     if (!FolderConnector.isConnected()) return [];
+    if (!force && this._scanArchivedProjectsCache.data && (Date.now() - this._scanArchivedProjectsCache.timestamp < this.SYNC_THROTTLE_MS)) {
+      return this._scanArchivedProjectsCache.data;
+    }
     const rootHandle = FolderConnector.getDirHandle();
     if (!rootHandle) return [];
 
@@ -1240,6 +1313,10 @@ export const SyncManager = {
       return dateB - dateA;
     });
 
+    this._scanArchivedProjectsCache = {
+      timestamp: Date.now(),
+      data: archivedProjects
+    };
     return archivedProjects;
   },
 
@@ -1276,6 +1353,7 @@ export const SyncManager = {
       }
     }
 
+    this.invalidateSyncCache();
     return results;
   },
 

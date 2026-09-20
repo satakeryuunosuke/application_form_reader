@@ -20,38 +20,11 @@ export const HomePage = {
   async render(container) {
     this.container = container;
     const currentYear = new Date().getFullYear();
-    let projects = await DB.getProjects();
+    const projects = await DB.getProjects();
 
     const isFolderConnected = FolderConnector.isConnected();
     const isSupported = FolderConnector.isSupported();
     const folderName = FolderConnector.getFolderName();
-
-    // 他端末でアーカイブされたプロジェクトが手元に残っていれば自動削除（クリーンアップ）
-    if (isFolderConnected) {
-      try {
-        const cleaned = await SyncManager.cleanupArchivedFromLocal(projects);
-        if (cleaned > 0) {
-          projects = await DB.getProjects();
-        }
-      } catch (cleanErr) {
-        console.warn('手元アーカイブクリーンアップ例外:', cleanErr);
-      }
-    }
-
-    this.sharedProjectsList = isFolderConnected ? await DB.getSharedProjects() : [];
-    const unimportedShared = isFolderConnected
-      ? this.sharedProjectsList.filter(sp => !projects.some(lp => lp.id === sp.meta.id))
-      : [];
-
-    let archivedProjects = [];
-    if (isFolderConnected) {
-      try {
-        archivedProjects = await DB.getArchivedProjects();
-      } catch (arcErr) {
-        console.warn('アーカイブ取得エラー:', arcErr);
-      }
-    }
-
     const activeProjects = projects.filter(p => p.status !== '完了');
 
     let html = `
@@ -89,7 +62,7 @@ export const HomePage = {
             ${isFolderConnected ? `
               <button id="btn-home-archived" class="btn btn-secondary btn-lg" style="display: inline-flex; align-items: center; gap: 8px;" title="退避された完了プロジェクトの確認・進行中への復元">
                 <span>📁</span> 完了済みのプロジェクト
-                ${archivedProjects.length > 0 ? `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 2px 7px;">${archivedProjects.length}</span>` : ''}
+                <span id="home-archived-count-badge" class="badge badge-gray" style="font-size: 0.8rem; padding: 2px 7px; display: none;"></span>
               </button>
             ` : ''}
             <button id="btn-new-project" class="btn btn-primary btn-lg">
@@ -97,81 +70,55 @@ export const HomePage = {
             </button>
           </div>
         </div>
+
+        <!-- 共有フォルダ未取込プロジェクトコンテナ（バックグラウンドで走査・反映） -->
+        <div id="home-unimported-container">
+          ${isFolderConnected ? `
+            <div id="home-unimported-skeleton" class="skeleton-card skeleton-shimmer" style="height: 56px; border: 1px dashed var(--primary-300); border-radius: var(--radius-lg); margin-bottom: var(--spacing-lg); display: flex; align-items: center; padding: 0 16px; gap: 10px;">
+              <span class="sync-pulse-dot pulse"></span>
+              <span style="font-size: 0.82rem; color: var(--primary-800); font-weight: 600;">共有フォルダの新規プロジェクトを確認中...</span>
+            </div>
+          ` : ''}
+        </div>
+
+        <!-- 進行中プロジェクト一覧コンテナ -->
+        <div id="home-active-projects-container">
     `;
 
-    // 共有フォルダ上の未取込プロジェクト案内セクション
-    if (unimportedShared.length > 0) {
+    if (activeProjects.length === 0) {
       html += `
-        <section class="home-section" style="border: 2px dashed var(--primary-400); background: #f0f7ff; border-radius: var(--radius-lg); padding: var(--spacing-lg); margin-bottom: var(--spacing-xl);">
-          <div class="home-section-header" style="margin-bottom: 8px;">
-            <div class="home-section-title" style="color: var(--primary-800);">
-              <span>📥 共有フォルダから取り込めるプロジェクト</span>
-              <span class="badge badge-info" style="font-size: 0.82rem;">${unimportedShared.length} 件</span>
-            </div>
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <h3 class="font-bold" style="font-size: 1.25rem; color: var(--gray-800); margin-bottom: 8px;">プロジェクトがまだありません</h3>
+            <p style="margin-bottom: var(--spacing-lg);">右上の「新規プロジェクト作成」ボタンから、講習の受講確認票集計を開始しましょう。</p>
+            <button id="btn-empty-new-project" class="btn btn-primary">
+              <span>➕</span> 最初のプロジェクトを作成
+            </button>
           </div>
-          <p style="font-size: 0.86rem; color: var(--gray-700); margin-bottom: var(--spacing-md); line-height: 1.5;">
-            他のPC（メインPC等）によって共有フォルダに作成されたプロジェクトが見つかりました。<br>
-            「<strong>このPCに取り込む</strong>」を押すと、最新の生徒リストと提出状況を取得し、このPCからも提出状況の閲覧や手動登録を行えるようになります。
-          </p>
-          <div class="project-grid">
-            ${unimportedShared.map(sp => `
-              <div class="project-card" style="border: 1px solid var(--primary-300); background: #ffffff;">
-                <div>
-                  <div class="project-card-top">
-                    <div class="project-meta-badges">
-                      <span class="badge badge-info">${sp.meta.year}年度</span>
-                      <span class="badge badge-purple">${sp.meta.grade}年生</span>
-                      <span class="badge badge-success">${UI.formatSession(sp.meta.sessionName)}</span>
-                      <span class="badge badge-gray" style="font-size: 0.72rem;">未取り込み</span>
-                    </div>
-                  </div>
-                  <h3 class="project-title">${UI.formatProjectTitle(sp.meta.title)}</h3>
-                  <div style="font-size: 0.8rem; color: var(--gray-500); margin-top: 4px;">
-                    作成日: ${UI.formatDate(sp.meta.createdAt)}
-                  </div>
-                </div>
-                <div style="margin-top: 14px;">
-                  <button class="btn btn-primary btn-import-shared-project" data-id="${sp.meta.id}" style="width: 100%;">
-                    📥 このPCに取り込む (同期開始)
-                  </button>
-                </div>
+      `;
+    } else {
+      html += `
+          <section class="home-section">
+            <div class="home-section-header">
+              <div class="home-section-title">
+                <span>🚀 進行中のプロジェクト</span>
+                <span class="badge badge-success" style="font-size: 0.85rem;">${activeProjects.length} 件</span>
               </div>
-            `).join('')}
-          </div>
-        </section>
-      `;
-    }
-
-    if (activeProjects.length === 0 && unimportedShared.length === 0) {
-      html += `
-        <div class="empty-state">
-          <div class="empty-state-icon">📋</div>
-          <h3 class="font-bold" style="font-size: 1.25rem; color: var(--gray-800); margin-bottom: 8px;">プロジェクトがまだありません</h3>
-          <p style="margin-bottom: var(--spacing-lg);">右上の「新規プロジェクト作成」ボタンから、講習の受講確認票集計を開始しましょう。</p>
-          <button id="btn-empty-new-project" class="btn btn-primary">
-            <span>➕</span> 最初のプロジェクトを作成
-          </button>
-        </div>
-      `;
-    } else if (activeProjects.length > 0) {
-      html += `
-        <section class="home-section">
-          <div class="home-section-header">
-            <div class="home-section-title">
-              <span>🚀 進行中のプロジェクト</span>
-              <span class="badge badge-success" style="font-size: 0.85rem;">${activeProjects.length} 件</span>
             </div>
-          </div>
-          <div class="project-grid">
+            <div class="project-grid">
       `;
       for (const p of activeProjects) {
         html += await this.renderProjectCardHtml(p, isFolderConnected);
       }
       html += `
-          </div>
-        </section>
+            </div>
+          </section>
       `;
     }
+
+    html += `
+        </div>
+    `;
 
     // システム情報・バージョンフッター
     html += `
@@ -194,6 +141,11 @@ export const HomePage = {
     this.container.innerHTML = html;
 
     this.bindEvents(currentYear);
+
+    // 共有フォルダ接続中ならバックグラウンドで走査＆差分更新（画面遷移の待機時間ゼロ化）
+    if (isFolderConnected) {
+      this._refreshSharedDataInBackground(projects);
+    }
   },
 
   /**
@@ -321,33 +273,189 @@ export const HomePage = {
       };
     }
 
-    // 共有フォルダ更新ボタン
+    // 共有フォルダ更新ボタン（キャッシュ破棄＋バックグラウンド再取得）
     const refreshSharedBtn = this.container.querySelector('#btn-home-refresh-shared');
     if (refreshSharedBtn) {
       refreshSharedBtn.onclick = async () => {
         if (this._isRefreshing) return;
         this._isRefreshing = true;
         UI.setButtonLoading(refreshSharedBtn, true, '更新中...');
-        UI.showLoading({
-          title: '共有フォルダを確認中...',
-          message: 'ファイルサーバーのプロジェクト一覧を走査しています。しばらくお待ちください。',
-          icon: '🔄'
-        });
         try {
-          await this.render(this.container);
-          UI.showToast('共有フォルダのプロジェクト一覧を更新しました', 'info');
+          SyncManager.invalidateSyncCache();
+          const p = await DB.getProjects();
+          await this._refreshSharedDataInBackground(p, true);
+          UI.showToast('共有フォルダの最新情報を確認しました', 'info');
         } catch (e) {
-          UI.showToast(`共有フォルダ読み込みエラー: ${e.message}`, 'error');
+          UI.showToast(`共有フォルダ確認エラー: ${e.message}`, 'error');
         } finally {
           this._isRefreshing = false;
-          UI.hideLoading();
           UI.setButtonLoading(refreshSharedBtn, false);
         }
       };
     }
 
-    // 共有プロジェクト取り込みボタン
-    this.container.querySelectorAll('.btn-import-shared-project').forEach(btn => {
+    // カードクリックでプロジェクト画面へ遷移
+    this.bindProjectCards();
+
+    // システム情報・バージョン詳細モーダル
+    const versionBtn = this.container.querySelector('#btn-show-version-info');
+    if (versionBtn) {
+      versionBtn.addEventListener('click', () => this.openSystemInfoModal());
+    }
+  },
+
+  /**
+   * プロジェクトカードのクリックイベント紐付け
+   */
+  bindProjectCards() {
+    const cards = this.container ? this.container.querySelectorAll('#home-active-projects-container .project-card') : [];
+    cards.forEach(card => {
+      card.onclick = () => {
+        const projectId = card.dataset.projectId;
+        if (projectId) {
+          window.location.hash = `#project/${projectId}`;
+        }
+      };
+    });
+  },
+
+  /**
+   * 共有フォルダのプロジェクト・アーカイブ・手元クリーンアップをバックグラウンド実行して差分反映
+   */
+  async _refreshSharedDataInBackground(initialProjects, isManual = false) {
+    if (!FolderConnector.isConnected()) return;
+    try {
+      // 1. 他端末でアーカイブされたプロジェクトがあれば手元から自動クリーンアップ
+      const cleaned = await SyncManager.cleanupArchivedFromLocal(initialProjects);
+      let projects = initialProjects;
+      if (cleaned > 0) {
+        projects = await DB.getProjects();
+        await this._renderActiveProjectsGrid(projects);
+      }
+
+      // 2. 共有プロジェクト一覧の取得と未取込セクション描画
+      this.sharedProjectsList = await DB.getSharedProjects({ force: isManual });
+      const unimportedShared = this.sharedProjectsList.filter(sp => !projects.some(lp => lp.id === sp.meta.id));
+      this._renderUnimportedSection(unimportedShared);
+
+      // 3. アーカイブプロジェクト件数バッジの更新
+      const archivedProjects = await DB.getArchivedProjects({ force: isManual });
+      const badge = this.container ? this.container.querySelector('#home-archived-count-badge') : null;
+      if (badge) {
+        if (archivedProjects.length > 0) {
+          badge.textContent = archivedProjects.length;
+          badge.style.display = 'inline-block';
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+    } catch (err) {
+      console.warn('ホーム画面バックグラウンド走査エラー:', err);
+      const skeleton = this.container ? this.container.querySelector('#home-unimported-skeleton') : null;
+      if (skeleton) skeleton.remove();
+    }
+  },
+
+  /**
+   * 進行中プロジェクト一覧のDOM差分更新
+   */
+  async _renderActiveProjectsGrid(projects) {
+    const container = this.container ? this.container.querySelector('#home-active-projects-container') : null;
+    if (!container) return;
+    const activeProjects = projects.filter(p => p.status !== '完了');
+    const isFolderConnected = FolderConnector.isConnected();
+
+    if (activeProjects.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <h3 class="font-bold" style="font-size: 1.25rem; color: var(--gray-800); margin-bottom: 8px;">プロジェクトがまだありません</h3>
+          <p style="margin-bottom: var(--spacing-lg);">右上の「新規プロジェクト作成」ボタンから、講習の受講確認票集計を開始しましょう。</p>
+          <button id="btn-empty-new-project" class="btn btn-primary">
+            <span>➕</span> 最初のプロジェクトを作成
+          </button>
+        </div>
+      `;
+      const emptyBtn = container.querySelector('#btn-empty-new-project');
+      if (emptyBtn) {
+        emptyBtn.onclick = () => this.openNewProjectWizard(new Date().getFullYear());
+      }
+      return;
+    }
+
+    let cardsHtml = '';
+    for (const p of activeProjects) {
+      cardsHtml += await this.renderProjectCardHtml(p, isFolderConnected);
+    }
+
+    container.innerHTML = `
+      <section class="home-section">
+        <div class="home-section-header">
+          <div class="home-section-title">
+            <span>🚀 進行中のプロジェクト</span>
+            <span class="badge badge-success" style="font-size: 0.85rem;">${activeProjects.length} 件</span>
+          </div>
+        </div>
+        <div class="project-grid">
+          ${cardsHtml}
+        </div>
+      </section>
+    `;
+    this.bindProjectCards();
+  },
+
+  /**
+   * 共有フォルダの未取込プロジェクト案内セクションの描画
+   */
+  _renderUnimportedSection(unimportedShared) {
+    const container = this.container ? this.container.querySelector('#home-unimported-container') : null;
+    if (!container) return;
+    if (!unimportedShared || unimportedShared.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = `
+      <section class="home-section" style="border: 2px dashed var(--primary-400); background: #f0f7ff; border-radius: var(--radius-lg); padding: var(--spacing-lg); margin-bottom: var(--spacing-xl);">
+        <div class="home-section-header" style="margin-bottom: 8px;">
+          <div class="home-section-title" style="color: var(--primary-800);">
+            <span>📥 共有フォルダから取り込めるプロジェクト</span>
+            <span class="badge badge-info" style="font-size: 0.82rem;">${unimportedShared.length} 件</span>
+          </div>
+        </div>
+        <p style="font-size: 0.86rem; color: var(--gray-700); margin-bottom: var(--spacing-md); line-height: 1.5;">
+          他のPC（メインPC等）によって共有フォルダに作成されたプロジェクトが見つかりました。<br>
+          「<strong>このPCに取り込む</strong>」を押すと、最新の生徒リストと提出状況を取得し、このPCからも提出状況の閲覧や手動登録を行えるようになります。
+        </p>
+        <div class="project-grid">
+          ${unimportedShared.map(sp => `
+            <div class="project-card" style="border: 1px solid var(--primary-300); background: #ffffff;">
+              <div>
+                <div class="project-card-top">
+                  <div class="project-meta-badges">
+                    <span class="badge badge-info">${sp.meta.year}年度</span>
+                    <span class="badge badge-purple">${sp.meta.grade}年生</span>
+                    <span class="badge badge-success">${UI.formatSession(sp.meta.sessionName)}</span>
+                    <span class="badge badge-gray" style="font-size: 0.72rem;">未取り込み</span>
+                  </div>
+                </div>
+                <h3 class="project-title">${UI.formatProjectTitle(sp.meta.title)}</h3>
+                <div style="font-size: 0.8rem; color: var(--gray-500); margin-top: 4px;">
+                  作成日: ${UI.formatDate(sp.meta.createdAt)}
+                </div>
+              </div>
+              <div style="margin-top: 14px;">
+                <button class="btn btn-primary btn-import-shared-project" data-id="${sp.meta.id}" style="width: 100%;">
+                  📥 このPCに取り込む (同期開始)
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+    `;
+
+    container.querySelectorAll('.btn-import-shared-project').forEach(btn => {
       btn.onclick = async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
@@ -370,23 +478,6 @@ export const HomePage = {
         }
       };
     });
-
-    // カードクリックでプロジェクト画面へ遷移
-    const cards = this.container.querySelectorAll('.project-card');
-    cards.forEach(card => {
-      card.addEventListener('click', () => {
-        const projectId = card.dataset.projectId;
-        if (projectId) {
-          window.location.hash = `#project/${projectId}`;
-        }
-      });
-    });
-
-    // システム情報・バージョン詳細モーダル
-    const versionBtn = this.container.querySelector('#btn-show-version-info');
-    if (versionBtn) {
-      versionBtn.addEventListener('click', () => this.openSystemInfoModal());
-    }
   },
 
   /**

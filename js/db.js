@@ -187,15 +187,15 @@ export const DB = {
   /**
    * 共有フォルダ上のプロジェクト一覧をスキャン取得
    */
-  async getSharedProjects() {
-    return await SyncManager.scanSharedProjects();
+  async getSharedProjects(options) {
+    return await SyncManager.scanSharedProjects(options);
   },
 
   /**
    * 共有フォルダの archive/ フォルダ上のプロジェクト一覧をスキャン取得
    */
-  async getArchivedProjects() {
-    return await SyncManager.scanArchivedProjects();
+  async getArchivedProjects(options) {
+    return await SyncManager.scanArchivedProjects(options);
   },
 
   /**

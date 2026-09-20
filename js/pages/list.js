@@ -23,18 +23,51 @@ export const ListPage = {
   currentSortOrder: 'asc',
   searchQuery: '',
 
+  /**
+   * バックグラウンド同期完了時のコールバック（差分があれば更新バナーを表示）
+   */
+  notifyBackgroundSyncComplete(res) {
+    if (!res || !this.container) return;
+    if (res.newEventsCount > 0 || res.studentsAdded > 0 || res.studentsUpdated > 0) {
+      let banner = this.container.querySelector('#list-sync-banner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'list-sync-banner';
+        banner.className = 'sync-data-updated-banner';
+        const card = this.container.querySelector('.card') || this.container.firstChild;
+        if (card && card.parentNode) {
+          card.parentNode.insertBefore(banner, card);
+        } else {
+          this.container.prepend(banner);
+        }
+      }
+      const details = [];
+      if (res.newEventsCount > 0) details.push(`イベント ${res.newEventsCount}件`);
+      if (res.studentsAdded > 0) details.push(`生徒追加 ${res.studentsAdded}名`);
+      if (res.studentsUpdated > 0) details.push(`生徒更新 ${res.studentsUpdated}名`);
+
+      banner.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.1rem;">📡</span>
+          <span>共有フォルダから最新のデータが反映されました（${details.join('、')}）。</span>
+        </div>
+        <button id="btn-reload-list-data" class="btn btn-secondary btn-sm" style="padding: 3px 10px; font-size: 0.78rem; font-weight: 700;">
+          🔄 表を再読込
+        </button>
+      `;
+      const reloadBtn = banner.querySelector('#btn-reload-list-data');
+      if (reloadBtn) {
+        reloadBtn.onclick = async () => {
+          banner.remove();
+          await this.render(this.container, this.project);
+        };
+      }
+    }
+  },
+
   async render(container, project) {
     this.container = container;
     this.project = project;
-
-    // 共有フォルダ接続中なら最新状態（新規生徒・修正・提出イベント等）を自動同期
-    if (FolderConnector.isConnected()) {
-      try {
-        await SyncManager.syncFromSharedFolder(project.id);
-      } catch (syncErr) {
-        console.warn('一覧表示時の共有同期スキップ:', syncErr);
-      }
-    }
 
     // プロジェクトヘッダー統計およびタブバッジを同期
     if (typeof ProjectPage.updateHeaderStats === 'function') {
