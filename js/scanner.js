@@ -227,11 +227,47 @@ export const ScannerEngine = {
       return 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
     };
 
-    // 2. 複数の垂直サンプリング列（11箇所: 12%〜88%）
-    const sampleCols = [0.12, 0.18, 0.25, 0.33, 0.42, 0.50, 0.58, 0.67, 0.75, 0.82, 0.88].map(ratio => Math.round(cw * ratio));
+    // 2. 複数の垂直サンプリング列（13箇所: 10%〜90%）
+    const sampleCols = [0.10, 0.16, 0.23, 0.30, 0.38, 0.45, 0.52, 0.60, 0.68, 0.75, 0.82, 0.88, 0.92].map(ratio => Math.round(cw * ratio));
     const candidates = [];
 
-    // 最下端の罫線を探すため、下（searchH - 6）から上（6）へ逆方向に走査
+    // 水平連続性（ラン長）判定用ヘルパー:
+    // 文字は局所的（横幅が文字幅数px〜25px程度）で文字間に白隙間があるが、罫線はかすれていても数十〜数百pxにわたり連続
+    const checkHorizontalContinuity = (cx, ly) => {
+      // 左右に暗ピクセルがどれくらい連続するか（1〜2pxの微小かすれを許容しながら計測）
+      let leftLen = 0;
+      let gap = 0;
+      for (let x = cx - 1; x >= Math.max(0, cx - Math.round(cw * 0.08)); x--) {
+        const b = getBrightness(x, ly);
+        if (b < 155) {
+          leftLen += (gap + 1);
+          gap = 0;
+        } else {
+          gap++;
+          if (gap > 2) break; // 3px以上の白隙間で途切れと判定
+        }
+      }
+
+      let rightLen = 0;
+      gap = 0;
+      for (let x = cx + 1; x <= Math.min(cw - 1, cx + Math.round(cw * 0.08)); x++) {
+        const b = getBrightness(x, ly);
+        if (b < 155) {
+          rightLen += (gap + 1);
+          gap = 0;
+        } else {
+          gap++;
+          if (gap > 2) break;
+        }
+      }
+
+      return leftLen + rightLen;
+    };
+
+    // 最下端の罫線を探すため、下（searchH - 6）から上（6）へ走査
+    // 文章行などの短小な文字片は水平連続性チェックで除外して上位の真の罫線まで継続走査する
+    const minContinuousRun = Math.max(35, Math.round(cw * 0.035)); // 帳票幅の3.5%以上（約70px）の連続性を要求
+
     for (const cx of sampleCols) {
       const stripHalfW = 2;
       let foundLocalY = -1;
@@ -245,8 +281,8 @@ export const ScannerEngine = {
         }
         const bMid = bSum / count;
 
-        // 暗いピクセル（罫線候補: 輝度 < 135）
-        if (bMid < 135) {
+        // 暗いピクセル（罫線候補: 輝度 < 140、かすれ対応で少し余裕を持たせる）
+        if (bMid < 140) {
           // 上下が白い（背景）であることを確認（線の太さ 1〜12px の検証）
           let upperB = 0, lowerB = 0;
           for (let dx = -stripHalfW; dx <= stripHalfW; dx++) {
@@ -257,7 +293,7 @@ export const ScannerEngine = {
           lowerB /= count;
 
           // 周囲が白背景で中心部が明確に暗い
-          if ((upperB > 165 || lowerB > 165) && (upperB - bMid > 35 || lowerB - bMid > 35)) {
+          if ((upperB > 160 || lowerB > 160) && (upperB - bMid > 30 || lowerB - bMid > 30)) {
             // 最暗点（線の中心）を探す
             let bestLy = ly;
             let minB = bMid;
@@ -272,8 +308,15 @@ export const ScannerEngine = {
                 bestLy = testLy;
               }
             }
-            foundLocalY = bestLy;
-            break; // この列の最下端線が確定
+
+            // 【文字行誤検出防止フィルタ①】水平連続性（ラン長）チェック
+            // 文章の文字は1画ごとに途切れるため横幅が短く（せいぜい15〜25px）、罫線は長く連続する
+            const runLen = checkHorizontalContinuity(cx, bestLy);
+            if (runLen >= minContinuousRun) {
+              foundLocalY = bestLy;
+              break; // 本物の罫線候補として確定
+            }
+            // ラン長が短い場合は文章行の文字と判断し、breakせずにさらに上方の罫線を探索し続ける
           }
         }
       }
@@ -293,7 +336,7 @@ export const ScannerEngine = {
     // 3. RANSACによる外れ値除去付き直線フィッティング（文字・印鑑・ノイズの完全排除）
     let bestLine = null;
     let bestInliers = [];
-    const maxIterations = 50;
+    const maxIterations = 60;
 
     for (let it = 0; it < maxIterations; it++) {
       const idx1 = Math.floor(Math.random() * candidates.length);
@@ -301,7 +344,7 @@ export const ScannerEngine = {
       if (idx1 === idx2) continue;
       const p1 = candidates[idx1];
       const p2 = candidates[idx2];
-      if (Math.abs(p2.x - p1.x) < cw * 0.15) continue; // 2点間が近すぎるペアはスキップ
+      if (Math.abs(p2.x - p1.x) < cw * 0.20) continue; // 2点間が近すぎるペアはスキップ
 
       const m = (p2.y - p1.y) / (p2.x - p1.x);
       const b = p1.y - m * p1.x;
@@ -311,7 +354,7 @@ export const ScannerEngine = {
 
       const inliers = [];
       for (const p of candidates) {
-        if (Math.abs(m * p.x + b - p.y) <= 7.0) {
+        if (Math.abs(m * p.x + b - p.y) <= 6.0) {
           inliers.push(p);
         }
       }
@@ -323,6 +366,17 @@ export const ScannerEngine = {
     }
 
     if (!bestLine || bestInliers.length < 5) {
+      return { found: false };
+    }
+
+    // 【文字行誤検出防止フィルタ②】インライア群のXスパン（幅）検証
+    // 罫線であれば帳票幅の広範囲に分布する（文章が一部に固まっているケースを排除）
+    let minInlierX = cw, maxInlierX = 0;
+    for (const p of bestInliers) {
+      if (p.x < minInlierX) minInlierX = p.x;
+      if (p.x > maxInlierX) maxInlierX = p.x;
+    }
+    if ((maxInlierX - minInlierX) < cw * 0.45) {
       return { found: false };
     }
 
@@ -338,6 +392,38 @@ export const ScannerEngine = {
     const denom = (n * sumXX - sumX * sumX);
     const finalSlope = Math.abs(denom) > 1e-6 ? (n * sumXY - sumX * sumY) / denom : bestLine.slope;
     const finalIntercept = Math.abs(denom) > 1e-6 ? (sumY - finalSlope * sumX) / n : bestLine.intercept;
+
+    // 【文字行誤検出防止フィルタ③】推定直線上の黒ピクセル充填率（Fill Ratio）検証
+    // 文章行であれば文字間スペースや隙間が多く黒ピクセル率は10〜30%程度にとどまる
+    // 外枠罫線であればかすれていても50%以上の高い充填率を持つ
+    const scanStep = Math.max(2, Math.round(cw * 0.005));
+    const testStartX = Math.round(minInlierX);
+    const testEndX = Math.round(maxInlierX);
+    let darkCount = 0;
+    let totalSampleCount = 0;
+
+    for (let sx = testStartX; sx <= testEndX; sx += scanStep) {
+      const lineY = Math.round(finalSlope * sx + finalIntercept);
+      const localY = lineY - searchStartY;
+      if (localY >= 0 && localY < searchH) {
+        // 直線周囲 ±2px の最暗値をサンプリング
+        let minSampleB = 255;
+        for (let dy = -2; dy <= 2; dy++) {
+          const b = getBrightness(sx, localY + dy);
+          if (b < minSampleB) minSampleB = b;
+        }
+        if (minSampleB < 160) {
+          darkCount++;
+        }
+        totalSampleCount++;
+      }
+    }
+
+    const fillRatio = totalSampleCount > 0 ? (darkCount / totalSampleCount) : 0;
+    // 黒ピクセル充填率が 40% 未満なら文章行（または飛び飛びのノイズ）とみなして棄却
+    if (fillRatio < 0.40) {
+      return { found: false };
+    }
 
     const angleRad = Math.atan(finalSlope);
     const angleDeg = Math.round(angleRad * (180 / Math.PI) * 100) / 100;
@@ -360,7 +446,8 @@ export const ScannerEngine = {
       qrToBorderDist,
       inliers: bestInliers,
       yLeft: finalSlope * (cw * 0.08) + finalIntercept,
-      yRight: finalSlope * (cw * 0.92) + finalIntercept
+      yRight: finalSlope * (cw * 0.92) + finalIntercept,
+      fillRatio: Math.round(fillRatio * 100) / 100
     };
   },
 
