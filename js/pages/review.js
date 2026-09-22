@@ -18,6 +18,13 @@ export const ReviewPage = {
 
   async render(container, project) {
     this.container = container;
+
+    // 別のプロジェクトに切り替わった場合はインデックスと表示データを初期化
+    if (!this.project || this.project.id !== project.id) {
+      this.currentIndex = 0;
+      this.reviewItems = [];
+      this.allStudents = [];
+    }
     this.project = project;
 
     // 前回のキーリスナーを確実に解除

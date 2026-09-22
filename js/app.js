@@ -15,6 +15,7 @@ class App {
   constructor() {
     this.mainContainer = document.getElementById('app-content');
     this.navLinks = document.querySelectorAll('.nav-link');
+    this.currentRoute = '';
   }
 
   updateSyncIndicator() {
@@ -112,6 +113,14 @@ class App {
         link.classList.remove('active');
       }
     });
+
+    // プロジェクトから別画面へ離脱する際の安全クリーンアップ
+    if (this.currentRoute === 'project' && route !== 'project') {
+      if (typeof ProjectPage.cleanup === 'function') {
+        ProjectPage.cleanup();
+      }
+    }
+    this.currentRoute = route;
 
     if (route === 'home' || route === '') {
       await HomePage.render(this.mainContainer);

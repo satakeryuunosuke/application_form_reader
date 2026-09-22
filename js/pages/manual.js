@@ -18,6 +18,12 @@ export const ManualPage = {
 
   async render(container, project) {
     this.container = container;
+
+    // 別のプロジェクトに切り替わった場合は選択生徒を初期化
+    if (!this.project || this.project.id !== project.id) {
+      this.selectedStudent = null;
+      this.studentsList = [];
+    }
     this.project = project;
 
     const settings = await DB.getSettings();

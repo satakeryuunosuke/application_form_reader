@@ -35,6 +35,17 @@ export const ProjectPage = {
       return;
     }
 
+    // 別のプロジェクトへ切り替わる場合、既存画面のクリーンアップおよびスキャン状態を確実にリセット
+    if (typeof ScanPage.cleanup === 'function') {
+      ScanPage.cleanup();
+    }
+    if (typeof ScanPage.resetQueue === 'function') {
+      ScanPage.resetQueue();
+    }
+    if (typeof ReviewPage.cleanup === 'function') {
+      ReviewPage.cleanup();
+    }
+
     this.container = container;
     this.currentTab = tab || 'list';
 
@@ -1409,7 +1420,7 @@ export const ProjectPage = {
         label,
         dx: -0.058,
         dy: Math.round((0.360 + count * 0.050) * 1000) / 1000,
-        size: 0.032
+        size: CheckboxEngine.getCommonBoxSize(currentTemplate)
       };
       currentTemplate.customBoxes.push(newBox);
       if (calibrator) {
@@ -1993,6 +2004,22 @@ export const ProjectPage = {
 
     document.body.appendChild(modal);
     await renderModalContent();
+  },
+
+  /**
+   * プロジェクト離脱時の安全クリーンアップ
+   */
+  cleanup() {
+    if (typeof ScanPage.cleanup === 'function') {
+      ScanPage.cleanup();
+    }
+    if (typeof ScanPage.resetQueue === 'function') {
+      ScanPage.resetQueue();
+    }
+    if (typeof ReviewPage.cleanup === 'function') {
+      ReviewPage.cleanup();
+    }
+    this.currentProject = null;
   }
 };
 

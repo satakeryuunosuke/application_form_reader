@@ -1139,7 +1139,7 @@ export const SettingsPage = {
       label,
       dx: -0.058,
       dy: Math.round((0.360 + count * 0.050) * 1000) / 1000,
-      size: 0.032
+      size: CheckboxEngine.getCommonBoxSize(cur)
     };
 
     cur.customBoxes.push(newBox);

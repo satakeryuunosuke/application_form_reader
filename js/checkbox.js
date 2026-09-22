@@ -29,6 +29,59 @@ export const CheckboxEngine = {
   },
 
   /**
+   * テンプレート内の共通ボックスサイズ（マスの大きさ）を取得
+   * @param {object} template テンプレートオブジェクト
+   * @returns {number}
+   */
+  getCommonBoxSize(template) {
+    if (!template) return 0.032;
+    if (template.noChangeBox && (template.noChangeBox.size || template.noChangeBox.w)) {
+      return template.noChangeBox.size || template.noChangeBox.w;
+    }
+    if (template.hasChangeBox && (template.hasChangeBox.size || template.hasChangeBox.w)) {
+      return template.hasChangeBox.size || template.hasChangeBox.w;
+    }
+    if (template.customBoxes && template.customBoxes.length > 0) {
+      for (const box of template.customBoxes) {
+        if (box && (box.size || box.w)) return box.size || box.w;
+      }
+    }
+    return 0.032;
+  },
+
+  /**
+   * テンプレート内のすべてのボックス（標準枠・カスタム枠すべて）のマスの大きさを同期
+   * @param {object} template テンプレートオブジェクト
+   * @param {number} [targetSize] 同期するサイズ（省略時は現在の共通サイズを採用）
+   */
+  syncBoxSizes(template, targetSize = null) {
+    if (!template) return;
+    const s = (typeof targetSize === 'number' && !isNaN(targetSize))
+      ? targetSize
+      : this.getCommonBoxSize(template);
+
+    if (template.noChangeBox) {
+      template.noChangeBox.size = s;
+      delete template.noChangeBox.w;
+      delete template.noChangeBox.h;
+    }
+    if (template.hasChangeBox) {
+      template.hasChangeBox.size = s;
+      delete template.hasChangeBox.w;
+      delete template.hasChangeBox.h;
+    }
+    if (template.customBoxes && Array.isArray(template.customBoxes)) {
+      template.customBoxes.forEach(b => {
+        if (b) {
+          b.size = s;
+          delete b.w;
+          delete b.h;
+        }
+      });
+    }
+  },
+
+  /**
    * 指定Canvas内のROI領域における黒画素率（ダークピクセル割合）を計算
    * 角度（rect.angle）がある場合は回転アフィン変換により傾き補正してサンプリング
    * 

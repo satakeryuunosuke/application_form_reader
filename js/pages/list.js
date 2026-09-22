@@ -67,6 +67,19 @@ export const ListPage = {
 
   async render(container, project) {
     this.container = container;
+
+    // 別のプロジェクトに切り替わった場合は検索ワード・各フィルタ・ソートを初期化
+    if (!this.project || this.project.id !== project.id) {
+      this.searchQuery = '';
+      this.currentStatusFilter = 'all';
+      this.currentPrevClassFilter = 'all';
+      this.currentPostClassFilter = 'all';
+      this.currentPrevCourseFilter = 'all';
+      this.currentPostCourseFilter = 'all';
+      this.currentCourseFilter = 'all';
+      this.currentSortKey = 'id';
+      this.currentSortOrder = 'asc';
+    }
     this.project = project;
 
     // プロジェクトヘッダー統計およびタブバッジを同期

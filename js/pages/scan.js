@@ -17,9 +17,32 @@ export const ScanPage = {
   classList: [],
   zoomLevel: 1.0,
 
+  resetQueue() {
+    if (this._currentKeyHandler) {
+      document.removeEventListener('keydown', this._currentKeyHandler);
+      this._currentKeyHandler = null;
+    }
+    if (SyncManager.isBatchMode()) {
+      SyncManager.endBatchMode({ flush: true, notify: false });
+    }
+    this.pendingQueue = [];
+    this.currentIndex = 0;
+    this.zoomLevel = 1.0;
+  },
+
   async render(container, project) {
     this.container = container;
+
+    // 別のプロジェクトに切り替わった場合は、前プロジェクトのスキャンキュー・進捗状態を完全にリセット
+    if (!this.project || this.project.id !== project.id) {
+      this.resetQueue();
+    }
     this.project = project;
+
+    // 前回のスキャン承認が全件完了している場合は、キューを初期化して新規アップロード画面を表示
+    if (this.pendingQueue.length > 0 && this.currentIndex >= this.pendingQueue.length) {
+      this.resetQueue();
+    }
 
     const settings = await DB.getSettings();
     this.staffList = settings.staffNames || ['担当者'];
@@ -332,10 +355,11 @@ export const ScanPage = {
       }
 
       this.container.querySelector('#btn-re-upload').onclick = () => {
-        this.pendingQueue = [];
+        this.resetQueue();
         this.renderUploadView();
       };
       this.container.querySelector('#btn-go-review').onclick = () => {
+        this.resetQueue();
         const revTabBtn = document.querySelector('.tab-btn[data-tab="review"]');
         if (revTabBtn) {
           revTabBtn.click();
@@ -344,6 +368,7 @@ export const ScanPage = {
         }
       };
       this.container.querySelector('#btn-go-list').onclick = () => {
+        this.resetQueue();
         const listTabBtn = document.querySelector('.tab-btn[data-tab="list"]');
         if (listTabBtn) {
           listTabBtn.click();
@@ -997,7 +1022,7 @@ export const ScanPage = {
             label,
             dx: -0.058,
             dy: Math.round((0.360 + count * 0.050) * 1000) / 1000,
-            size: 0.032
+            size: CheckboxEngine.getCommonBoxSize(currentTemplate)
           };
           currentTemplate.customBoxes.push(newBox);
           if (calibrator) {
@@ -1650,6 +1675,11 @@ export const ScanPage = {
     if (this._currentKeyHandler) {
       document.removeEventListener('keydown', this._currentKeyHandler);
       this._currentKeyHandler = null;
+    }
+    // 承認完了状態のまま離脱した場合、または全件処理済みの場合はキューをクリア
+    if (this.pendingQueue.length > 0 && this.currentIndex >= this.pendingQueue.length) {
+      this.pendingQueue = [];
+      this.currentIndex = 0;
     }
     if (SyncManager.isBatchMode()) {
       SyncManager.endBatchMode({ flush: true, notify: true });

@@ -38,6 +38,8 @@ export class TemplateCalibrator {
       delete this.template.noChangeBox;
       delete this.template.hasChangeBox;
     }
+    // すべての選択肢のマスの大きさを共通サイズに同期
+    CheckboxEngine.syncBoxSizes(this.template);
     this.onChange = onChange;
     
     this.activeTab = this.allowStandardBoxes ? 'noChange' : (this.template.customBoxes[0]?.id || null);
@@ -106,6 +108,7 @@ export class TemplateCalibrator {
       delete this.template.noChangeBox;
       delete this.template.hasChangeBox;
     }
+    CheckboxEngine.syncBoxSizes(this.template);
     this.updateTabsUI();
     this.syncSlidersFromTemplate();
     this.drawOverlay();
@@ -264,16 +267,21 @@ export class TemplateCalibrator {
                   </div>
                 </div>
 
-                <!-- 正方形サイズ 1パラメータ -->
+                <!-- 正方形サイズ 1パラメータ（全選択肢で同期） -->
                 <div class="calib-field">
                   <div class="calib-field-header">
-                    <label class="form-label">正方形サイズ（一辺の長さ）</label>
+                    <label class="form-label" title="黒画素割合の判定基準を均一にするため、すべての選択肢で同一サイズに同期されます">
+                      マスの大きさ（全選択肢で同期）
+                    </label>
                     <span class="calib-val-badge text-mono" id="val-size">3.2%</span>
                   </div>
                   <div class="calib-input-row">
-                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="-0.001">➖</button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="-0.001" title="マスの大きさを縮小">➖</button>
                     <input type="range" id="rng-size" min="0.005" max="0.150" step="0.001" class="form-range">
-                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="0.001">➕</button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="0.001" title="マスの大きさを拡大">➕</button>
+                  </div>
+                  <div style="font-size: 0.72rem; color: var(--gray-500); margin-top: 2px;">
+                    ※ 黒画素割合の判定基準を均一化するため、すべての選択肢の大きさが自動で同期されます
                   </div>
                 </div>
 
@@ -667,12 +675,15 @@ export class TemplateCalibrator {
   addStandardBox(type) {
     if (!this.allowStandardBoxes) return;
     const def = CheckboxEngine.getDefaultTemplate();
+    const commonSize = CheckboxEngine.getCommonBoxSize(this.template);
     if (type === 'noChange') {
       this.template.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+      this.template.noChangeBox.size = commonSize;
       this.activeTab = 'noChange';
       UI.showToast('「変更なし」読取枠を追加しました', 'success');
     } else if (type === 'hasChange') {
       this.template.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+      this.template.hasChangeBox.size = commonSize;
       this.activeTab = 'hasChange';
       UI.showToast('「変更あり」読取枠を追加しました', 'success');
     }
@@ -739,9 +750,8 @@ export class TemplateCalibrator {
       if (!targetBox) return;
       targetBox.dx = parseFloat(rngDx.value);
       targetBox.dy = parseFloat(rngDy.value);
-      targetBox.size = parseFloat(rngSize.value);
-      delete targetBox.w;
-      delete targetBox.h;
+      const newSize = parseFloat(rngSize.value);
+      CheckboxEngine.syncBoxSizes(this.template, newSize);
       this.template.threshold = parseFloat(rngTh.value);
 
       this.updateValueLabels();
@@ -772,14 +782,22 @@ export class TemplateCalibrator {
         }
         const targetBox = this.getTargetBox();
         if (!targetBox) return;
-        const currentVal = target === 'size' ? (targetBox.size || targetBox.w || 0.022) : targetBox[target];
+
+        if (target === 'size') {
+          const currentVal = targetBox.size || targetBox.w || 0.032;
+          let newVal = Math.round((currentVal + delta) * 1000) / 1000;
+          newVal = Math.max(0.005, Math.min(0.150, newVal));
+          CheckboxEngine.syncBoxSizes(this.template, newVal);
+          this.syncSlidersFromTemplate();
+          this.drawOverlay();
+          if (this.onChange) this.onChange(this.template);
+          return;
+        }
+
+        const currentVal = targetBox[target];
         let newVal = Math.round((currentVal + delta) * 1000) / 1000;
         if (target === 'dx' || target === 'dy') {
           newVal = Math.max(-1.00, Math.min(1.00, newVal));
-        } else if (target === 'size') {
-          newVal = Math.max(0.005, Math.min(0.150, newVal));
-          delete targetBox.w;
-          delete targetBox.h;
         }
         targetBox[target] = newVal;
         this.syncSlidersFromTemplate();
