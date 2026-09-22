@@ -270,7 +270,7 @@ export const ScanPage = {
               ➕ 別のPDFをスキャン
             </button>
             <button id="btn-go-review" class="btn btn-secondary" style="border-color: var(--primary-400); color: var(--primary-700);">
-              🔍 スキャン照合レビューで確認
+              🔍 スキャン照合・履歴確認
             </button>
             <button id="btn-go-list" class="btn btn-primary">
               📊 提出状況一覧を見る

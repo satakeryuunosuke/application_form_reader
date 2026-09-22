@@ -1,63 +1,117 @@
 /**
- * スキャン照合レビュー画面コントローラー
- * メインPCでスキャン承認した内容と原本スキャン画像を突き合わせて確認・不一致修正を行う
+ * スキャン照合・登録履歴確認画面コントローラー
+ * 左右矢印で画像を切り替えながら登録履歴を確認し、間違っていたらその場で修正する
+ * 右ペインに「変更・承認タイムライン」を表示
  */
 
 import { DB } from '../db.js';
 import { UI } from '../utils/ui.js';
-import { FolderConnector } from '../sync/folder-connector.js';
 
 export const ReviewPage = {
   container: null,
   project: null,
   allStudents: [],
-  reviewItems: [], // スキャン承認済レコードのリスト
+  reviewItems: [], // スキャン登録済・画像保持レコードのリスト
   currentIndex: 0,
-  currentFilter: 'unreviewed', // 'all' | 'unreviewed' | 'mismatch' | 'confirmed'
   zoomLevel: 1.0,
+  keyHandler: null,
 
   async render(container, project) {
     this.container = container;
     this.project = project;
 
+    // 前回のキーリスナーを確実に解除
+    this.cleanup();
+
     // 最新データ取得
     this.allStudents = await DB.getProjectStudentsWithSubmissions(project.id);
 
-    // スキャン承認されたレコード（または画像があるレコード）を対象とする
+    // スキャン登録されたレコード（またはスキャン画像が存在する登録データ）を抽出
     this.updateReviewItems();
 
     if (this.currentIndex >= this.reviewItems.length) {
       this.currentIndex = Math.max(0, this.reviewItems.length - 1);
     }
 
+    // UI描画
     this.renderUI();
+
+    // キーボードショートカットの初期化（renderで1度だけ登録）
+    this.initKeyboardNav();
   },
 
   /**
-   * フィルタ条件に基づいてレビュー対象アイテムを抽出
+   * キーボードイベントのクリーンアップ
+   */
+  cleanup() {
+    if (this.keyHandler) {
+      document.removeEventListener('keydown', this.keyHandler);
+      this.keyHandler = null;
+    }
+  },
+
+  /**
+   * キーボードナビゲーションの初期化（単一リスナー管理）
+   */
+  initKeyboardNav() {
+    this.cleanup();
+
+    this.keyHandler = (e) => {
+      // 画面がDOM上に存在しない場合はリスナーを解除して終了
+      if (!this.container || !document.body.contains(this.container)) {
+        this.cleanup();
+        return;
+      }
+
+      // キー長押し・リピートによる連続スキップを防止
+      if (e.repeat) return;
+
+      // テキスト入力・選択中などは矢印キーでの切り替えを抑止
+      const tag = document.activeElement?.tagName;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+        return;
+      }
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.currentIndex > 0) {
+          this.currentIndex--;
+          this.renderUI();
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.currentIndex < this.reviewItems.length - 1) {
+          this.currentIndex++;
+          this.renderUI();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', this.keyHandler);
+  },
+
+  /**
+   * 対象アイテムを抽出（スキャンで登録されたもの、または画像がある登録データ）
+   * なければ承認済全件を対象にする
    */
   updateReviewItems() {
-    // 承認済レコードのうち、スキャンされたもの（または画像が存在するもの、あるいは全承認済）
-    const scanCandidates = this.allStudents.filter(s => s.status === '承認済' && (s.inputMethod === 'スキャン' || s.scanImageBlob));
-
-    if (this.currentFilter === 'all') {
-      this.reviewItems = scanCandidates;
-    } else if (this.currentFilter === 'unreviewed') {
-      this.reviewItems = scanCandidates.filter(s => !s.reviewStatus || s.reviewStatus === 'unreviewed');
-    } else if (this.currentFilter === 'mismatch') {
-      this.reviewItems = scanCandidates.filter(s => s.reviewStatus === 'mismatch');
-    } else if (this.currentFilter === 'confirmed') {
-      this.reviewItems = scanCandidates.filter(s => s.reviewStatus === 'confirmed');
+    let candidates = this.allStudents.filter(s => s.status === '承認済' && (s.inputMethod === 'スキャン' || s.scanImageBlob));
+    
+    if (candidates.length === 0) {
+      candidates = this.allStudents.filter(s => s.status === '承認済');
     }
+
+    this.reviewItems = candidates;
   },
 
   /**
    * UI全体の描画
    */
   async renderUI() {
-    const stats = await DB.getReviewStats(this.project.id);
-    const percent = stats.total > 0 ? Math.round(((stats.confirmed + stats.mismatch) / stats.total) * 100) : 0;
-    const currentItem = this.reviewItems[this.currentIndex] || null;
+    const totalCount = this.reviewItems.length;
+    const currentItem = totalCount > 0 ? this.reviewItems[this.currentIndex] : null;
     const classes = await DB.getProjectClasses(this.project.id);
 
     // 変更先クラス候補（プロジェクトクラス ＋ 実際に登録された受講クラス）
@@ -71,75 +125,67 @@ export const ReviewPage = {
 
     this.container.innerHTML = `
       <div class="view-container" style="max-width: 1400px; margin: 0 auto;">
-        <!-- ヘッダーサマリー & 進捗バー -->
+        <!-- ヘッダーサマリー -->
         <div class="card" style="margin-bottom: var(--spacing-md); padding: 14px 20px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
             <div>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--gray-900);">🔍 スキャン照合レビュー</h2>
-                <span class="badge badge-info" style="font-size: 0.75rem;">スキャン原票と承認データの突合</span>
+                <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--gray-900);">🔍 スキャン照合・登録履歴確認</h2>
+                <span class="badge badge-info" style="font-size: 0.75rem;">原票画像と変更・承認タイムライン</span>
               </div>
               <div style="font-size: 0.82rem; color: var(--gray-600); margin-top: 3px;">
-                スキャン承認済 <span class="font-bold text-mono">${stats.total}</span> 件中 
-                確認済: <span class="font-bold text-mono" style="color: var(--success-solid);">${stats.confirmed}</span> 件 | 
-                不一致: <span class="font-bold text-mono" style="color: var(--danger-solid);">${stats.mismatch}</span> 件 | 
-                未確認: <span class="font-bold text-mono" style="color: var(--warning-text);">${stats.unreviewed}</span> 件
+                キーボードの <kbd style="background: var(--gray-200); padding: 2px 6px; border-radius: 4px; font-weight: bold;">←</kbd> <kbd style="background: var(--gray-200); padding: 2px 6px; border-radius: 4px; font-weight: bold;">→</kbd> キーまたは上部ボタンで画像を1件ずつ切り替え、右側のタイムラインで履歴確認・修正ができます。
               </div>
             </div>
 
-            <!-- フィルタタブ -->
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-              <button class="btn btn-sm ${this.currentFilter === 'unreviewed' ? 'btn-primary' : 'btn-secondary'} btn-filter-rev" data-filter="unreviewed">
-                ⏳ 未確認のみ (${stats.unreviewed})
-              </button>
-              <button class="btn btn-sm ${this.currentFilter === 'mismatch' ? 'btn-danger' : 'btn-secondary'} btn-filter-rev" data-filter="mismatch">
-                ⚠️ 不一致 (${stats.mismatch})
-              </button>
-              <button class="btn btn-sm ${this.currentFilter === 'confirmed' ? 'btn-success' : 'btn-secondary'} btn-filter-rev" data-filter="confirmed">
-                ✅ 照合OK (${stats.confirmed})
-              </button>
-              <button class="btn btn-sm ${this.currentFilter === 'all' ? 'btn-primary' : 'btn-secondary'} btn-filter-rev" data-filter="all">
-                すべて (${stats.total})
-              </button>
-            </div>
-          </div>
-
-          <!-- 進捗バー -->
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="flex: 1; height: 8px; background: var(--gray-200); border-radius: 999px; overflow: hidden;">
-              <div style="width: ${percent}%; height: 100%; background: linear-gradient(90deg, #10B981, #059669); transition: width 0.3s ease;"></div>
-            </div>
-            <span class="text-mono font-bold" style="font-size: 0.85rem; color: var(--gray-700); min-width: 45px;">${percent}%</span>
+            <!-- クイックジャンプセレクター -->
+            ${totalCount > 0 ? `
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label for="sel-jump-student" style="font-size: 0.82rem; font-weight: 600; color: var(--gray-700); white-space: nowrap;">移動:</label>
+                <select id="sel-jump-student" class="form-control" style="font-size: 0.82rem; padding: 4px 8px; max-width: 260px;">
+                  ${this.reviewItems.map((item, idx) => `
+                    <option value="${idx}" ${idx === this.currentIndex ? 'selected' : ''}>
+                      ${idx + 1}. ${item.name} (${item.nichinokenId || '番号なし'}) - ${item.className || ''}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+            ` : ''}
           </div>
         </div>
 
-        ${this.reviewItems.length === 0 ? `
+        ${totalCount === 0 ? `
           <div class="card" style="text-align: center; padding: 48px 20px; color: var(--gray-500);">
-            <div style="font-size: 2.5rem; margin-bottom: 12px;">🎉</div>
+            <div style="font-size: 2.5rem; margin-bottom: 12px;">📄</div>
             <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--gray-800); margin-bottom: 6px;">
-              ${this.currentFilter === 'unreviewed' ? 'すべてのスキャンデータが確認済みです！' : '該当するデータはありません'}
+              確認対象の登録データがありません
             </h3>
-            <p style="font-size: 0.88rem;">上部のフィルターボタンから「すべて」や「不一致」を選択して確認できます。</p>
+            <p style="font-size: 0.88rem;">スキャン読み取りまたは手動入力で登録された受講確認票データが存在しません。</p>
           </div>
         ` : `
           <!-- ナビゲーションバー (前へ / 次へ) -->
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--spacing-sm); background: var(--bg-surface); padding: 8px 16px; border-radius: var(--radius-md); border: 1px solid var(--gray-200);">
-            <button id="btn-rev-prev" class="btn btn-secondary btn-sm" ${this.currentIndex === 0 ? 'disabled' : ''}>
-              ← 前へ (←キー)
+            <button id="btn-rev-prev" class="btn btn-secondary btn-sm" ${this.currentIndex === 0 ? 'disabled' : ''} style="display: flex; align-items: center; gap: 6px;">
+              <span>◀ 前のデータ (←)</span>
             </button>
-            <div style="font-size: 0.9rem; font-weight: 700; color: var(--gray-800);">
-              <span class="text-mono" style="color: var(--primary-600); font-size: 1.1rem;">${this.currentIndex + 1}</span> / ${this.reviewItems.length} 件
-              ${currentItem ? `<span style="margin-left: 12px; color: var(--gray-600); font-weight: 600;">${currentItem.name} (${currentItem.nichinokenId})</span>` : ''}
+            <div style="font-size: 0.95rem; font-weight: 700; color: var(--gray-800); text-align: center;">
+              <span class="text-mono" style="color: var(--primary-600); font-size: 1.15rem;">${this.currentIndex + 1}</span> / ${totalCount} 件
+              ${currentItem ? `
+                <span style="margin-left: 12px; color: var(--gray-800); font-weight: 700;">
+                  ${currentItem.name}
+                  <span class="badge badge-info text-mono" style="font-size: 0.82rem; margin-left: 6px;">${currentItem.nichinokenId}</span>
+                </span>
+              ` : ''}
             </div>
-            <button id="btn-rev-next" class="btn btn-secondary btn-sm" ${this.currentIndex >= this.reviewItems.length - 1 ? 'disabled' : ''}>
-              次へ (→キー) →
+            <button id="btn-rev-next" class="btn btn-secondary btn-sm" ${this.currentIndex >= totalCount - 1 ? 'disabled' : ''} style="display: flex; align-items: center; gap: 6px;">
+              <span>次のデータ (→) ▶</span>
             </button>
           </div>
 
           <!-- 2ペイン 照合レイアウト -->
-          <div class="review-split-container" style="display: grid; grid-template-columns: minmax(360px, 1.2fr) minmax(340px, 1fr); gap: 16px; align-items: start;">
+          <div class="review-split-container" style="display: grid; grid-template-columns: minmax(380px, 1.15fr) minmax(360px, 1.1fr); gap: 16px; align-items: start;">
             <!-- 左ペイン: スキャン原票画像 -->
-            <div class="card" style="padding: 12px; display: flex; flex-direction: column; min-height: 600px;">
+            <div class="card" style="padding: 12px; display: flex; flex-direction: column; min-height: 620px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid var(--gray-200); padding-bottom: 8px;">
                 <div style="font-weight: 700; font-size: 0.9rem; color: var(--gray-800); display: flex; align-items: center; gap: 6px;">
                   <span>📷 原票スキャン画像</span>
@@ -151,7 +197,7 @@ export const ReviewPage = {
                 </div>
               </div>
 
-              <div id="review-image-viewport" style="flex: 1; min-height: 520px; max-height: 72vh; overflow: auto; background: #1e293b; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; position: relative;">
+              <div id="review-image-viewport" style="flex: 1; min-height: 540px; max-height: 75vh; overflow: auto; background: #1e293b; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; position: relative;">
                 ${currentItem && currentItem.scanImageBlob ? `
                   <img id="review-scan-img" src="${currentItem.scanImageBlob}" alt="受講確認票スキャン画像" style="max-width: 100%; max-height: 100%; object-fit: contain; transform: scale(${this.zoomLevel}); transform-origin: top center; transition: transform 0.15s ease-out; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
                 ` : `
@@ -159,16 +205,16 @@ export const ReviewPage = {
                     <div style="font-size: 2.5rem; margin-bottom: 10px;">📄</div>
                     <div style="font-weight: 700; font-size: 1rem; margin-bottom: 6px;">スキャン画像がこのPCにありません</div>
                     <div style="font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
-                      スキャン画像はデータ軽量化のため、スキャンを実行したPC（メインPC）のIndexedDBにのみ保存されています。<br>
-                      画像の目視確認・照合はメインPCで行ってください。
+                      スキャン画像はデータ軽量化のため、スキャンを実行したPCのIndexedDBに保存されています。<br>
+                      登録されたテキストデータおよび履歴は右ペインのタイムラインでご確認いただけます。
                     </div>
                   </div>
                 `}
               </div>
             </div>
 
-            <!-- 右ペイン: 承認済データ & 照合判定 & その場で修正 -->
-            <div class="card" style="padding: 16px;">
+            <!-- 右ペイン: 変更・承認タイムライン ＆ 修正フォーム -->
+            <div class="card" style="padding: 16px; max-height: 80vh; overflow-y: auto;">
               ${currentItem ? this.renderRightPaneHtml(currentItem, classOptions) : ''}
             </div>
           </div>
@@ -180,212 +226,274 @@ export const ReviewPage = {
   },
 
   /**
-   * 右ペインのHTML（生徒情報、承認内容、照合アクション、修正フォーム）
+   * 右ペインのHTML（生徒情報、変更・承認タイムライン、最新内容の編集フォーム）
    */
   renderRightPaneHtml(item, classOptions) {
-    const isConfirmed = item.reviewStatus === 'confirmed';
-    const isMismatch = item.reviewStatus === 'mismatch';
+    const isSelectionMode = (this.project.projectType === 'selection');
     const hasChange = item.hasChange;
+
+    // 履歴一覧の構築（新しい順：降順）
+    let historyList = Array.isArray(item.history) ? [...item.history] : [];
+    if (historyList.length === 0 && item.status === '承認済') {
+      historyList.push({
+        id: 'hist_init_' + (item.submissionId || item.studentId),
+        timestamp: item.approvedAt || item.submittedAt || new Date().toISOString(),
+        approvedAt: item.approvedAt,
+        inputMethod: item.inputMethod || 'スキャン',
+        approvedBy: item.approvedBy || '',
+        status: item.status,
+        hasChange: item.hasChange,
+        enrollmentClass: item.enrollmentClass || item.className,
+        enrollmentCourse: item.enrollmentCourse || item.course || '4科',
+        remarks: item.remarks || '',
+        customChecks: item.customChecks || {},
+        scanImageBlob: item.scanImageBlob || null
+      });
+    }
+
+    // 時系列降順ソート
+    historyList.sort((a, b) => new Date(b.timestamp || b.approvedAt || 0) - new Date(a.timestamp || a.approvedAt || 0));
+
+    const methodIconMap = {
+      'スキャン': '📷',
+      '電話': '📞',
+      '口頭': '🗣️',
+      'メール・連絡帳': '✉️',
+      'その他': '📝'
+    };
 
     return `
       <div>
         <!-- 生徒ヘッダー -->
-        <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: var(--spacing-md);">
+        <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: var(--spacing-sm);">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-            <div style="font-size: 1.15rem; font-weight: 800; color: var(--gray-900);">
+            <div style="font-size: 1.18rem; font-weight: 800; color: var(--gray-900);">
               ${item.name}
             </div>
-            <span class="badge badge-info text-mono font-bold" style="font-size: 0.9rem;">${item.nichinokenId}</span>
+            <span class="badge badge-info text-mono font-bold" style="font-size: 0.92rem;">${item.nichinokenId}</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--gray-600);">
-            <span>所属: <strong class="badge badge-purple" style="font-size: 0.8rem;">${item.className}</strong> (${item.course || '4科'})</span>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--gray-600); flex-wrap: wrap;">
+            <span>所属クラス: <strong class="badge badge-purple" style="font-size: 0.8rem;">${item.className}</strong></span>
+            <span>コース: <strong>${item.course || '4科'}</strong></span>
             ${item.nameKana ? `<span>カナ: ${item.nameKana}</span>` : ''}
           </div>
         </div>
 
-        <!-- 現在の承認内容カード -->
-        <div style="background: #ffffff; border: 2px solid ${isMismatch ? 'var(--danger-solid)' : (isConfirmed ? 'var(--success-solid)' : 'var(--primary-300)')}; border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-size: 0.82rem; font-weight: 700; color: var(--gray-700);">現在登録されている承認データ:</span>
-            <span class="badge ${isMismatch ? 'badge-danger' : (isConfirmed ? 'badge-success' : 'badge-warning')}" style="font-size: 0.78rem; font-weight: 700;">
-              ${isMismatch ? '⚠️ 不一致あり' : (isConfirmed ? '✅ 照合OK' : '⏳ 未確認')}
-            </span>
+        <!-- タイムラインセクションタイトル -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1.5px solid var(--gray-200);">
+          <div style="font-size: 0.95rem; font-weight: 800; color: var(--gray-800); display: flex; align-items: center; gap: 6px;">
+            <span>🕒 変更・承認タイムライン</span>
+            <span class="badge badge-info" style="font-size: 0.75rem;">計 ${historyList.length} 件</span>
           </div>
-
-          <div style="display: grid; gap: 6px; font-size: 0.88rem;">
-            ${isSelectionMode ? `
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span class="text-muted">申込講座数:</span>
-                <span class="badge badge-purple font-bold" style="font-size: 0.88rem; padding: 2px 8px;">
-                  🎯 ${Object.values(item.customChecks || {}).filter(c => c.isChecked).length} 講座申込
-                </span>
-              </div>
-            ` : `
-              <div style="display: flex; justify-content: space-between;">
-                <span class="text-muted">受講判定:</span>
-                <span class="badge ${hasChange ? 'badge-warning' : 'badge-success'}" style="font-weight: 700;">
-                  ${hasChange ? '変更あり' : '変更なし'}
-                </span>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span class="text-muted">受講クラス:</span>
-                <span class="font-bold text-mono" style="font-size: 0.95rem; color: ${item.enrollmentClass === '非受講' ? 'var(--purple-solid)' : 'var(--primary-700)'};">
-                  ${item.enrollmentClass || '-'} ${item.enrollmentCourse && item.enrollmentCourse !== '非受講' ? `(${item.enrollmentCourse})` : ''}
-                </span>
-              </div>
-            `}
-            <div style="display: flex; justify-content: space-between;">
-              <span class="text-muted">登録担当者:</span>
-              <span><strong>${item.approvedBy || '-'}</strong> (${item.inputMethod || 'スキャン'})</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span class="text-muted">登録日時:</span>
-              <span class="text-mono" style="font-size: 0.8rem;">${UI.formatDate(item.approvedAt || item.submittedAt)}</span>
-            </div>
-            ${item.remarks ? `
-              <div style="margin-top: 4px; padding: 6px 10px; background: var(--gray-100); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--gray-700);">
-                備考: ${item.remarks}
-              </div>
-            ` : ''}
-
-            <!-- 志望校別講座・追加チェック項目表示 -->
-            ${Object.keys(item.customChecks || {}).length > 0 ? `
-              <div style="margin-top: 6px; padding: 6px 10px; background: rgba(139, 92, 246, 0.08); border: 1px solid #ddd6fe; border-radius: var(--radius-sm); font-size: 0.8rem;">
-                <div style="font-weight: 700; color: #6d28d9; margin-bottom: 4px;">🎯 ${isSelectionMode ? '申込希望講座一覧:' : '追加チェック項目:'}</div>
-                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                  ${Object.values(item.customChecks).map(c => `
-                    <span class="badge ${c.isChecked ? 'badge-purple font-bold' : 'badge-gray'}" style="${c.isChecked ? 'background:#8b5cf6; color:#fff;' : ''} font-size: 0.76rem;">
-                      ${c.isChecked ? '✅' : '⬜'} ${c.label}
-                    </span>
-                  `).join('')}
-                </div>
-              </div>
-            ` : ''}
-          </div>
+          <span style="font-size: 0.78rem; color: var(--gray-500);">最新の内容をその場で修正・保存可能</span>
         </div>
 
-        <!-- 照合アクションボタン群 -->
-        <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
-          <div style="font-weight: 700; font-size: 0.88rem; color: var(--gray-800); margin-bottom: 8px;">
-            📋 照合結果の判定
-          </div>
-          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-            <button id="btn-action-confirm" class="btn btn-success" style="flex: 1; padding: 10px; font-size: 0.95rem;">
-              ✅ 照合OK (一致)
-            </button>
-            <button id="btn-action-mismatch" class="btn btn-danger" style="flex: 1; padding: 10px; font-size: 0.95rem;">
-              ⚠️ 不一致あり
-            </button>
-          </div>
+        <!-- 変更・承認タイムライン本体 -->
+        <div class="history-timeline" style="margin-top: 8px;">
+          ${historyList.map((hist, idx) => {
+            const isLatest = (idx === 0);
+            const icon = methodIconMap[hist.inputMethod] || '📝';
 
-          <!-- 不一致メモ入力 -->
-          <div id="mismatch-note-wrap" style="display: ${isMismatch ? 'block' : 'none'};">
-            <label class="form-label" style="font-size: 0.78rem; margin-bottom: 2px;">不一致・相違の内容メモ</label>
-            <div style="display: flex; gap: 6px;">
-              <input type="text" id="inp-mismatch-note" class="form-control" placeholder="例: チェック漏れ、講座相違、等" value="${item.reviewNote || ''}" style="font-size: 0.85rem;">
-              <button id="btn-save-mismatch-note" class="btn btn-secondary btn-sm" style="white-space: nowrap;">保存</button>
-            </div>
-          </div>
+            if (isLatest) {
+              // 最新エントリ: 修正フォームを内包した確定カード
+              return `
+                <div class="history-item is-latest">
+                  <div class="history-dot">${icon}</div>
+                  <div class="history-card" style="border: 1.5px solid var(--primary-400); box-shadow: var(--shadow-sm);">
+                    <div class="history-card-header">
+                      <div class="history-meta-left">
+                        <span class="badge badge-primary font-bold">${hist.inputMethod || item.inputMethod || 'スキャン'}</span>
+                        <span class="history-time" style="font-weight: 600;">${UI.formatDate(hist.timestamp || hist.approvedAt || item.approvedAt || item.submittedAt)}</span>
+                        <span class="badge badge-success" style="font-size: 0.72rem; font-weight: bold;">最新の確定内容</span>
+                      </div>
+                      <div class="history-staff">
+                        担当: <strong style="color: var(--gray-800);">${hist.approvedBy || item.approvedBy || '-'}</strong>
+                      </div>
+                    </div>
+
+                    <!-- 登録内容 ＆ 修正フォーム -->
+                    <div style="margin-top: 10px; display: grid; gap: 10px;">
+                      <div style="font-size: 0.8rem; font-weight: 700; color: var(--primary-700); display: flex; align-items: center; gap: 4px;">
+                        <span>✏️ 内容の確認・修正（画像と相違があれば変更して保存）:</span>
+                      </div>
+
+                      ${isSelectionMode ? `
+                        <!-- 選択式講座プロジェクト用UI -->
+                        <div style="background: rgba(139, 92, 246, 0.06); border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 10px 12px;">
+                          <div style="font-size: 0.82rem; font-weight: bold; color: #6d28d9; margin-bottom: 8px;">
+                            🎯 申込希望講座の確認・修正
+                          </div>
+                          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; padding-right: 4px;">
+                            ${((this.project.scanTemplate?.customBoxes || []).length > 0
+                                ? this.project.scanTemplate.customBoxes
+                                : Object.values(item.customChecks || {})
+                              ).map(box => {
+                                const cur = item.customChecks?.[box.id];
+                                const isChk = cur ? cur.isChecked : false;
+                                return `
+                                  <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(139,92,246,0.1)'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''} style="width: 16px; height: 16px;">
+                                    <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
+                                  </label>
+                                `;
+                              }).join('')}
+                          </div>
+                        </div>
+                      ` : `
+                        <!-- 通常受講確認票用UI -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                          <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">受講選択判定</label>
+                          <div style="display: flex; gap: 16px;">
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: ${!hasChange ? 'bold' : 'normal'};">
+                              <input type="radio" name="edit-has-change" value="0" ${!hasChange ? 'checked' : ''}> 変更なし
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: ${hasChange ? 'bold' : 'normal'};">
+                              <input type="radio" name="edit-has-change" value="1" ${hasChange ? 'checked' : ''}> 変更あり
+                            </label>
+                          </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">受講クラス</label>
+                            <select id="sel-edit-class" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
+                              <option value="${item.className}">所属: ${item.className}</option>
+                              <option value="非受講" ${item.enrollmentClass === '非受講' ? 'selected' : ''}>非受講</option>
+                              ${classOptions.filter(c => c !== item.className).map(c => `
+                                <option value="${c}" ${item.enrollmentClass === c ? 'selected' : ''}>${c}</option>
+                              `).join('')}
+                            </select>
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">受講科目</label>
+                            <select id="sel-edit-course" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
+                              <option value="4科" ${item.enrollmentCourse === '4科' ? 'selected' : ''}>4科</option>
+                              <option value="2科" ${item.enrollmentCourse === '2科' ? 'selected' : ''}>2科</option>
+                              <option value="非受講" ${item.enrollmentCourse === '非受講' ? 'selected' : ''}>非受講</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <!-- 志望校別・追加チェック項目がある場合 -->
+                        ${((this.project.scanTemplate?.customBoxes || []).length > 0 || Object.keys(item.customChecks || {}).length > 0) ? `
+                          <div style="background: rgba(139, 92, 246, 0.05); border: 1px solid #c4b5fd; border-radius: var(--radius-sm); padding: 8px 10px;">
+                            <div style="font-size: 0.78rem; font-weight: bold; color: #6d28d9; margin-bottom: 4px;">追加チェック項目:</div>
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                              ${((this.project.scanTemplate?.customBoxes || []).length > 0
+                                  ? this.project.scanTemplate.customBoxes
+                                  : Object.values(item.customChecks || {})
+                                ).map(box => {
+                                  const cur = item.customChecks?.[box.id];
+                                  const isChk = cur ? cur.isChecked : false;
+                                  return `
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
+                                      <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''}>
+                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'};">${box.label}</span>
+                                    </label>
+                                  `;
+                                }).join('')}
+                            </div>
+                          </div>
+                        ` : ''}
+                      `}
+
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">備考・メモ</label>
+                        <input type="text" id="inp-edit-remarks" class="form-control" placeholder="修正理由や特記事項など" value="${item.remarks || ''}" style="font-size: 0.85rem;">
+                      </div>
+
+                      <div style="margin-top: 4px;">
+                        <button id="btn-save-edit" class="btn btn-primary" style="width: 100%; padding: 9px; font-size: 0.92rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                          <span>💾 修正内容を保存</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `;
+            } else {
+              // 過去の履歴カード
+              let enrollmentDisp = '<span class="text-muted">-</span>';
+              const histCourse = hist.enrollmentCourse || (hist.enrollmentClass === '非受講' ? '非受講' : (item.course || '4科'));
+              if (hist.enrollmentClass === '非受講' || histCourse === '非受講') {
+                enrollmentDisp = '<strong style="color: var(--danger-solid);">🚫 非受講</strong>';
+              } else if (hist.hasChange) {
+                enrollmentDisp = `<span class="badge badge-warning font-bold">🔄 ${hist.enrollmentClass} (${histCourse})</span>`;
+              } else {
+                enrollmentDisp = `<span class="badge badge-success font-bold">✅ ${hist.enrollmentClass || item.className} (${histCourse})</span>`;
+              }
+
+              return `
+                <div class="history-item">
+                  <div class="history-dot" style="border-color: var(--gray-400); color: var(--gray-600);">${icon}</div>
+                  <div class="history-card" style="background: var(--gray-50); border-color: var(--gray-200);">
+                    <div class="history-card-header">
+                      <div class="history-meta-left">
+                        <span class="badge badge-gray">${hist.inputMethod || '登録'}</span>
+                        <span class="history-time" style="font-size: 0.78rem; color: var(--gray-500);">${UI.formatDate(hist.timestamp || hist.approvedAt)}</span>
+                      </div>
+                      <div class="history-staff" style="font-size: 0.78rem; color: var(--gray-600);">
+                        担当: <strong>${hist.approvedBy || '-'}</strong>
+                      </div>
+                    </div>
+
+                    <div class="history-details-grid" style="grid-template-columns: 1fr; gap: 6px;">
+                      <div class="history-field">
+                        <div class="history-field-label" style="font-size: 0.72rem;">受講内容</div>
+                        <div class="history-field-value" style="font-size: 0.85rem;">${enrollmentDisp}</div>
+                      </div>
+                    </div>
+
+                    ${hist.customChecks && Object.values(hist.customChecks).some(c => c.isChecked) ? `
+                      <div style="margin-top: 6px; padding: 4px 8px; background: rgba(139, 92, 246, 0.05); border: 1px solid #ddd6fe; border-radius: var(--radius-sm); font-size: 0.75rem;">
+                        <div style="font-size: 0.7rem; font-weight: bold; color: #6d28d9; margin-bottom: 2px;">志望校別講座・追加チェック:</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                          ${Object.values(hist.customChecks).filter(c => c.isChecked).map(c => `
+                            <span class="badge badge-purple" style="font-size: 0.72rem;">✅ ${c.label}</span>
+                          `).join('')}
+                        </div>
+                      </div>
+                    ` : ''}
+
+                    ${hist.remarks ? `
+                      <div class="history-remarks-box" style="margin-top: 6px; padding: 4px 8px; font-size: 0.78rem;">
+                        <span style="font-weight: bold; color: var(--gray-600);">特記事項:</span> ${hist.remarks}
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              `;
+            }
+          }).join('')}
         </div>
-
-        <!-- その場でデータ修正アコーディオン -->
-        <details class="card" style="padding: 12px; background: #ffffff; border: 1px solid var(--gray-300);">
-          <summary style="font-weight: 700; font-size: 0.88rem; color: var(--primary-700); cursor: pointer; user-select: none;">
-            ✏️ 画像と相違がある場合、その場でデータを修正する
-          </summary>
-          <div style="margin-top: 12px; display: grid; gap: 10px;">
-            ${isSelectionMode ? '' : `
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">受講選択</label>
-                <div style="display: flex; gap: 12px;">
-                  <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer;">
-                    <input type="radio" name="edit-has-change" value="0" ${!hasChange ? 'checked' : ''}> 変更なし
-                  </label>
-                  <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer;">
-                    <input type="radio" name="edit-has-change" value="1" ${hasChange ? 'checked' : ''}> 変更あり
-                  </label>
-                </div>
-              </div>
-
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div class="form-group" style="margin-bottom: 0;">
-                  <label class="form-label" style="font-size: 0.78rem;">受講クラス</label>
-                  <select id="sel-edit-class" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
-                    <option value="${item.className}">所属: ${item.className}</option>
-                    <option value="非受講" ${item.enrollmentClass === '非受講' ? 'selected' : ''}>非受講</option>
-                    ${classOptions.filter(c => c !== item.className).map(c => `
-                      <option value="${c}" ${item.enrollmentClass === c ? 'selected' : ''}>${c}</option>
-                    `).join('')}
-                  </select>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                  <label class="form-label" style="font-size: 0.78rem;">受講科目</label>
-                  <select id="sel-edit-course" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
-                    <option value="4科" ${item.enrollmentCourse === '4科' ? 'selected' : ''}>4科</option>
-                    <option value="2科" ${item.enrollmentCourse === '2科' ? 'selected' : ''}>2科</option>
-                    <option value="非受講" ${item.enrollmentCourse === '非受講' ? 'selected' : ''}>非受講</option>
-                  </select>
-                </div>
-              </div>
-            `}
-
-            <!-- 講座・カスタムチェックボックスの修正UI -->
-            ${((this.project.scanTemplate?.customBoxes || []).length > 0 || Object.keys(item.customChecks || {}).length > 0) ? `
-              <div style="background: rgba(139, 92, 246, 0.05); border: 1px solid #c4b5fd; border-radius: var(--radius-sm); padding: 8px 10px;">
-                <div style="font-size: 0.78rem; font-weight: bold; color: #6d28d9; margin-bottom: 4px;">🎯 ${isSelectionMode ? '申込希望講座の修正:' : '追加チェック項目:'}</div>
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  ${((this.project.scanTemplate?.customBoxes || []).length > 0
-                      ? this.project.scanTemplate.customBoxes
-                      : Object.values(item.customChecks || {})
-                    ).map(box => {
-                      const cur = item.customChecks?.[box.id];
-                      const isChk = cur ? cur.isChecked : false;
-                      return `
-                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
-                          <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''}>
-                          <span style="font-weight: ${isChk ? 'bold' : 'normal'};">${box.label}</span>
-                        </label>
-                      `;
-                    }).join('')}
-                </div>
-              </div>
-            ` : ''}
-
-            <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" style="font-size: 0.78rem;">備考・修正理由</label>
-              <input type="text" id="inp-edit-remarks" class="form-control" placeholder="照合レビューによる修正、等" value="${item.remarks || ''}" style="font-size: 0.85rem;">
-            </div>
-
-            <button id="btn-save-inline-edit" class="btn btn-primary btn-sm" style="width: 100%; margin-top: 4px;">
-              💾 承認データを修正して再保存
-            </button>
-          </div>
-        </details>
       </div>
     `;
   },
 
   /**
-   * イベントハンドラ設定
+   * イベントハンドラ設定（画面内ボタン等のバインド）
    */
   bindEvents(currentItem) {
-    // フィルタータブ切り替え
-    this.container.querySelectorAll('.btn-filter-rev').forEach(btn => {
-      btn.onclick = () => {
-        this.currentFilter = btn.dataset.filter;
-        this.currentIndex = 0;
-        this.render(this.container, this.project);
+    // クイックジャンプセレクター
+    const jumpSelect = this.container.querySelector('#sel-jump-student');
+    if (jumpSelect) {
+      jumpSelect.onchange = () => {
+        const targetIdx = parseInt(jumpSelect.value, 10);
+        if (!isNaN(targetIdx) && targetIdx >= 0 && targetIdx < this.reviewItems.length) {
+          this.currentIndex = targetIdx;
+          this.renderUI();
+        }
       };
-    });
+    }
 
-    // 前へ / 次へ
+    // 前へ / 次へ ボタン
     const prevBtn = this.container.querySelector('#btn-rev-prev');
     const nextBtn = this.container.querySelector('#btn-rev-next');
     if (prevBtn) {
       prevBtn.onclick = () => {
         if (this.currentIndex > 0) {
           this.currentIndex--;
-          this.render(this.container, this.project);
+          this.renderUI();
         }
       };
     }
@@ -393,7 +501,7 @@ export const ReviewPage = {
       nextBtn.onclick = () => {
         if (this.currentIndex < this.reviewItems.length - 1) {
           this.currentIndex++;
-          this.render(this.container, this.project);
+          this.renderUI();
         }
       };
     }
@@ -425,83 +533,10 @@ export const ReviewPage = {
 
     if (!currentItem) return;
 
-    // 照合OK (confirmed)
-    const confirmBtn = this.container.querySelector('#btn-action-confirm');
-    if (confirmBtn) {
-      confirmBtn.onclick = async () => {
-        UI.setButtonLoading(confirmBtn, true, '確認中...');
-        try {
-          await DB.updateReviewStatus(currentItem.submissionId, {
-            reviewStatus: 'confirmed',
-            reviewedBy: currentItem.approvedBy || '',
-            reviewNote: ''
-          });
-          UI.showToast(`${currentItem.name} 様: 照合OKで確認しました`, 'success', 1500);
-
-          // 自動で次の未確認へ進むか再描画
-          this.allStudents = await DB.getProjectStudentsWithSubmissions(this.project.id);
-          this.updateReviewItems();
-          if (this.currentIndex >= this.reviewItems.length) {
-            this.currentIndex = Math.max(0, this.reviewItems.length - 1);
-          }
-          this.renderUI();
-        } catch (err) {
-          UI.showToast(`保存エラー: ${err.message}`, 'error');
-          UI.setButtonLoading(confirmBtn, false);
-        }
-      };
-    }
-
-    // 不一致あり (mismatch)
-    const mismatchBtn = this.container.querySelector('#btn-action-mismatch');
-    const mismatchWrap = this.container.querySelector('#mismatch-note-wrap');
-    if (mismatchBtn) {
-      mismatchBtn.onclick = async () => {
-        UI.setButtonLoading(mismatchBtn, true, '処理中...');
-        if (mismatchWrap) mismatchWrap.style.display = 'block';
-        try {
-          await DB.updateReviewStatus(currentItem.submissionId, {
-            reviewStatus: 'mismatch',
-            reviewedBy: currentItem.approvedBy || '',
-            reviewNote: currentItem.reviewNote || ''
-          });
-          UI.showToast(`${currentItem.name} 様を「不一致あり」に設定しました`, 'warning', 1800);
-          this.allStudents = await DB.getProjectStudentsWithSubmissions(this.project.id);
-          this.updateReviewItems();
-          this.renderUI();
-        } catch (err) {
-          UI.showToast(`保存エラー: ${err.message}`, 'error');
-          UI.setButtonLoading(mismatchBtn, false);
-        }
-      };
-    }
-
-    // 不一致メモ保存
-    const saveNoteBtn = this.container.querySelector('#btn-save-mismatch-note');
-    const noteInput = this.container.querySelector('#inp-mismatch-note');
-    if (saveNoteBtn && noteInput) {
-      saveNoteBtn.onclick = async () => {
-        const note = noteInput.value.trim();
-        UI.setButtonLoading(saveNoteBtn, true, '保存中...');
-        try {
-          await DB.updateReviewStatus(currentItem.submissionId, {
-            reviewStatus: 'mismatch',
-            reviewedBy: currentItem.approvedBy || '',
-            reviewNote: note
-          });
-          UI.showToast('不一致メモを保存しました', 'info');
-        } catch (err) {
-          UI.showToast(`メモ保存エラー: ${err.message}`, 'error');
-        } finally {
-          UI.setButtonLoading(saveNoteBtn, false);
-        }
-      };
-    }
-
-    // インライン修正・再保存
-    const saveInlineBtn = this.container.querySelector('#btn-save-inline-edit');
-    if (saveInlineBtn) {
-      saveInlineBtn.onclick = async () => {
+    // 修正内容の保存
+    const saveBtn = this.container.querySelector('#btn-save-edit');
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
         const isSelectionMode = (this.project.projectType === 'selection');
         const hasChangeRadio = this.container.querySelector('input[name="edit-has-change"]:checked');
         let hasChange = hasChangeRadio?.value === '1';
@@ -528,7 +563,7 @@ export const ReviewPage = {
           enrollmentCourse = '-';
         }
 
-        UI.setButtonLoading(saveInlineBtn, true, '保存中...');
+        UI.setButtonLoading(saveBtn, true, '保存中...');
         try {
           await DB.saveSubmission(currentItem.submissionId, {
             status: '承認済',
@@ -537,43 +572,22 @@ export const ReviewPage = {
             enrollmentCourse: enrollmentClass === '非受講' ? '非受講' : enrollmentCourse,
             remarks,
             customChecks,
-            reviewStatus: 'confirmed', // 修正後は確認済みに設定
             reviewedAt: new Date().toISOString(),
             reviewedBy: currentItem.approvedBy || '',
-            reviewNote: 'レビュー時に修正'
+            reviewNote: remarks
           });
 
-          UI.showToast(`${currentItem.name} 様の承認データを修正・保存しました`, 'success');
+          UI.showToast(`${currentItem.name} 様の登録内容を修正・保存しました`, 'success');
+          
+          // 最新データを再取得して表示を更新（タイムラインも最新化）
           this.allStudents = await DB.getProjectStudentsWithSubmissions(this.project.id);
           this.updateReviewItems();
           this.renderUI();
         } catch (err) {
           UI.showToast(`修正保存エラー: ${err.message}`, 'error');
-          UI.setButtonLoading(saveInlineBtn, false);
+          UI.setButtonLoading(saveBtn, false);
         }
       };
     }
-
-    // キーボードショートカット (左右キーで移動)
-    const keyHandler = (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
-        return;
-      }
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        if (this.currentIndex > 0) {
-          this.currentIndex--;
-          this.render(this.container, this.project);
-        }
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        if (this.currentIndex < this.reviewItems.length - 1) {
-          this.currentIndex++;
-          this.render(this.container, this.project);
-        }
-      }
-    };
-
-    document.addEventListener('keydown', keyHandler, { once: true });
   }
 };

@@ -450,6 +450,9 @@ export const ProjectPage = {
     if (typeof ScanPage.cleanup === 'function') {
       ScanPage.cleanup();
     }
+    if (typeof ReviewPage.cleanup === 'function') {
+      ReviewPage.cleanup();
+    }
 
     this.updateHeaderStats();
     content.innerHTML = '';
@@ -501,7 +504,7 @@ export const ProjectPage = {
             </button>
           </div>
           <div style="font-size: 0.85rem; color: var(--gray-600);">
-            🔍 スキャン照合・原本確認
+            🔍 スキャン照合・登録履歴確認
           </div>
         </div>
         <div id="review-page-inner"></div>
@@ -670,27 +673,27 @@ export const ProjectPage = {
               </div>
             </div>
 
-            <!-- スキャン照合・確認 -->
+            <!-- スキャン照合・履歴確認 -->
             <div class="dashboard-card">
               <div>
                 <div class="dashboard-card-header">
                   <div class="dashboard-card-icon">🔍</div>
                   <div>
-                    <h4 class="dashboard-card-title">スキャン照合・確認</h4>
-                    <span class="badge ${reviewStats.unreviewed > 0 ? 'badge-warning' : 'badge-success'}">
-                      ${reviewStats.unreviewed > 0 ? `未確認 ${reviewStats.unreviewed}件` : '全件確認済'}
+                    <h4 class="dashboard-card-title">スキャン照合・履歴確認</h4>
+                    <span class="badge badge-info">
+                      ${reviewStats.total > 0 ? `スキャン登録 ${reviewStats.total}件` : '登録データなし'}
                     </span>
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
                   ${isSelectionMode 
-                    ? '読み取った申込書の原本画像と講座認識結果を並べて照合し、希望講座のチェック漏れや差異がないか確認・修正します。' 
-                    : '読み取った受講確認票の原本画像と自動認識結果を並べて照合し、チェックの誤りや未確認の差異がないか確認・修正します。'}
+                    ? '読み取った申込書の原本画像と登録内容を並べて照合し、希望講座のチェック漏れや差異がないか左右矢印キーで切り替えながら確認・修正します。' 
+                    : '読み取った受講確認票の原本画像と登録内容を並べて照合し、左右矢印キーで切り替えながら誤りがないか確認・修正します。'}
                 </p>
               </div>
               <div>
                 <button id="btn-dash-open-review" class="btn btn-secondary btn-block">
-                  🔍 照合画面を開く
+                  🔍 照合・確認画面を開く
                 </button>
               </div>
             </div>
