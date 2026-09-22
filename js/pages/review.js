@@ -324,19 +324,32 @@ export const ReviewPage = {
                             🎯 申込希望講座の確認・修正
                           </div>
                           <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; padding-right: 4px;">
-                            ${((this.project.scanTemplate?.customBoxes || []).length > 0
-                                ? this.project.scanTemplate.customBoxes
-                                : Object.values(item.customChecks || {})
-                              ).map(box => {
+                            ${(() => {
+                              let boxes = (this.project.scanTemplate?.customBoxes || []).length > 0
+                                ? [...this.project.scanTemplate.customBoxes]
+                                : Object.values(item.customChecks || []);
+                              if (isSelectionMode) {
+                                boxes.sort((a, b) => {
+                                  const isA = !!(item.customChecks?.[a.id]?.isChecked);
+                                  const isB = !!(item.customChecks?.[b.id]?.isChecked);
+                                  if (isA !== isB) return isB ? 1 : -1;
+                                  return 0;
+                                });
+                              }
+                              return boxes.map(box => {
                                 const cur = item.customChecks?.[box.id];
                                 const isChk = cur ? cur.isChecked : false;
                                 return `
-                                  <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(139,92,246,0.1)'" onmouseout="this.style.background='transparent'">
-                                    <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''} style="width: 16px; height: 16px;">
-                                    <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
+                                  <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; background: ${isChk ? '#f5f3ff' : 'transparent'}; border: 1px solid ${isChk ? '#c4b5fd' : 'transparent'}; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='${isChk ? '#f5f3ff' : 'transparent'}'">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                      <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''} style="width: 16px; height: 16px;">
+                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
+                                    </div>
+                                    ${isChk ? '<span class="badge badge-purple" style="font-size: 0.68rem; padding: 2px 6px;">✅ 選択中</span>' : '<span class="badge badge-gray" style="font-size: 0.68rem; padding: 2px 6px;">⬜ 未選択</span>'}
                                   </label>
                                 `;
-                              }).join('')}
+                              }).join('');
+                            })()}
                           </div>
                         </div>
                       ` : `

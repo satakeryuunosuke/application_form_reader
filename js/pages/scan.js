@@ -465,6 +465,7 @@ export const ScanPage = {
                   <div style="display: flex; align-items: center; gap: 6px;">
                     <button type="button" id="btn-scan-select-all" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; border: 1px solid var(--gray-300);">全選択</button>
                     <button type="button" id="btn-scan-select-none" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; border: 1px solid var(--gray-300);">全解除</button>
+                    <button type="button" id="btn-scan-sort-selected" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; padding: 3px 8px; border: 1px solid #c4b5fd; color: #6d28d9; background: rgba(139, 92, 246, 0.08);" title="選択した講座をリスト上部に再整列">🔝 選択中を上へ</button>
                   </div>
                   <div id="scan-quick-method-filters" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
                 </div>
@@ -519,26 +520,37 @@ export const ScanPage = {
                     <span>🎯 ${isSelectionMode ? '希望講座一覧（クリックで選択・解除）' : '志望校別対策講座・追加チェック項目'}</span>
                     <span style="font-size: 0.72rem; color: var(--gray-500); font-weight: normal;">クリックで手動変更可能</span>
                   </div>
-                  <div style="display: flex; flex-direction: column; gap: 6px; ${isSelectionMode ? 'max-height: 240px; overflow-y: auto;' : ''}">
-                    ${(this.project.scanTemplate.customBoxes).map(box => {
-                      const det = currentItem.checkResult?.customChecks?.[box.id];
-                      const isChecked = det ? det.isChecked : false;
-                      const pct = det ? Math.round(det.darkRatio * 100) : 0;
-                      return `
-                        <label class="custom-box-check-row" style="display: flex; align-items: center; justify-content: space-between; background: ${isChecked ? '#f5f3ff' : '#fff'}; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#c4b5fd' : 'var(--gray-200)'}; cursor: pointer; user-select: none;">
-                          <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" class="chk-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChecked ? 'checked' : ''}>
-                            <span style="font-weight: 700; font-size: 0.84rem; color: ${isChecked ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
-                          </div>
-                          <div style="display: flex; align-items: center; gap: 6px;">
-                            <span class="badge ${isChecked ? 'badge-purple' : 'badge-gray'}" style="font-size: 0.72rem;">
-                              ${isChecked ? '✅ マーク検出' : '⬜ 未選択'}
-                            </span>
-                            <span class="text-mono" style="font-size: 0.72rem; color: var(--gray-500);">黒画素: ${pct}%</span>
-                          </div>
-                        </label>
-                      `;
-                    }).join('')}
+                  <div id="scan-custom-boxes-container" style="display: flex; flex-direction: column; gap: 6px; ${isSelectionMode ? 'max-height: 240px; overflow-y: auto;' : ''}">
+                    ${(() => {
+                      let boxes = [...(this.project.scanTemplate.customBoxes || [])];
+                      if (isSelectionMode) {
+                        boxes.sort((a, b) => {
+                          const isA = !!(currentItem.checkResult?.customChecks?.[a.id]?.isChecked);
+                          const isB = !!(currentItem.checkResult?.customChecks?.[b.id]?.isChecked);
+                          if (isA !== isB) return isB ? 1 : -1;
+                          return 0;
+                        });
+                      }
+                      return boxes.map(box => {
+                        const det = currentItem.checkResult?.customChecks?.[box.id];
+                        const isChecked = det ? det.isChecked : false;
+                        const pct = det ? Math.round(det.darkRatio * 100) : 0;
+                        return `
+                          <label class="custom-box-check-row" data-id="${box.id}" style="display: flex; align-items: center; justify-content: space-between; background: ${isChecked ? '#f5f3ff' : '#fff'}; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#c4b5fd' : 'var(--gray-200)'}; cursor: pointer; user-select: none;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <input type="checkbox" class="chk-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChecked ? 'checked' : ''}>
+                              <span style="font-weight: 700; font-size: 0.84rem; color: ${isChecked ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                              <span class="badge ${isChecked ? 'badge-purple' : 'badge-gray'}" style="font-size: 0.72rem;">
+                                ${isChecked ? '✅ マーク検出' : '⬜ 未選択'}
+                              </span>
+                              <span class="text-mono" style="font-size: 0.72rem; color: var(--gray-500);">黒画素: ${pct}%</span>
+                            </div>
+                          </label>
+                        `;
+                      }).join('');
+                    })()}
                   </div>
                 </div>
               ` : (isSelectionMode ? `
@@ -1165,6 +1177,21 @@ export const ScanPage = {
     // 講座選択モード専用: クイック選択ツールバー
     const btnSelectAll = this.container.querySelector('#btn-scan-select-all');
     const btnSelectNone = this.container.querySelector('#btn-scan-select-none');
+    const btnSortSelected = this.container.querySelector('#btn-scan-sort-selected');
+    const customBoxesContainer = this.container.querySelector('#scan-custom-boxes-container');
+
+    const sortContainerRows = () => {
+      if (!customBoxesContainer) return;
+      const rows = Array.from(customBoxesContainer.querySelectorAll('.custom-box-check-row'));
+      rows.sort((a, b) => {
+        const chkA = a.querySelector('.chk-custom-box-item')?.checked ? 1 : 0;
+        const chkB = b.querySelector('.chk-custom-box-item')?.checked ? 1 : 0;
+        if (chkA !== chkB) return chkB - chkA;
+        return 0;
+      });
+      rows.forEach(r => customBoxesContainer.appendChild(r));
+    };
+
     if (btnSelectAll) {
       btnSelectAll.onclick = () => {
         customCheckboxes.forEach(chk => { chk.checked = true; });
@@ -1175,6 +1202,12 @@ export const ScanPage = {
       btnSelectNone.onclick = () => {
         customCheckboxes.forEach(chk => { chk.checked = false; });
         updateCustomCount();
+      };
+    }
+    if (btnSortSelected) {
+      btnSortSelected.onclick = () => {
+        sortContainerRows();
+        UI.showToast('選択中の講座を上部に並び替えました', 'info', 1500);
       };
     }
 

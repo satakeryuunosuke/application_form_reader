@@ -286,6 +286,32 @@ async def main():
                 const selectedCount = document.querySelector('#scan-sel-count')?.textContent;
                 const hasQuickAll = !!document.querySelector('#btn-scan-select-all');
                 const hasQuickNone = !!document.querySelector('#btn-scan-select-none');
+                const hasBtnSort = !!document.querySelector('#btn-scan-sort-selected');
+
+                // 初期レンダリング時の行順序を検証（c1, c3が選択済み、c2が未選択なので [c1, c3, c2] の順序になること）
+                const initialCourseOrder = Array.from(document.querySelectorAll('#scan-custom-boxes-container .custom-box-check-row')).map(el => el.dataset.id);
+
+                // 再整列ボタンのテスト: c2にチェックを入れ、c1のチェックを外す
+                const chkC1 = document.querySelector('.chk-custom-box-item[data-id="c1"]');
+                const chkC2 = document.querySelector('.chk-custom-box-item[data-id="c2"]');
+                chkC1.checked = false;
+                chkC1.dispatchEvent(new Event('change'));
+                chkC2.checked = true;
+                chkC2.dispatchEvent(new Event('change'));
+
+                // 再整列ボタンをクリック
+                const btnSort = document.querySelector('#btn-scan-sort-selected');
+                btnSort.click();
+
+                // ソート後の順序（c3, c2がチェック、c1が未チェックなので [c3, c2, c1] または [c2, c3, c1]）
+                const sortedCourseOrder = Array.from(document.querySelectorAll('#scan-custom-boxes-container .custom-box-check-row')).map(el => el.dataset.id);
+
+                // c1を再度チェックして元に戻す（c1, c3選択へ）
+                chkC1.checked = true;
+                chkC1.dispatchEvent(new Event('change'));
+                chkC2.checked = false;
+                chkC2.dispatchEvent(new Event('change'));
+                btnSort.click();
 
                 // 承認保存を実行
                 const approveBtn = document.querySelector('#btn-approve');
@@ -301,6 +327,9 @@ async def main():
                     selectedCount,
                     hasQuickAll,
                     hasQuickNone,
+                    hasBtnSort,
+                    initialCourseOrder,
+                    sortedCourseOrder,
                     hanakoStatus: hanako.status,
                     hanakoCourses: hanako.selectedCourses,
                     hanakoClass: hanako.enrollmentClass
@@ -313,6 +342,10 @@ async def main():
             assert scan_test['selectedCount'] == '2', f"Expected 2 courses selected, got {scan_test['selectedCount']}"
             assert scan_test['hasQuickAll'] == True
             assert scan_test['hasQuickNone'] == True
+            assert scan_test['hasBtnSort'] == True, "Sort button must exist"
+            assert scan_test['initialCourseOrder'] == ['c1', 'c3', 'c2'], f"Expected ['c1', 'c3', 'c2'], got {scan_test['initialCourseOrder']}"
+            assert scan_test['sortedCourseOrder'] == ['c3', 'c2', 'c1'] or scan_test['sortedCourseOrder'] == ['c2', 'c3', 'c1'], f"Expected checked on top, got {scan_test['sortedCourseOrder']}"
+            assert scan_test['sortedCourseOrder'][-1] == 'c1', "c1 (unchecked) must be at the bottom"
             assert scan_test['hanakoStatus'] == '承認済'
             assert '2講座申込' in scan_test['hanakoClass']
             assert len(scan_test['hanakoCourses']) == 2
