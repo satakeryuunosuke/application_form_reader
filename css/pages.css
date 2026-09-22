@@ -244,6 +244,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--spacing-md);
   margin-bottom: var(--spacing-lg);
   padding-bottom: var(--spacing-md);
   border-bottom: 1px solid var(--gray-200);
@@ -253,6 +254,16 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
+  min-width: 0;
+  flex: 1;
+}
+
+.project-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .back-btn {

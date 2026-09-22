@@ -67,45 +67,56 @@ export const ProjectPage = {
 
     this.container.innerHTML = `
       <div class="view-container">
-        <!-- プロジェクト表層ヘッダー（シンプル化） -->
+        <!-- プロジェクト表層ヘッダー（折り返し防止・整理レイアウト） -->
         <div class="project-header-bar">
           <div class="project-header-title">
             <button id="btn-back-home" class="back-btn" title="プロジェクト一覧（ホーム）に戻る">←</button>
-            <div>
-              <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;">
-                <span class="badge badge-info">${project.year}年度</span>
-                <span class="badge badge-purple">${project.grade}年生</span>
-                <span class="badge badge-success">${UI.formatSession(project.sessionName)}</span>
-                ${isSelectionMode ? '<span class="badge" style="background: #ede7f6; color: #512da8; border: 1px solid #d1c4e9; font-weight: 700;">🎯 講座選択モード</span>' : ''}
-                <span id="header-status-badge" class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}" style="${isCompleted ? 'font-weight: 700;' : 'font-weight: 700; background: #e8f5e9; color: #2e7d32;'}">
+            <div style="min-width: 0;">
+              <!-- 1行目: プロジェクトタイトル + 主要ステータスバッジ -->
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                <h1 style="font-size: 1.35rem; font-weight: 800; color: var(--gray-900); margin: 0; line-height: 1.2; white-space: nowrap;">${UI.formatProjectTitle(project.title)}</h1>
+                ${isSelectionMode ? '<span class="badge" style="background: #ede7f6; color: #512da8; border: 1px solid #d1c4e9; font-weight: 700; white-space: nowrap;">🎯 講座選択モード</span>' : ''}
+                <span id="header-status-badge" class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}" style="${isCompleted ? 'font-weight: 700;' : 'font-weight: 700; background: #e8f5e9; color: #2e7d32;'} white-space: nowrap;">
                   ${isCompleted ? '🏁 完了' : '🟢 進行中'}
                 </span>
-                <span class="badge ${isFolderConnected ? 'badge-success' : (FolderConnector.isPermissionPending() ? 'badge-warning' : 'badge-gray')}" style="font-size: 0.75rem;">
+                <span class="badge ${isFolderConnected ? 'badge-success' : (FolderConnector.isPermissionPending() ? 'badge-warning' : 'badge-gray')}" style="font-size: 0.75rem; white-space: nowrap;">
                   ${isFolderConnected ? '🟢 共有同期中' : (FolderConnector.isPermissionPending() ? '🟡 共有再開待ち' : '⚪ ローカル')}
                 </span>
-                <h1 style="font-size: 1.4rem; font-weight: 800; color: var(--gray-900); display: inline; margin-left: 4px;">${UI.formatProjectTitle(project.title)}</h1>
               </div>
-              <div style="font-size: 0.82rem; color: var(--gray-500);">
-                登録生徒数: <span id="header-stat-total" class="font-bold text-mono">${stats.total}</span> 名 | 
-                提出済: <span id="header-stat-submitted" class="font-bold text-mono" style="color: var(--primary-600);">${stats.submitted}</span> 名 | 
-                未提出: <span id="header-stat-unsubmitted" class="font-bold text-mono" style="color: var(--danger-solid);">${stats.unsubmitted}</span> 名
-                ${isSelectionMode ? ` | 申込講座計: <span id="header-stat-courses" class="font-bold text-mono" style="color: #673ab7;">${stats.totalSelectedCourses || 0}</span> 講座` : ''}
-                ${project.completedAt ? ` | 完了日時: <span class="text-mono font-bold">${UI.formatDate(project.completedAt)}</span>` : ''}
+              <!-- 2行目: 属性バッジ + 生徒数・講座数集計サマリー -->
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--gray-500); flex-wrap: wrap; white-space: nowrap;">
+                <span class="badge badge-info" style="font-size: 0.75rem;">${project.year}年度</span>
+                <span class="badge badge-purple" style="font-size: 0.75rem;">${project.grade}年生</span>
+                <span class="badge badge-success" style="font-size: 0.75rem;">${UI.formatSession(project.sessionName)}</span>
+                <span style="color: var(--gray-300); margin: 0 2px;">|</span>
+                <span>登録生徒数: <span id="header-stat-total" class="font-bold text-mono">${stats.total}</span> 名</span>
+                <span style="color: var(--gray-300);">|</span>
+                <span>提出済: <span id="header-stat-submitted" class="font-bold text-mono" style="color: var(--primary-600);">${stats.submitted}</span> 名</span>
+                <span style="color: var(--gray-300);">|</span>
+                <span>未提出: <span id="header-stat-unsubmitted" class="font-bold text-mono" style="color: var(--danger-solid);">${stats.unsubmitted}</span> 名</span>
+                ${isSelectionMode ? `
+                  <span style="color: var(--gray-300);">|</span>
+                  <span>申込講座計: <span id="header-stat-courses" class="font-bold text-mono" style="color: #673ab7;">${stats.totalSelectedCourses || 0}</span> 講座</span>
+                ` : ''}
+                ${project.completedAt ? `
+                  <span style="color: var(--gray-300);">|</span>
+                  <span>完了日時: <span class="text-mono font-bold">${UI.formatDate(project.completedAt)}</span></span>
+                ` : ''}
               </div>
             </div>
           </div>
 
-          <!-- ヘッダー右側: 主要ボタン群 -->
-          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <button id="btn-header-sync" class="btn btn-secondary btn-md" style="font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" title="${isFolderConnected ? '共有フォルダから最新の受講変更・提出データや生徒名簿を取り込んで更新' : '共有フォルダに接続して最新データに更新'}">
+          <!-- ヘッダー右側: 主要ボタン群（横一列に固定・折り返し防止） -->
+          <div class="project-header-actions" style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap;">
+            <button id="btn-header-sync" class="btn btn-secondary btn-md" style="font-weight: 600; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;" title="${isFolderConnected ? '共有フォルダから最新の受講変更・提出データや生徒名簿を取り込んで更新' : '共有フォルダに接続して最新データに更新'}">
               <span id="header-sync-pulse" class="sync-pulse-dot" style="display: ${isFolderConnected ? 'inline-block' : 'none'};"></span>
               <span class="sync-btn-icon">🔄</span>
               <span class="sync-btn-text">更新${lastSyncTimeStr ? ` <span style="font-size: 0.75rem; color: var(--gray-500); font-weight: normal;">(${lastSyncTimeStr})</span>` : ''}</span>
             </button>
-            <button id="btn-go-manual" class="btn btn-primary btn-md" style="font-weight: 700; box-shadow: var(--shadow-sm);" title="電話や口頭での受講変更、手動でのデータ登録・追加画面を開く">
+            <button id="btn-go-manual" class="btn btn-primary btn-md" style="font-weight: 700; box-shadow: var(--shadow-sm); white-space: nowrap;" title="電話や口頭での受講変更、手動でのデータ登録・追加画面を開く">
               ✏️ 手動登録・変更
             </button>
-            <button id="btn-go-dashboard" class="btn ${this.currentTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'} btn-md" style="font-weight: 600;" title="スキャン読取・照合・生徒管理・書式調整などの詳細機能をまとめたダッシュボードを開く">
+            <button id="btn-go-dashboard" class="btn ${this.currentTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'} btn-md" style="font-weight: 600; white-space: nowrap;" title="スキャン読取・照合・生徒管理・書式調整などの詳細機能をまとめたダッシュボードを開く">
               🛠️ 管理ダッシュボード
             </button>
           </div>
