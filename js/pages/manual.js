@@ -194,14 +194,12 @@ export const ManualPage = {
               <label class="radio-card" id="man-card-has-change" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
                 <input type="radio" name="man-enroll-choice" value="has-change" ${isCompleted ? 'disabled' : ''}>
                 <div style="flex: 1;">
-                  <div class="font-bold">変更あり（クラス・科目変更 / 非受講）</div>
+                  <div class="font-bold">変更あり（クラス変更 / 他教室受講 / 非受講 等）</div>
                   <div style="margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 170px;">
-                      <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先クラス</label>
+                      <label style="font-size: 0.78rem; font-weight: 700; color: var(--gray-600); display: block; margin-bottom: 2px;">変更先クラス・受講形態</label>
                       <select id="man-sel-change-class" class="form-control font-bold" style="padding: 6px 10px;" disabled>
-                        <option value="">-- 変更先クラス / 非受講を選択 --</option>
-                        ${this.classList.map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
-                        <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
+                        ${this.renderChangeClassOptionsHtml(null)}
                       </select>
                     </div>
                     <div style="width: 125px;" id="man-wrap-change-course">
@@ -551,7 +549,7 @@ export const ManualPage = {
         if (hasChange) {
           const sel = changeClassSelect ? changeClassSelect.value : '';
           if (!sel) {
-            UI.showToast('変更先クラスまたは非受講を選択してください', 'warning');
+            UI.showToast('変更先クラスまたは選択肢を選択してください', 'warning');
             if (changeClassSelect) changeClassSelect.focus();
             return;
           }
@@ -602,11 +600,10 @@ export const ManualPage = {
     };
   },
 
-  updateChangeClassOptions(stu) {
-    const select = this.container.querySelector('#man-sel-change-class');
-    if (!select) return;
+  renderChangeClassOptionsHtml(stu) {
     const currentStuClass = stu ? stu.className : '';
-    let html = `<option value="">-- 変更先クラス / 非受講を選択 --</option>`;
+    const changeOptions = DB.getProjectChangeOptions(this.project);
+    let html = `<option value="">-- 変更先クラス / 選択肢を選択 --</option>`;
     if (currentStuClass) {
       html += `<option value="${currentStuClass}">${currentStuClass} クラス（クラス変更なし）</option>`;
     }
@@ -615,8 +612,26 @@ export const ManualPage = {
         html += `<option value="${c}">${c} クラスへ変更</option>`;
       }
     });
-    html += `<option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>`;
-    select.innerHTML = html;
+
+    changeOptions.forEach(opt => {
+      let icon = '📝';
+      let style = '';
+      if (opt === '非受講') {
+        icon = '🚫';
+        style = 'color: var(--danger-solid); font-weight: bold;';
+      } else if (opt === '他教室で受講') {
+        icon = '🏫';
+        style = 'color: #2563eb; font-weight: bold;';
+      }
+      html += `<option value="${opt}" style="${style}">${icon} ${opt}${opt === '非受講' ? '（受講しない）' : ''}</option>`;
+    });
+    return html;
+  },
+
+  updateChangeClassOptions(stu) {
+    const select = this.container.querySelector('#man-sel-change-class');
+    if (!select) return;
+    select.innerHTML = this.renderChangeClassOptionsHtml(stu);
   },
 
   selectStudent(stu, dispName, dispId, dispClass, dispStatus, card, resultsBox, searchInput) {

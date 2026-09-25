@@ -51,6 +51,11 @@ export const DEFAULT_METHOD_PRESETS = [
   'Zoom授業', '動画のみ', '御器所校', '千種校'
 ];
 
+export const DEFAULT_CHANGE_OPTIONS = [
+  '非受講',
+  '他教室で受講'
+];
+
 export const db = new AppDatabase();
 
 export const DB = {
@@ -164,6 +169,9 @@ export const DB = {
       p.projectType = (sessionName === '志望校別対策講座') ? 'selection' : 'confirmation';
       modified = true;
     }
+    if (!Array.isArray(p.changeOptions) || p.changeOptions.length === 0) {
+      p.changeOptions = [...DEFAULT_CHANGE_OPTIONS];
+    }
     if (modified && p.id) {
       p.sessionName = sessionName;
       p.title = title;
@@ -171,6 +179,16 @@ export const DB = {
       db.projects.update(p.id, { sessionName, title, projectType: p.projectType }).catch(() => {});
     }
     return p;
+  },
+
+  /**
+   * プロジェクトの「変更有」選択肢リストを取得（未設定時はデフォルト）
+   */
+  getProjectChangeOptions(project) {
+    if (project && Array.isArray(project.changeOptions) && project.changeOptions.length > 0) {
+      return [...project.changeOptions];
+    }
+    return [...DEFAULT_CHANGE_OPTIONS];
   },
 
   /**
@@ -258,6 +276,7 @@ export const DB = {
       status: '進行中',
       completedAt: null,
       scanTemplate: scanTemplate || null,
+      changeOptions: [...DEFAULT_CHANGE_OPTIONS],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

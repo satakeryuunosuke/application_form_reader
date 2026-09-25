@@ -96,9 +96,10 @@ export const ListPage = {
     const prevClasses = classes;
 
     // 変更後クラス一覧の構築（プロジェクトクラス ＋ 実際に登録された受講クラスの和集合）
+    const changeOptions = DB.getProjectChangeOptions(this.project);
     const postClassSet = new Set(classes);
     for (const item of this.allStudentsWithSubmissions) {
-      if (item.enrollmentClass && item.enrollmentClass !== '-' && item.enrollmentClass !== '非受講') {
+      if (item.enrollmentClass && item.enrollmentClass !== '-' && item.enrollmentClass !== '非受講' && !changeOptions.includes(item.enrollmentClass)) {
         postClassSet.add(item.enrollmentClass);
       }
     }
@@ -197,7 +198,10 @@ export const ListPage = {
                   <select id="sel-filter-post-class" class="cluster-select ${this.currentPostClassFilter !== 'all' ? 'is-active' : ''}" title="確定後クラス">
                     <option value="all" ${this.currentPostClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
                     ${postClasses.map(c => `<option value="${c}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
-                    <option value="非受講" ${this.currentPostClassFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
+                    ${changeOptions.map(opt => {
+                      let icon = opt === '非受講' ? '🚫' : (opt === '他教室で受講' ? '🏫' : '📝');
+                      return `<option value="${opt}" ${this.currentPostClassFilter === opt ? 'selected' : ''}>${icon} ${opt}</option>`;
+                    }).join('')}
                     <option value="unsubmitted" ${this.currentPostClassFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
                   </select>
                   <span class="cluster-divider">/</span>
@@ -489,14 +493,10 @@ export const ListPage = {
         return false;
       }
 
-      // 3. 変更後クラスフィルター（確定受講クラス）
+      // 3. 変更後クラスフィルター（確定受講クラス・特別選択肢）
       if (this.currentPostClassFilter !== 'all') {
         if (this.currentPostClassFilter === 'unsubmitted') {
           if (item.status !== '未提出' && item.enrollmentClass !== '-' && item.enrollmentClass) {
-            return false;
-          }
-        } else if (this.currentPostClassFilter === '非受講') {
-          if (item.enrollmentClass !== '非受講') {
             return false;
           }
         } else {
@@ -703,6 +703,10 @@ export const ListPage = {
           statusBadge = '<span class="badge badge-purple">非受講</span>';
           enrollmentBadge = '<strong style="color: var(--purple-solid);">🚫 非受講</strong>';
           enrollmentCourseBadge = '<strong style="color: var(--purple-solid);">-</strong>';
+        } else if (row.enrollmentClass === '他教室で受講') {
+          statusBadge = '<span class="badge badge-warning">変更あり</span>';
+          enrollmentBadge = `<span class="badge" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 0.85rem; font-weight: bold; padding: 2px 6px;">🏫 他教室で受講</span>`;
+          enrollmentCourseBadge = `<span class="badge ${isCourseChanged ? 'badge-warning font-bold' : 'badge-purple'}" style="font-size: 0.85rem; padding: 2px 6px;">${row.enrollmentCourse || row.course || '4科'}</span>`;
         } else if (row.hasChange) {
           statusBadge = '<span class="badge badge-warning">変更あり</span>';
           enrollmentBadge = `<span class="badge badge-warning" style="font-size: 0.85rem; font-weight: bold; padding: 2px 6px;">${row.enrollmentClass}</span>`;
@@ -823,6 +827,8 @@ export const ListPage = {
     if (studentData.status === '承認済') {
       if (studentData.enrollmentClass === '非受講' || studentData.enrollmentCourse === '非受講') {
         currentStatusBadge = '<span class="badge badge-purple font-bold">🚫 非受講（確定）</span>';
+      } else if (studentData.enrollmentClass === '他教室で受講') {
+        currentStatusBadge = `<span class="badge font-bold" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;">🏫 他教室で受講 (${studentData.enrollmentCourse || studentData.course || '4科'})</span>`;
       } else if (studentData.hasChange) {
         currentStatusBadge = `<span class="badge badge-warning font-bold">🔄 変更あり: ${studentData.enrollmentClass} (${studentData.enrollmentCourse || studentData.course || '4科'})</span>`;
       } else {
@@ -904,6 +910,8 @@ export const ListPage = {
                   const itemCourse = item.enrollmentCourse || (item.enrollmentClass === '非受講' ? '非受講' : (studentData.course || '4科'));
                   if (item.enrollmentClass === '非受講' || itemCourse === '非受講') {
                     enrollmentDisp = '<strong style="color: var(--danger-solid);">🚫 非受講（受講しない）</strong>';
+                  } else if (item.enrollmentClass === '他教室で受講') {
+                    enrollmentDisp = `<span class="badge" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 0.88rem; font-weight: bold;">🏫 他教室で受講 (${itemCourse})</span>`;
                   } else if (item.hasChange) {
                     enrollmentDisp = `<span class="badge badge-warning" style="font-size: 0.88rem; font-weight: bold;">🔄 ${item.enrollmentClass} (${itemCourse})</span>`;
                   } else {

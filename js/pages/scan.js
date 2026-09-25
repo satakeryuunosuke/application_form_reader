@@ -517,14 +517,25 @@ export const ScanPage = {
                   <label class="radio-card ${currentItem.detectedHasChange ? 'selected' : ''}" id="card-opt-has-change">
                     <input type="radio" name="enrollment-choice" value="has-change" ${currentItem.detectedHasChange ? 'checked' : ''}>
                     <div style="flex: 1; min-width: 0;">
-                      <div class="font-bold" style="font-size: 0.88rem;">変更あり（クラス・科目変更 / 非受講）</div>
+                      <div class="font-bold" style="font-size: 0.88rem;">変更あり（クラス変更 / 他教室受講 / 非受講 等）</div>
                       <div style="margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap;">
                         <div style="flex: 1; min-width: 140px;">
                           <select id="sel-change-class" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
-                            <option value="">-- 変更先クラス / 非受講を選択 --</option>
+                            <option value="">-- 変更先クラス / 選択肢を選択 --</option>
                             ${student ? `<option value="${student.className}">${student.className} クラス（クラス変更なし）</option>` : ''}
                             ${this.classList.filter(c => !student || c !== student.className).map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
-                            <option value="非受講" style="color: var(--danger-solid); font-weight: bold;">🚫 非受講（受講しない）</option>
+                            ${DB.getProjectChangeOptions(this.project).map(opt => {
+                              let icon = '📝';
+                              let style = '';
+                              if (opt === '非受講') {
+                                icon = '🚫';
+                                style = 'color: var(--danger-solid); font-weight: bold;';
+                              } else if (opt === '他教室で受講') {
+                                icon = '🏫';
+                                style = 'color: #2563eb; font-weight: bold;';
+                              }
+                              return `<option value="${opt}" style="${style}">${icon} ${opt}${opt === '非受講' ? '（受講しない）' : ''}</option>`;
+                            }).join('')}
                           </select>
                         </div>
                         <div style="width: 95px;" id="wrap-change-course">
@@ -1361,7 +1372,7 @@ export const ScanPage = {
         if (hasChange) {
           const selClass = changeClassSelect ? changeClassSelect.value : '';
           if (!selClass) {
-            UI.showToast('「変更あり」の場合、変更先クラスまたは非受講を選択してください', 'warning');
+            UI.showToast('「変更あり」の場合、変更先クラスまたは選択肢を選択してください', 'warning');
             if (changeClassSelect) changeClassSelect.focus();
             return;
           }

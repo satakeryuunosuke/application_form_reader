@@ -554,6 +554,7 @@ export const ProjectPage = {
     const isCompleted = project.status === '完了';
     const isFolderConnected = FolderConnector.isConnected();
     const isSelectionMode = project.projectType === 'selection';
+    const changeOptions = DB.getProjectChangeOptions(project);
     const courseDist = stats.courseCountDistribution || {};
     const methodDist = stats.methodDistribution || {};
     const courseBoxes = (project.scanTemplate?.customBoxes || project.template?.customBoxes || []);
@@ -785,6 +786,36 @@ export const ProjectPage = {
             <h3 class="dashboard-section-title">プロジェクト設定・メンテナンス</h3>
           </div>
           <div class="dashboard-grid">
+            ${!isSelectionMode ? `
+              <!-- 変更有の選択肢設定 -->
+              <div class="dashboard-card">
+                <div>
+                  <div class="dashboard-card-header">
+                    <div class="dashboard-card-icon">🏷️</div>
+                    <div>
+                      <h4 class="dashboard-card-title">変更有の選択肢設定</h4>
+                      <span class="badge badge-info">${changeOptions.length} 項目</span>
+                    </div>
+                  </div>
+                  <p class="dashboard-card-desc">
+                    受講確認票の「変更あり」時に選択できる選択肢（他教室で受講・非受講 等）を設定・自由に追加できます。
+                  </p>
+                  <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">
+                    ${changeOptions.map(opt => `
+                      <span class="badge ${opt === '非受講' ? 'badge-danger' : (opt === '他教室で受講' ? 'badge-primary' : 'badge-gray')}" style="font-size: 0.75rem;">
+                        ${opt === '非受講' ? '🚫' : (opt === '他教室で受講' ? '🏫' : '📝')} ${opt}
+                      </span>
+                    `).join('')}
+                  </div>
+                </div>
+                <div style="margin-top: 12px;">
+                  <button id="btn-dash-change-options" class="btn btn-secondary btn-block" ${isCompleted ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                    ⚙️ 選択肢を設定・追加
+                  </button>
+                </div>
+              </div>
+            ` : ''}
+
             <!-- 書式調整 -->
             <div class="dashboard-card">
               <div>
@@ -1000,6 +1031,13 @@ export const ProjectPage = {
         } finally {
           UI.setButtonLoading(exportCsvBtn, false);
         }
+      };
+    }
+
+    const changeOptionsBtn = content.querySelector('#btn-dash-change-options');
+    if (changeOptionsBtn) {
+      changeOptionsBtn.onclick = () => {
+        this.openChangeOptionsModal(projectId);
       };
     }
 
@@ -1522,6 +1560,213 @@ export const ProjectPage = {
         UI.setButtonLoading(saveTemplateBtn, false);
       }
     };
+  },
+
+  /**
+   * 「変更有」選択肢管理モーダル
+   */
+  async openChangeOptionsModal(projectId) {
+    const project = await DB.getProject(projectId);
+    if (!project) return;
+
+    let optionsList = DB.getProjectChangeOptions(project);
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    const renderModalBody = () => {
+      modal.innerHTML = `
+        <div class="modal-content modal-md" style="max-width: 580px; max-height: 90vh; display: flex; flex-direction: column;">
+          <div class="modal-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="brand-icon" style="width: 28px; height: 28px; font-size: 14px;">🏷️</span>
+              <div>
+                <h3 class="modal-title font-bold">受講確認「変更有」の選択肢設定</h3>
+                <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
+                  対象: ${UI.formatProjectTitle(project.title)}
+                </div>
+              </div>
+            </div>
+            <button class="btn-ghost btn-sm btn-close-modal">✕</button>
+          </div>
+
+          <div class="modal-body" style="overflow-y: auto; padding: 16px 20px;">
+            <p style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 14px; line-height: 1.45;">
+              受講確認票の「変更あり」時に選択可能な受講形態（特別選択肢）を自由に追加・並び替えできます。<br>
+              <span style="font-size: 0.78rem; color: var(--gray-500);">※通常のクラス名変更は生徒名簿のクラス一覧から自動で選択肢に含まれます。</span>
+            </p>
+
+            <!-- 新規追加入力フォーム -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+              <input type="text" id="inp-new-change-opt" class="form-control font-bold" placeholder="新しい選択肢名（例: Zoom受講、個別併用、辞退 など）..." style="flex: 1;">
+              <button type="button" id="btn-add-change-opt" class="btn btn-primary" style="white-space: nowrap; font-weight: 700;">
+                ➕ 追加
+              </button>
+            </div>
+
+            <!-- 登録済み選択肢リスト -->
+            <div style="border: 1px solid var(--gray-200); border-radius: var(--radius-md); overflow: hidden; background: #fff;">
+              <div style="background: var(--gray-100); padding: 8px 12px; font-size: 0.8rem; font-weight: 700; color: var(--gray-700); display: flex; justify-content: space-between; align-items: center;">
+                <span>現在の選択肢リスト (${optionsList.length} 件)</span>
+                <span style="font-weight: normal; font-size: 0.75rem; color: var(--gray-500);">上から順にプルダウンに並びます</span>
+              </div>
+              <div id="change-options-items-container" style="max-height: 280px; overflow-y: auto;">
+                ${optionsList.length === 0 ? `
+                  <div style="padding: 24px; text-align: center; color: var(--gray-400); font-size: 0.85rem;">
+                    選択肢が登録されていません
+                  </div>
+                ` : optionsList.map((opt, idx) => {
+                  let icon = '📝';
+                  if (opt === '非受講') {
+                    icon = '🚫';
+                  } else if (opt === '他教室で受講') {
+                    icon = '🏫';
+                  }
+                  return `
+                    <div class="change-option-row" data-index="${idx}" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--gray-100); background: ${idx % 2 === 0 ? '#fff' : 'var(--gray-50)'};">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.1rem;">${icon}</span>
+                        <span class="font-bold" style="font-size: 0.92rem; color: var(--gray-900);">${opt}</span>
+                        ${opt === '非受講' ? '<span class="badge badge-danger" style="font-size: 0.7rem;">基本</span>' : ''}
+                        ${opt === '他教室で受講' ? '<span class="badge badge-primary" style="font-size: 0.7rem;">標準</span>' : ''}
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <button type="button" class="btn btn-ghost btn-sm btn-opt-move-up" data-index="${idx}" ${idx === 0 ? 'disabled style="opacity: 0.3;"' : ''} title="上へ移動">▲</button>
+                        <button type="button" class="btn btn-ghost btn-sm btn-opt-move-down" data-index="${idx}" ${idx === optionsList.length - 1 ? 'disabled style="opacity: 0.3;"' : ''} title="下へ移動">▼</button>
+                        <button type="button" class="btn btn-ghost btn-sm btn-opt-delete" data-index="${idx}" style="color: var(--danger-solid); margin-left: 6px;" title="削除">🗑️</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- 初期設定リセット -->
+            <div style="margin-top: 12px; display: flex; justify-content: flex-start;">
+              <button type="button" id="btn-reset-default-options" class="btn btn-ghost btn-sm" style="font-size: 0.78rem; color: var(--gray-600);">
+                🔄 初期設定に戻す（非受講・他教室で受講）
+              </button>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: var(--gray-50); border-top: 1px solid var(--gray-200);">
+            <button type="button" class="btn btn-secondary btn-close-modal">キャンセル</button>
+            <button type="button" id="btn-save-change-options" class="btn btn-primary" style="font-weight: 700; min-width: 140px;">
+              💾 変更を保存する
+            </button>
+          </div>
+        </div>
+      `;
+
+      // イベントバインド
+      modal.querySelectorAll('.btn-close-modal').forEach(btn => {
+        btn.onclick = () => modal.remove();
+      });
+
+      const inpNew = modal.querySelector('#inp-new-change-opt');
+      const btnAdd = modal.querySelector('#btn-add-change-opt');
+
+      const doAdd = () => {
+        const val = inpNew.value.trim();
+        if (!val) {
+          UI.showToast('選択肢名を入力してください', 'warning');
+          inpNew.focus();
+          return;
+        }
+        if (optionsList.includes(val)) {
+          UI.showToast(`「${val}」は既に登録されています`, 'warning');
+          inpNew.focus();
+          return;
+        }
+        optionsList.push(val);
+        renderModalBody();
+      };
+
+      if (btnAdd) btnAdd.onclick = doAdd;
+      if (inpNew) {
+        inpNew.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            doAdd();
+          }
+        };
+      }
+
+      // 上下移動
+      modal.querySelectorAll('.btn-opt-move-up').forEach(btn => {
+        btn.onclick = () => {
+          const idx = parseInt(btn.dataset.index, 10);
+          if (idx > 0) {
+            const temp = optionsList[idx];
+            optionsList[idx] = optionsList[idx - 1];
+            optionsList[idx - 1] = temp;
+            renderModalBody();
+          }
+        };
+      });
+
+      modal.querySelectorAll('.btn-opt-move-down').forEach(btn => {
+        btn.onclick = () => {
+          const idx = parseInt(btn.dataset.index, 10);
+          if (idx < optionsList.length - 1) {
+            const temp = optionsList[idx];
+            optionsList[idx] = optionsList[idx + 1];
+            optionsList[idx + 1] = temp;
+            renderModalBody();
+          }
+        };
+      });
+
+      // 削除
+      modal.querySelectorAll('.btn-opt-delete').forEach(btn => {
+        btn.onclick = () => {
+          const idx = parseInt(btn.dataset.index, 10);
+          if (optionsList.length <= 1) {
+            UI.showToast('選択肢は最低1つ必要です', 'warning');
+            return;
+          }
+          optionsList.splice(idx, 1);
+          renderModalBody();
+        };
+      });
+
+      // 初期値リセット
+      const btnReset = modal.querySelector('#btn-reset-default-options');
+      if (btnReset) {
+        btnReset.onclick = () => {
+          if (confirm('選択肢を初期設定（非受講・他教室で受講）に戻しますか？')) {
+            optionsList = ['非受講', '他教室で受講'];
+            renderModalBody();
+          }
+        };
+      }
+
+      // 保存
+      const btnSave = modal.querySelector('#btn-save-change-options');
+      if (btnSave) {
+        btnSave.onclick = async () => {
+          if (optionsList.length === 0) {
+            UI.showToast('選択肢は最低1つ必要です', 'warning');
+            return;
+          }
+          UI.setButtonLoading(btnSave, true, '保存中...');
+          try {
+            await DB.updateProject(projectId, { changeOptions: optionsList });
+            this.currentProject = await DB.getProject(projectId);
+            UI.showToast('「変更有」の選択肢を更新しました', 'success');
+            modal.remove();
+            // ダッシュボード再描画
+            await this.renderActiveTab();
+          } catch (err) {
+            UI.showToast(`保存エラー: ${err.message}`, 'error');
+            UI.setButtonLoading(btnSave, false);
+          }
+        };
+      }
+    };
+
+    renderModalBody();
+    document.body.appendChild(modal);
   },
 
   /**

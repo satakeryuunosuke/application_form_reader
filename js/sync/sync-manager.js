@@ -448,6 +448,7 @@ export const SyncManager = {
         title: UI.formatProjectTitle(project.title),
         status: project.status || '進行中',
         scanTemplate: project.scanTemplate || null,
+        changeOptions: project.changeOptions || ['非受講', '他教室で受講'],
         createdAt: project.createdAt,
         completedAt: project.completedAt || null,
         updatedAt: new Date().toISOString()
@@ -712,6 +713,9 @@ export const SyncManager = {
             if (localProj.sessionName !== cleanSession) updates.sessionName = cleanSession;
             if (localProj.status !== meta.status) updates.status = meta.status;
             if (localProj.completedAt !== (meta.completedAt || null)) updates.completedAt = meta.completedAt || null;
+            if (meta.changeOptions && JSON.stringify(localProj.changeOptions) !== JSON.stringify(meta.changeOptions)) {
+              updates.changeOptions = meta.changeOptions;
+            }
             if (Object.keys(updates).length > 0) {
               await db.projects.update(projectId, updates);
             }
@@ -1083,6 +1087,7 @@ export const SyncManager = {
         title: UI.formatProjectTitle(meta.title),
         status: meta.status || '進行中',
         scanTemplate: meta.scanTemplate || null,
+        changeOptions: meta.changeOptions || ['非受講', '他教室で受講'],
         createdAt: meta.createdAt || new Date().toISOString(),
         completedAt: meta.completedAt || null
       });

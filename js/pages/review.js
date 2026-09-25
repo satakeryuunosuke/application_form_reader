@@ -375,13 +375,16 @@ export const ReviewPage = {
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                           <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">受講クラス</label>
+                            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">受講クラス・受講形態</label>
                             <select id="sel-edit-class" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
                               <option value="${item.className}">所属: ${item.className}</option>
-                              <option value="非受講" ${item.enrollmentClass === '非受講' ? 'selected' : ''}>非受講</option>
                               ${classOptions.filter(c => c !== item.className).map(c => `
                                 <option value="${c}" ${item.enrollmentClass === c ? 'selected' : ''}>${c}</option>
                               `).join('')}
+                              ${DB.getProjectChangeOptions(this.project).map(opt => {
+                                let icon = opt === '非受講' ? '🚫' : (opt === '他教室で受講' ? '🏫' : '📝');
+                                return `<option value="${opt}" ${item.enrollmentClass === opt ? 'selected' : ''}>${icon} ${opt}</option>`;
+                              }).join('')}
                             </select>
                           </div>
                           <div class="form-group" style="margin-bottom: 0;">
