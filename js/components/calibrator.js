@@ -91,9 +91,11 @@ export class TemplateCalibrator {
 
   getTemplate() {
     const t = JSON.parse(JSON.stringify(this.template));
-    // 外枠下端線が検出されている場合は、基準距離（refQrToBorderDist）を自動保存
-    if (this.bottomBorder && this.bottomBorder.found && this.bottomBorder.qrToBorderDist) {
+    // 外枠下端線が検出されている場合は、基準距離（refQrToBorderDist）および比率を自動保存
+    if (this.bottomBorder && this.bottomBorder.found && this.bottomBorder.qrToBorderDist && this.sourceCanvas) {
       t.refQrToBorderDist = Math.round(this.bottomBorder.qrToBorderDist * 10) / 10;
+      t.refQrToBorderRatio = this.bottomBorder.qrToBorderDist / this.sourceCanvas.height;
+      t.refCanvasHeight = this.sourceCanvas.height;
     }
     return t;
   }
@@ -206,6 +208,10 @@ export class TemplateCalibrator {
               </div>
 
               ${this.allowStandardBoxes ? `
+                <div class="eval-row" id="eval-overall-row" style="${(this.template.noChangeBox && this.template.hasChangeBox) ? '' : 'display: none;'} background: #f8fafc; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 5px 8px; margin-bottom: 6px;">
+                  <span class="eval-label font-bold" style="font-size: 0.82rem; color: var(--gray-800);">総合自動判定:</span>
+                  <span id="eval-overall-status" class="badge badge-success font-bold" style="font-size: 0.82rem;">-</span>
+                </div>
                 <div class="eval-row" id="eval-no-change-row" style="${this.template.noChangeBox ? '' : 'display: none;'}">
                   <span class="eval-label">変更なし判定:</span>
                   <span id="eval-no-change-status" class="badge badge-gray">-</span>
@@ -1430,6 +1436,12 @@ export class TemplateCalibrator {
     this.sourceCanvas = cur.canvas;
     this.barcodeBox = cur.barcodeBox;
     this.bottomBorder = cur.bottomBorder || null;
+    // 書式設定中の帳票自身をリファレンス基準に同期し、編集画面でのスケールを1.0（基準100%）に保持
+    if (this.bottomBorder && this.bottomBorder.found && this.bottomBorder.qrToBorderDist && cur.canvas) {
+      this.template.refQrToBorderDist = Math.round(this.bottomBorder.qrToBorderDist * 10) / 10;
+      this.template.refQrToBorderRatio = this.bottomBorder.qrToBorderDist / cur.canvas.height;
+      this.template.refCanvasHeight = cur.canvas.height;
+    }
     this.updatePaginationUI();
     this.drawOverlay();
     this.updateLegend();
@@ -1623,11 +1635,18 @@ export class TemplateCalibrator {
     const summaryBar = this.container.querySelector('#eval-custom-summary-bar');
     const summaryText = this.container.querySelector('#eval-summary-text');
 
+    const overallRow = this.container.querySelector('#eval-overall-row');
+    const overallStatusEl = this.container.querySelector('#eval-overall-status');
+
     if (noRow) noRow.style.display = noChangeEval ? '' : 'none';
     if (hasRow) hasRow.style.display = hasChangeEval ? '' : 'none';
     if (emptyRow) emptyRow.style.display = (!noChangeEval && !hasChangeEval && customEvals.length === 0) ? '' : 'none';
 
     if (!isDetected) {
+      if (overallRow && overallStatusEl) {
+        overallStatusEl.className = 'badge badge-danger';
+        overallStatusEl.textContent = '未検出';
+      }
       if (noStatusEl) {
         noStatusEl.className = 'badge badge-danger';
         noStatusEl.textContent = '未検出';
@@ -1642,6 +1661,30 @@ export class TemplateCalibrator {
       if (activeFocusContainer) activeFocusContainer.style.display = 'none';
       if (summaryBar) summaryBar.style.display = 'none';
       return;
+    }
+
+    // 受講確認モードの総合自動判定（変更なし / 変更あり の二者択一大小比較）
+    if (this.allowStandardBoxes && noChangeEval && hasChangeEval && overallRow && overallStatusEl) {
+      overallRow.style.display = 'flex';
+      const hasDark = hasChangeEval.darkRatio || 0;
+      const noDark = noChangeEval.darkRatio || 0;
+      const threshold = this.template.threshold !== undefined ? this.template.threshold : 0.25;
+      const minThreshold = threshold * 0.7;
+
+      if (hasDark >= minThreshold || noDark >= minThreshold) {
+        if (hasDark > noDark) {
+          overallStatusEl.className = 'badge badge-warning font-bold';
+          overallStatusEl.textContent = '⚠️ 変更あり (受講変更)';
+        } else {
+          overallStatusEl.className = 'badge badge-success font-bold';
+          overallStatusEl.textContent = '✅ 変更なし (所属受講)';
+        }
+      } else {
+        overallStatusEl.className = 'badge badge-gray font-bold';
+        overallStatusEl.textContent = '⬜ 変更なし (未記入)';
+      }
+    } else if (overallRow) {
+      overallRow.style.display = 'none';
     }
 
     if (noChangeEval && noStatusEl && noRatioEl) {

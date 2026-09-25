@@ -182,11 +182,20 @@ export const CheckboxEngine = {
 
     // 2. 縦スケール比率: テンプレートに基準外枠距離があり、今回も外枠線が検出された場合
     let scaleY = 1.0;
-    if (bottomBorder && bottomBorder.found && t.refQrToBorderDist && bottomBorder.qrToBorderDist) {
-      const ratio = bottomBorder.qrToBorderDist / t.refQrToBorderDist;
-      // 0.85〜1.15 の妥当なスケーリング範囲内でのみ補正を適用
-      if (ratio >= 0.85 && ratio <= 1.15) {
-        scaleY = ratio;
+    if (bottomBorder && bottomBorder.found && bottomBorder.qrToBorderDist) {
+      const currentDist = bottomBorder.qrToBorderDist;
+      if (t.refQrToBorderRatio) {
+        // 用紙高さ比率での比較（解像度DPIの違いを完全吸収）
+        const currentRatio = currentDist / ch;
+        const ratio = currentRatio / t.refQrToBorderRatio;
+        if (ratio >= 0.85 && ratio <= 1.15) {
+          scaleY = ratio;
+        }
+      } else if (t.refQrToBorderDist) {
+        const ratio = currentDist / t.refQrToBorderDist;
+        if (ratio >= 0.85 && ratio <= 1.15) {
+          scaleY = ratio;
+        }
       }
     }
 

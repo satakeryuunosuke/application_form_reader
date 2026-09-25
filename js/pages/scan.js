@@ -1112,7 +1112,15 @@ export const ScanPage = {
           try {
             await DB.updateProject(this.project.id, { scanTemplate: templateToSave });
             this.project.scanTemplate = templateToSave;
-            UI.showToast('受講確認票の書式設定を更新しました', 'success');
+
+            // 保留中のスキャン結果キュー（pendingQueue）を新しいテンプレートで即座に再評価
+            if (this.pendingQueue && this.pendingQueue.length > 0) {
+              for (const item of this.pendingQueue) {
+                await ScannerEngine.reEvaluateItem(item, templateToSave);
+              }
+            }
+
+            UI.showToast('受講確認票の書式設定を更新し、判定結果を再計算しました', 'success');
             closeModal();
             // 現在のプレビューを再描画
             this.renderApprovalView();

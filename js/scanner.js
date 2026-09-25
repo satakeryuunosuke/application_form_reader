@@ -738,20 +738,40 @@ export const ScannerEngine = {
       }
 
       let hasChange = false;
+      let noChangeChecked = noChangeEval.isChecked;
+      let hasChangeChecked = hasChangeEval.isChecked;
+
       if (targetRects.hasChangeRect && targetRects.noChangeRect) {
-        hasChange = hasChangeEval.isChecked && !noChangeEval.isChecked;
+        const hasDark = hasChangeEval.darkRatio || 0;
+        const noDark = noChangeEval.darkRatio || 0;
+        const minThreshold = (targetRects.threshold !== undefined ? targetRects.threshold : 0.20) * 0.7;
+
+        // 受講確認モード（変更なし/変更ありの二者択一）:
+        // どちらか一方でも最低限の黒画素がある場合、黒画素率の大小比較により判定
+        if (hasDark >= minThreshold || noDark >= minThreshold) {
+          hasChange = (hasDark > noDark);
+          hasChangeChecked = hasChange;
+          noChangeChecked = !hasChange;
+        } else {
+          // 両枠とも白紙（未記入）の場合は変更なし
+          hasChange = false;
+          hasChangeChecked = false;
+          noChangeChecked = false;
+        }
       } else if (targetRects.hasChangeRect) {
         hasChange = hasChangeEval.isChecked;
+        hasChangeChecked = hasChangeEval.isChecked;
       } else if (targetRects.noChangeRect) {
         hasChange = !noChangeEval.isChecked;
+        noChangeChecked = noChangeEval.isChecked;
       } else {
         hasChange = false;
       }
 
       checkResult = {
         hasChange,
-        noChangeChecked: noChangeEval.isChecked,
-        hasChangeChecked: hasChangeEval.isChecked,
+        noChangeChecked,
+        hasChangeChecked,
         noChangeDarkRatio: noChangeEval.darkRatio,
         hasChangeDarkRatio: hasChangeEval.darkRatio,
         customChecks
@@ -872,6 +892,169 @@ export const ScannerEngine = {
       canvasWidth: canvas.width,
       canvasHeight: canvas.height
     };
+  },
+
+  /**
+   * 既存のスキャン結果アイテムに対して新しいテンプレートを適用し、判定およびオーバーレイを即時再計算
+   * @param {object} item
+   * @param {object} newTemplate
+   * @returns {Promise<object>}
+   */
+  async reEvaluateItem(item, newTemplate) {
+    if (!item || !item.imageDataUrl || !newTemplate) return item;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || item.canvasWidth || img.width;
+        canvas.height = img.naturalHeight || item.canvasHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        if (item.barcodeBox) {
+          const targetRects = CheckboxEngine.calculateTargetRects(canvas, item.barcodeBox, newTemplate, item.bottomBorder);
+          const threshold = targetRects.threshold;
+          const noChangeEval = targetRects.noChangeRect
+            ? CheckboxEngine.evaluateCheckbox(canvas, targetRects.noChangeRect, threshold)
+            : { isChecked: false, darkRatio: 0 };
+          const hasChangeEval = targetRects.hasChangeRect
+            ? CheckboxEngine.evaluateCheckbox(canvas, targetRects.hasChangeRect, threshold)
+            : { isChecked: false, darkRatio: 0 };
+
+          const customChecks = {};
+          if (targetRects.customRects && targetRects.customRects.length > 0) {
+            for (const cItem of targetRects.customRects) {
+              const ev = CheckboxEngine.evaluateCheckbox(canvas, cItem.rect, threshold);
+              customChecks[cItem.id] = {
+                id: cItem.id,
+                label: cItem.label,
+                isChecked: ev.isChecked,
+                darkRatio: ev.darkRatio
+              };
+            }
+          }
+
+          let hasChange = false;
+          let noChangeChecked = noChangeEval.isChecked;
+          let hasChangeChecked = hasChangeEval.isChecked;
+
+          if (targetRects.hasChangeRect && targetRects.noChangeRect) {
+            const hasDark = hasChangeEval.darkRatio || 0;
+            const noDark = noChangeEval.darkRatio || 0;
+            const minThreshold = threshold * 0.7;
+            if (hasDark >= minThreshold || noDark >= minThreshold) {
+              hasChange = (hasDark > noDark);
+              hasChangeChecked = hasChange;
+              noChangeChecked = !hasChange;
+            } else {
+              hasChange = false;
+              hasChangeChecked = false;
+              noChangeChecked = false;
+            }
+          } else if (targetRects.hasChangeRect) {
+            hasChange = hasChangeEval.isChecked;
+            hasChangeChecked = hasChangeEval.isChecked;
+          } else if (targetRects.noChangeRect) {
+            hasChange = !noChangeEval.isChecked;
+            noChangeChecked = noChangeEval.isChecked;
+          }
+
+          item.targetRects = targetRects;
+          item.checkResult = {
+            hasChange,
+            noChangeChecked,
+            hasChangeChecked,
+            noChangeDarkRatio: noChangeEval.darkRatio,
+            hasChangeDarkRatio: hasChangeEval.darkRatio,
+            customChecks
+          };
+          item.detectedHasChange = hasChange;
+
+          // 枠線オーバーレイ画像の再生成
+          try {
+            const previewCanvas = document.createElement('canvas');
+            previewCanvas.width = canvas.width;
+            previewCanvas.height = canvas.height;
+            const pctx = previewCanvas.getContext('2d');
+            pctx.drawImage(canvas, 0, 0);
+
+            // コード枠
+            const b = item.barcodeBox;
+            pctx.save();
+            if (b.angle) {
+              pctx.translate(b.centerX, b.centerY);
+              pctx.rotate(b.angle);
+              pctx.strokeStyle = '#22c55e';
+              pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
+              pctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
+              pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+              pctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+            } else {
+              const bx = b.x !== undefined ? b.x : (b.centerX - b.width / 2);
+              const by = b.y !== undefined ? b.y : (b.centerY - b.height / 2);
+              pctx.strokeStyle = '#22c55e';
+              pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
+              pctx.strokeRect(bx, by, b.width, b.height);
+              pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+              pctx.fillRect(bx, by, b.width, b.height);
+            }
+            pctx.restore();
+
+            // チェックボックス枠
+            if (targetRects.noChangeRect) {
+              const r = targetRects.noChangeRect;
+              pctx.strokeStyle = noChangeChecked ? '#22c55e' : '#94a3b8';
+              pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
+              pctx.strokeRect(r.x, r.y, r.width, r.height);
+              pctx.fillStyle = noChangeChecked ? 'rgba(34, 197, 94, 0.25)' : 'rgba(148, 163, 184, 0.1)';
+              pctx.fillRect(r.x, r.y, r.width, r.height);
+            }
+            if (targetRects.hasChangeRect) {
+              const r = targetRects.hasChangeRect;
+              pctx.strokeStyle = hasChangeChecked ? '#eab308' : '#94a3b8';
+              pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
+              pctx.strokeRect(r.x, r.y, r.width, r.height);
+              pctx.fillStyle = hasChangeChecked ? 'rgba(234, 179, 8, 0.25)' : 'rgba(148, 163, 184, 0.1)';
+              pctx.fillRect(r.x, r.y, r.width, r.height);
+            }
+            if (targetRects.customRects && targetRects.customRects.length > 0) {
+              targetRects.customRects.forEach(cItem => {
+                const r = cItem.rect;
+                const isChk = customChecks[cItem.id]?.isChecked;
+                pctx.strokeStyle = isChk ? '#8b5cf6' : '#64748b';
+                pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0028));
+                pctx.strokeRect(r.x, r.y, r.width, r.height);
+                pctx.fillStyle = isChk ? 'rgba(139, 92, 246, 0.28)' : 'rgba(100, 116, 139, 0.08)';
+                pctx.fillRect(r.x, r.y, r.width, r.height);
+              });
+            }
+
+            if (item.bottomBorder && item.bottomBorder.found) {
+              pctx.save();
+              pctx.strokeStyle = '#06b6d4';
+              pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
+              pctx.setLineDash([8, 4]);
+              pctx.beginPath();
+              const x1 = canvas.width * 0.08;
+              const y1 = item.bottomBorder.slope * x1 + item.bottomBorder.intercept;
+              const x2 = canvas.width * 0.92;
+              const y2 = item.bottomBorder.slope * x2 + item.bottomBorder.intercept;
+              pctx.moveTo(x1, y1);
+              pctx.lineTo(x2, y2);
+              pctx.stroke();
+              pctx.restore();
+            }
+
+            item.overlayDataUrl = previewCanvas.toDataURL('image/jpeg', 0.85);
+          } catch (e) {
+            console.warn('Overlay preview update failed:', e);
+          }
+        }
+        resolve(item);
+      };
+      img.onerror = () => resolve(item);
+      img.src = item.imageDataUrl;
+    });
   },
 
   /**
