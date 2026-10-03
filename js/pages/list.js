@@ -90,6 +90,7 @@ export const ListPage = {
     this.allStudentsWithSubmissions = await DB.getProjectStudentsWithSubmissions(project.id);
     const classes = await DB.getProjectClasses(project.id);
     const isSelectionMode = project.projectType === 'selection';
+    const isContinuationMode = project.projectType === 'continuation';
     const courseBoxes = (project.scanTemplate?.customBoxes || project.template?.customBoxes || []).filter(b => b && b.label);
 
     // 変更前クラス一覧
@@ -150,6 +151,11 @@ export const ListPage = {
                     <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済（1講座以上）</option>
                     <option value="zero" ${this.currentStatusFilter === 'zero' ? 'selected' : ''}>0講座（申込なし）</option>
                     <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
+                  ` : isContinuationMode ? `
+                    <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済のみ</option>
+                    <option value="participate" ${this.currentStatusFilter === 'participate' ? 'selected' : ''}>⭕ 受講する</option>
+                    <option value="other" ${this.currentStatusFilter === 'other' ? 'selected' : ''}>📝 その他（要確認）</option>
+                    <option value="unsubmitted" ${this.currentStatusFilter === 'unsubmitted' ? 'selected' : ''}>未提出のみ</option>
                   ` : `
                     <option value="submitted" ${this.currentStatusFilter === 'submitted' ? 'selected' : ''}>提出済のみ</option>
                     <option value="no-change" ${this.currentStatusFilter === 'no-change' ? 'selected' : ''}>変更なし</option>
@@ -174,6 +180,22 @@ export const ListPage = {
                   <select id="sel-filter-course" class="filter-single-select ${this.currentCourseFilter !== 'all' ? 'is-active' : ''}" title="申込講座で絞り込み">
                     <option value="all" ${this.currentCourseFilter === 'all' ? 'selected' : ''}>🎯 講座: すべて</option>
                     ${courseBoxes.map(b => `<option value="${b.label}" ${this.currentCourseFilter === b.label ? 'selected' : ''}>${b.label}</option>`).join('')}
+                  </select>
+                </div>
+              ` : isContinuationMode ? `
+                <!-- 継続確認モード: 所属クラス・受講科目数フィルター -->
+                <div class="filter-single-select-wrap">
+                  <select id="sel-filter-prev-class" class="filter-single-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="所属クラスで絞り込み">
+                    <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>所属クラス: すべて</option>
+                    ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                  </select>
+                </div>
+
+                <div class="filter-single-select-wrap">
+                  <select id="sel-filter-post-course" class="filter-single-select ${this.currentPostCourseFilter !== 'all' ? 'is-active' : ''}" title="受講科目数で絞り込み">
+                    <option value="all" ${this.currentPostCourseFilter === 'all' ? 'selected' : ''}>科目数: すべて</option>
+                    <option value="4科" ${this.currentPostCourseFilter === '4科' ? 'selected' : ''}>4科目</option>
+                    <option value="2科" ${this.currentPostCourseFilter === '2科' ? 'selected' : ''}>2科目</option>
                   </select>
                 </div>
               ` : `
@@ -436,6 +458,7 @@ export const ListPage = {
 
   applyFiltersAndRenderTable() {
     const isSelectionMode = this.project?.projectType === 'selection';
+    const isContinuationMode = this.project?.projectType === 'continuation';
 
     this.filteredList = this.allStudentsWithSubmissions.filter(item => {
       if (isSelectionMode) {
@@ -465,6 +488,44 @@ export const ListPage = {
           const matchClass = (item.className || '').toLowerCase().includes(q);
           const matchCourseList = (item.selectedCourses || []).some(c => c.toLowerCase().includes(q));
           if (!matchId && !matchName && !matchKana && !matchClass && !matchCourseList) return false;
+        }
+
+        return true;
+      }
+
+      if (isContinuationMode) {
+        // 1. ステータスフィルター（継続確認モード）
+        if (this.currentStatusFilter === 'submitted' && item.status === '未提出') return false;
+        if (this.currentStatusFilter === 'unsubmitted' && item.status !== '未提出') return false;
+        if (this.currentStatusFilter === 'participate') {
+          if (item.status === '未提出' || (item.enrollmentStatus || (item.hasChange ? 'その他' : '受講する')) !== '受講する') return false;
+        }
+        if (this.currentStatusFilter === 'other') {
+          if (item.status === '未提出' || (item.enrollmentStatus || (item.hasChange ? 'その他' : '受講する')) !== 'その他') return false;
+        }
+
+        // 2. 所属クラスフィルター
+        if (this.currentPrevClassFilter !== 'all' && item.className !== this.currentPrevClassFilter) {
+          return false;
+        }
+
+        // 3. 受講科目数フィルター
+        if (this.currentPostCourseFilter !== 'all') {
+          if (item.status === '未提出') return false;
+          const course = item.enrollmentCourse || '4科';
+          if (course !== this.currentPostCourseFilter) return false;
+        }
+
+        // 4. 検索クエリ
+        if (this.searchQuery) {
+          const q = this.searchQuery;
+          const matchId = item.nichinokenId.toLowerCase().includes(q);
+          const matchName = item.name.toLowerCase().includes(q);
+          const matchKana = (item.nameKana || '').toLowerCase().includes(q);
+          const matchClass = (item.className || '').toLowerCase().includes(q);
+          const matchRemarks = (item.remarks || '').toLowerCase().includes(q);
+          const matchCustom = item.customFields ? Object.values(item.customFields).some(v => String(v).toLowerCase().includes(q)) : false;
+          if (!matchId && !matchName && !matchKana && !matchClass && !matchRemarks && !matchCustom) return false;
         }
 
         return true;
@@ -616,6 +677,20 @@ export const ListPage = {
                 ${this.getSortHeaderHtml('日時', 'date', 'col-date')}
                 <th class="col-remarks">特記事項</th>
                 <th class="col-history" style="text-align: center;">変更履歴</th>
+              ` : isContinuationMode ? `
+                ${this.getSortHeaderHtml('日能研番号', 'id', 'col-id')}
+                ${this.getSortHeaderHtml('氏名', 'name', 'col-name')}
+                ${this.getSortHeaderHtml('氏名カナ', 'name', 'col-kana')}
+                ${this.getSortHeaderHtml('所属クラス', 'prevClass', 'col-compact-class')}
+                ${this.getSortHeaderHtml('提出状況', 'status', 'col-status')}
+                <th class="col-compact-class" style="text-align: center;">受講可否</th>
+                <th class="col-compact-course" style="text-align: center;">科目数</th>
+                <th class="col-custom-fields" style="min-width: 140px;">学年別項目</th>
+                <th class="col-method">受付方法</th>
+                <th class="col-approver">承認者</th>
+                ${this.getSortHeaderHtml('日時', 'date', 'col-date')}
+                <th class="col-remarks">特記事項</th>
+                <th class="col-history" style="text-align: center;">変更履歴</th>
               ` : `
                 ${this.getSortHeaderHtml('日能研番号', 'id', 'col-id')}
                 ${this.getSortHeaderHtml('氏名', 'name', 'col-name')}
@@ -682,6 +757,63 @@ export const ListPage = {
             <td class="col-approver">${row.approvedBy || '-'}</td>
             <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
             <td class="col-remarks" title="${row.remarks || ''}"><span>${row.remarks || '-'}</span></td>
+            <td class="col-history" style="text-align: center;">
+              <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
+                📜 履歴 <span class="badge ${historyCount > 0 ? 'badge-info' : 'badge-gray'}" style="padding: 1px 4px; font-size: 0.7rem; margin-left: 2px;">${historyCount}</span>
+                ${hasScanImg ? '<span title="スキャン原本画像あり" style="font-size: 0.8rem; margin-left: 1px;">📷</span>' : ''}
+              </button>
+            </td>
+          </tr>
+        `;
+        continue;
+      }
+
+      if (isContinuationMode) {
+        let statusBadge = '<span class="badge badge-gray">未提出</span>';
+        let enrollStatusBadge = '<span class="text-muted">-</span>';
+        let enrollCourseBadge = '<span class="text-muted">-</span>';
+        let customFieldsHtml = '<span class="text-muted">-</span>';
+
+        if (row.status === '承認済') {
+          statusBadge = '<span class="badge badge-success">提出済</span>';
+          const isOther = (row.enrollmentStatus === 'その他');
+          enrollStatusBadge = isOther 
+            ? '<span class="badge badge-warning font-bold" style="font-size: 0.82rem; padding: 2px 7px;">📝 その他</span>'
+            : '<span class="badge badge-success font-bold" style="font-size: 0.82rem; padding: 2px 7px;">⭕ 受講する</span>';
+          
+          enrollCourseBadge = `<span class="badge badge-purple font-bold" style="font-size: 0.82rem; padding: 2px 6px;">${row.enrollmentCourse || '4科'}</span>`;
+
+          const cFields = row.customFields || {};
+          const fieldEntries = Object.entries(cFields);
+          if (fieldEntries.length > 0) {
+            customFieldsHtml = `
+              <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                ${fieldEntries.map(([k, val]) => `
+                  <span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px;">🏷️ ${val}</span>
+                `).join('')}
+              </div>
+            `;
+          }
+        }
+
+        html += `
+          <tr>
+            <td class="col-id text-mono font-bold">${row.nichinokenId}</td>
+            <td class="col-name font-bold">${row.name}</td>
+            <td class="col-kana">${row.nameKana || ''}</td>
+            <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${row.className}</span></td>
+            <td class="col-status">${statusBadge}</td>
+            <td class="col-compact-class" style="text-align: center;">${enrollStatusBadge}</td>
+            <td class="col-compact-course" style="text-align: center;">${enrollCourseBadge}</td>
+            <td class="col-custom-fields">${customFieldsHtml}</td>
+            <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${row.inputMethod}</span>` : '-'}</td>
+            <td class="col-approver">${row.approvedBy || '-'}</td>
+            <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
+            <td class="col-remarks" title="${row.remarks || ''}">
+              ${row.enrollmentStatus === 'その他' && row.remarks 
+                ? `<span style="background: #fffbeb; color: #b45309; font-weight: 600; padding: 2px 6px; border-radius: 3px; border: 1px solid #fde68a;">📝 ${row.remarks}</span>`
+                : `<span>${row.remarks || '-'}</span>`}
+            </td>
             <td class="col-history" style="text-align: center;">
               <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
                 📜 履歴 <span class="badge ${historyCount > 0 ? 'badge-info' : 'badge-gray'}" style="padding: 1px 4px; font-size: 0.7rem; margin-left: 2px;">${historyCount}</span>

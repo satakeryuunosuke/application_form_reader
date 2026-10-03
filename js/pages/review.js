@@ -237,6 +237,7 @@ export const ReviewPage = {
    */
   renderRightPaneHtml(item, classOptions) {
     const isSelectionMode = (this.project.projectType === 'selection');
+    const isContinuationMode = (this.project.projectType === 'continuation');
     const hasChange = item.hasChange;
 
     // 履歴一覧の構築（新しい順：降順）
@@ -252,6 +253,8 @@ export const ReviewPage = {
         hasChange: item.hasChange,
         enrollmentClass: item.enrollmentClass || item.className,
         enrollmentCourse: item.enrollmentCourse || item.course || '4科',
+        enrollmentStatus: item.enrollmentStatus || (item.hasChange ? 'その他' : '受講する'),
+        customFields: item.customFields || {},
         remarks: item.remarks || '',
         customChecks: item.customChecks || {},
         scanImageBlob: item.scanImageBlob || null
@@ -359,6 +362,55 @@ export const ReviewPage = {
                             })()}
                           </div>
                         </div>
+                      ` : isContinuationMode ? `
+                        <!-- 継続確認プロジェクト用UI -->
+                        <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid #a7f3d0; border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px;">
+                          <div>
+                            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: #065f46; margin-bottom: 4px;">受講可否判定</label>
+                            <div style="display: flex; gap: 16px;">
+                              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold; color: #047857;">
+                                <input type="radio" name="edit-continuation-status" value="受講する" ${(item.enrollmentStatus || (!item.hasChange ? '受講する' : 'その他')) === '受講する' ? 'checked' : ''}> ⭕ 受講する
+                              </label>
+                              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold; color: #b45309;">
+                                <input type="radio" name="edit-continuation-status" value="その他" ${(item.enrollmentStatus || (!item.hasChange ? '受講する' : 'その他')) === 'その他' ? 'checked' : ''}> 📝 その他
+                              </label>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: #065f46; margin-bottom: 4px;">受講科目数</label>
+                            <div style="display: flex; gap: 16px;">
+                              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">
+                                <input type="radio" name="edit-continuation-course" value="4科" ${(item.enrollmentCourse || '4科') === '4科' ? 'checked' : ''}> 4科目
+                              </label>
+                              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; font-weight: bold;">
+                                <input type="radio" name="edit-continuation-course" value="2科" ${(item.enrollmentCourse || '4科') === '2科' ? 'checked' : ''}> 2科目
+                              </label>
+                            </div>
+                          </div>
+
+                          ${(this.project.scanTemplate?.continuationCustomFields || []).length > 0 ? `
+                            <div style="border-top: 1px dashed #a7f3d0; padding-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                              <div style="font-size: 0.78rem; font-weight: bold; color: #047857;">🏷️ 学年別・カスタマイズ項目:</div>
+                              ${this.project.scanTemplate.continuationCustomFields.map(field => {
+                                const curVal = item.customFields?.[field.id] || field.options?.[0] || '';
+                                return `
+                                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.82rem; flex-wrap: wrap;">
+                                    <span style="font-weight: 600; color: var(--gray-700);">${field.name}:</span>
+                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                      ${(field.options || []).map(opt => `
+                                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                          <input type="radio" name="edit-continuation-field-${field.id}" value="${opt}" ${curVal === opt ? 'checked' : ''}>
+                                          <span>${opt}</span>
+                                        </label>
+                                      `).join('')}
+                                    </div>
+                                  </div>
+                                `;
+                              }).join('')}
+                            </div>
+                          ` : ''}
+                        </div>
                       ` : `
                         <!-- 通常受講確認票用UI -->
                         <div class="form-group" style="margin-bottom: 0;">
@@ -437,13 +489,24 @@ export const ReviewPage = {
             } else {
               // 過去の履歴カード
               let enrollmentDisp = '<span class="text-muted">-</span>';
-              const histCourse = hist.enrollmentCourse || (hist.enrollmentClass === '非受講' ? '非受講' : (item.course || '4科'));
-              if (hist.enrollmentClass === '非受講' || histCourse === '非受講') {
-                enrollmentDisp = '<strong style="color: var(--danger-solid);">🚫 非受講</strong>';
-              } else if (hist.hasChange) {
-                enrollmentDisp = `<span class="badge badge-warning font-bold">🔄 ${hist.enrollmentClass} (${histCourse})</span>`;
+              if (isContinuationMode) {
+                const cStatus = hist.enrollmentStatus || (hist.hasChange ? 'その他' : '受講する');
+                const cCourse = hist.enrollmentCourse || '4科';
+                const isOther = (cStatus === 'その他');
+                enrollmentDisp = `
+                  <span class="badge ${isOther ? 'badge-warning' : 'badge-success'} font-bold">
+                    ${isOther ? '📝 その他' : '⭕ 受講する'} (${cCourse})
+                  </span>
+                `;
               } else {
-                enrollmentDisp = `<span class="badge badge-success font-bold">✅ ${hist.enrollmentClass || item.className} (${histCourse})</span>`;
+                const histCourse = hist.enrollmentCourse || (hist.enrollmentClass === '非受講' ? '非受講' : (item.course || '4科'));
+                if (hist.enrollmentClass === '非受講' || histCourse === '非受講') {
+                  enrollmentDisp = '<strong style="color: var(--danger-solid);">🚫 非受講</strong>';
+                } else if (hist.hasChange) {
+                  enrollmentDisp = `<span class="badge badge-warning font-bold">🔄 ${hist.enrollmentClass} (${histCourse})</span>`;
+                } else {
+                  enrollmentDisp = `<span class="badge badge-success font-bold">✅ ${hist.enrollmentClass || item.className} (${histCourse})</span>`;
+                }
               }
 
               return `
@@ -466,6 +529,17 @@ export const ReviewPage = {
                         <div class="history-field-value" style="font-size: 0.85rem;">${enrollmentDisp}</div>
                       </div>
                     </div>
+
+                    ${hist.customFields && Object.keys(hist.customFields).length > 0 ? `
+                      <div style="margin-top: 6px; padding: 4px 8px; background: rgba(16, 185, 129, 0.05); border: 1px solid #a7f3d0; border-radius: var(--radius-sm); font-size: 0.75rem;">
+                        <div style="font-size: 0.7rem; font-weight: bold; color: #047857; margin-bottom: 2px;">学年別項目:</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                          ${Object.entries(hist.customFields).map(([k, v]) => `
+                            <span class="badge badge-gray" style="font-size: 0.72rem;">🏷️ ${v}</span>
+                          `).join('')}
+                        </div>
+                      </div>
+                    ` : ''}
 
                     ${hist.customChecks && Object.values(hist.customChecks).some(c => c.isChecked) ? `
                       <div style="margin-top: 6px; padding: 4px 8px; background: rgba(139, 92, 246, 0.05); border: 1px solid #ddd6fe; border-radius: var(--radius-sm); font-size: 0.75rem;">
@@ -561,13 +635,16 @@ export const ReviewPage = {
     if (saveBtn) {
       saveBtn.onclick = async () => {
         const isSelectionMode = (this.project.projectType === 'selection');
+        const isContinuationMode = (this.project.projectType === 'continuation');
         const hasChangeRadio = this.container.querySelector('input[name="edit-has-change"]:checked');
         let hasChange = hasChangeRadio?.value === '1';
         let enrollmentClass = this.container.querySelector('#sel-edit-class')?.value || currentItem.className;
         let enrollmentCourse = this.container.querySelector('#sel-edit-course')?.value || currentItem.course || '4科';
+        let enrollmentStatus = '受講する';
+        const customFields = {};
         const remarks = this.container.querySelector('#inp-edit-remarks')?.value.trim() || '';
 
-        // カスタムチェックボックスの修正状態を収集
+        // カスタムチェックボックスの修正状態を収集 (selection)
         const customChecks = {};
         this.container.querySelectorAll('.chk-rev-custom-box-item').forEach(chk => {
           const id = chk.dataset.id;
@@ -584,11 +661,27 @@ export const ReviewPage = {
           hasChange = totalSelected > 0;
           enrollmentClass = totalSelected > 0 ? `${totalSelected}講座申込` : '0講座（未受講）';
           enrollmentCourse = '-';
+        } else if (isContinuationMode) {
+          const contRadio = this.container.querySelector('input[name="edit-continuation-status"]:checked');
+          enrollmentStatus = contRadio ? contRadio.value : '受講する';
+          hasChange = (enrollmentStatus === 'その他');
+
+          const subjRadio = this.container.querySelector('input[name="edit-continuation-course"]:checked');
+          enrollmentCourse = subjRadio ? subjRadio.value : '4科';
+          enrollmentClass = currentItem.className;
+
+          const customDefs = this.project.scanTemplate?.continuationCustomFields || [];
+          customDefs.forEach(field => {
+            const checkedOpt = this.container.querySelector(`input[name="edit-continuation-field-${field.id}"]:checked`);
+            if (checkedOpt) {
+              customFields[field.id] = checkedOpt.value;
+            }
+          });
         }
 
         UI.setButtonLoading(saveBtn, true, '保存中...');
         try {
-          await DB.saveSubmission(currentItem.submissionId, {
+          const updatePayload = {
             status: '承認済',
             hasChange,
             enrollmentClass,
@@ -598,7 +691,13 @@ export const ReviewPage = {
             reviewedAt: new Date().toISOString(),
             reviewedBy: currentItem.approvedBy || '',
             reviewNote: remarks
-          });
+          };
+          if (isContinuationMode) {
+            updatePayload.enrollmentStatus = enrollmentStatus;
+            updatePayload.customFields = customFields;
+          }
+
+          await DB.saveSubmission(currentItem.submissionId, updatePayload);
 
           UI.showToast(`${currentItem.name} 様の登録内容を修正・保存しました`, 'success');
           

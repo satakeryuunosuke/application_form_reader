@@ -64,6 +64,7 @@ export const ProjectPage = {
     const lastSync = SyncManager.getLastSyncTime(projectId);
     const lastSyncTimeStr = lastSync ? lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     const isSelectionMode = project.projectType === 'selection';
+    const isContinuationMode = project.projectType === 'continuation';
 
     this.container.innerHTML = `
       <div class="view-container">
@@ -75,7 +76,11 @@ export const ProjectPage = {
               <!-- 1行目: プロジェクトタイトル + 主要ステータスバッジ -->
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
                 <h1 style="font-size: 1.35rem; font-weight: 800; color: var(--gray-900); margin: 0; line-height: 1.2; white-space: nowrap;">${UI.formatProjectTitle(project.title)}</h1>
-                ${isSelectionMode ? '<span class="badge" style="background: #ede7f6; color: #512da8; border: 1px solid #d1c4e9; font-weight: 700; white-space: nowrap;">🎯 講座選択モード</span>' : ''}
+                ${isSelectionMode 
+                  ? '<span class="badge" style="background: #ede7f6; color: #512da8; border: 1px solid #d1c4e9; font-weight: 700; white-space: nowrap;">🎯 講座選択モード</span>' 
+                  : (isContinuationMode 
+                      ? '<span class="badge" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 700; white-space: nowrap;">📋 継続確認モード</span>' 
+                      : '<span class="badge" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-weight: 700; white-space: nowrap;">📝 期間講習受講確認モード</span>')}
                 <span id="header-status-badge" class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}" style="${isCompleted ? 'font-weight: 700;' : 'font-weight: 700; background: #e8f5e9; color: #2e7d32;'} white-space: nowrap;">
                   ${isCompleted ? '🏁 完了' : '🟢 進行中'}
                 </span>
@@ -554,7 +559,9 @@ export const ProjectPage = {
     const isCompleted = project.status === '完了';
     const isFolderConnected = FolderConnector.isConnected();
     const isSelectionMode = project.projectType === 'selection';
+    const isContinuationMode = project.projectType === 'continuation';
     const changeOptions = DB.getProjectChangeOptions(project);
+    const continuationCustomFields = project.scanTemplate?.continuationCustomFields || [];
     const courseDist = stats.courseCountDistribution || {};
     const methodDist = stats.methodDistribution || {};
     const courseBoxes = (project.scanTemplate?.customBoxes || project.template?.customBoxes || []);
@@ -757,13 +764,15 @@ export const ProjectPage = {
                 <div class="dashboard-card-header">
                   <div class="dashboard-card-icon">📊</div>
                   <div>
-                    <h4 class="dashboard-card-title">${isSelectionMode ? '講座申込データ出力' : '提出状況データ出力'}</h4>
+                    <h4 class="dashboard-card-title">${isSelectionMode ? '講座申込データ出力' : (isContinuationMode ? '継続確認データ出力' : '提出状況データ出力')}</h4>
                     <span class="badge badge-primary">Excel / CSV</span>
                   </div>
                 </div>
                 <p class="dashboard-card-desc">
                   ${isSelectionMode 
                     ? '全生徒の申込講座一覧および講座別クロス集計マトリクス（生徒×講座）を、Excel (.xlsx) または CSV 形式でダウンロードして集計や校舎管理に利用します。' 
+                    : isContinuationMode
+                    ? '全生徒の受講可否（受講する/その他）、科目数（4科/2科）、学年別項目、特記事項の一覧データを、Excel (.xlsx) または CSV 形式でダウンロードして集計や保管に利用します。'
                     : '登録された全生徒の提出状況・受講変更・確定内容の一覧データを、Excel (.xlsx) または CSV 形式でダウンロードして集計や保管に利用します。'}
                 </p>
               </div>
@@ -786,8 +795,32 @@ export const ProjectPage = {
             <h3 class="dashboard-section-title">プロジェクト設定・メンテナンス</h3>
           </div>
           <div class="dashboard-grid">
-            ${!isSelectionMode ? `
-              <!-- 変更有の選択肢設定 -->
+            ${isContinuationMode ? `
+              <!-- 継続確認: 学年別カスタマイズ項目設定 -->
+              <div class="dashboard-card">
+                <div>
+                  <div class="dashboard-card-header">
+                    <div class="dashboard-card-icon">🏷️</div>
+                    <div>
+                      <h4 class="dashboard-card-title">学年別・カスタマイズ項目</h4>
+                      <span class="badge badge-info">${continuationCustomFields.length} 項目</span>
+                    </div>
+                  </div>
+                  <p class="dashboard-card-desc">
+                    通室コース（曜日）や日特受講など、学年ごとにカスタマイズされた確認項目です。
+                  </p>
+                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+                    ${continuationCustomFields.map(f => `
+                      <div style="font-size: 0.8rem; background: var(--gray-50); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--gray-200);">
+                        <strong>🏷️ ${f.name}:</strong> <span style="color: var(--gray-600);">${(f.options || []).join(' / ')}</span>
+                      </div>
+                    `).join('')}
+                    ${continuationCustomFields.length === 0 ? '<span style="font-size: 0.78rem; color: var(--gray-500);">学年別項目はありません（全学年共通項目のみ）</span>' : ''}
+                  </div>
+                </div>
+              </div>
+            ` : !isSelectionMode ? `
+              <!-- 変更有の選択肢設定 (期間講習) -->
               <div class="dashboard-card">
                 <div>
                   <div class="dashboard-card-header">
@@ -997,9 +1030,12 @@ export const ProjectPage = {
           UI.setButtonLoading(exportExcelBtn, true, '出力中...');
           const items = await DB.getProjectStudentsWithSubmissions(projectId);
           const cleanTitle = UI.formatProjectTitle(project.title);
-          const fileName = `${cleanTitle}_${isSelectionMode ? '講座申込集計' : '提出集計'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          const modeLabel = isSelectionMode ? '講座申込集計' : (isContinuationMode ? '継続確認集計' : '提出集計');
+          const fileName = `${cleanTitle}_${modeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
           if (isSelectionMode) {
             CsvUtil.exportSelectionSubmissionsExcel(items, project.scanTemplate?.customBoxes || project.template?.customBoxes, fileName);
+          } else if (isContinuationMode) {
+            CsvUtil.exportContinuationSubmissionsExcel(items, project.scanTemplate?.continuationCustomFields || [], fileName);
           } else {
             CsvUtil.exportSubmissionsExcel(items, fileName);
           }
@@ -1019,9 +1055,12 @@ export const ProjectPage = {
           UI.setButtonLoading(exportCsvBtn, true, '出力中...');
           const items = await DB.getProjectStudentsWithSubmissions(projectId);
           const cleanTitle = UI.formatProjectTitle(project.title);
-          const fileName = `${cleanTitle}_${isSelectionMode ? '講座申込集計' : '提出集計'}_${new Date().toISOString().slice(0, 10)}.csv`;
+          const modeLabel = isSelectionMode ? '講座申込集計' : (isContinuationMode ? '継続確認集計' : '提出集計');
+          const fileName = `${cleanTitle}_${modeLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
           if (isSelectionMode) {
             CsvUtil.exportSelectionSubmissionsCsv(items, fileName);
+          } else if (isContinuationMode) {
+            CsvUtil.exportContinuationSubmissionsCsv(items, project.scanTemplate?.continuationCustomFields || [], fileName);
           } else {
             CsvUtil.exportSubmissionsCsv(items, fileName);
           }

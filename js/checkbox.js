@@ -29,6 +29,69 @@ export const CheckboxEngine = {
   },
 
   /**
+   * 継続確認モード用のデフォルト読取テンプレート相対定義
+   * @param {number|string} grade 学年 (1〜6)
+   */
+  getDefaultContinuationTemplate(grade = 3) {
+    const numGrade = parseInt(grade, 10);
+    const customFieldDefs = [];
+
+    if (numGrade === 3 || numGrade === 4) {
+      customFieldDefs.push({
+        id: 'field_course_days',
+        name: '通室コース',
+        type: 'single', // 単一選択（大小比較）
+        options: [
+          { id: 'opt_mon_thu', label: '月木コース', box: { dx: 0.05, dy: 0.225, size: 0.032 } },
+          { id: 'opt_tue_fri', label: '火金コース', box: { dx: 0.05, dy: 0.292, size: 0.032 } }
+        ]
+      });
+    } else if (numGrade === 6) {
+      customFieldDefs.push({
+        id: 'field_nittoku',
+        name: '日特',
+        type: 'single',
+        options: [
+          { id: 'opt_nittoku_yes', label: '日特受講', box: { dx: 0.15, dy: 0.225, size: 0.032 } },
+          { id: 'opt_nittoku_no',  label: '日特非受講', box: { dx: 0.15, dy: 0.292, size: 0.032 } }
+        ]
+      });
+    }
+
+    return {
+      // 1. 基本受講可否枠
+      participateBox: {
+        dx: -0.058,
+        dy: 0.225,
+        size: 0.032,
+        label: '受講する'
+      },
+      otherBox: {
+        dx: -0.058,
+        dy: 0.292,
+        size: 0.032,
+        label: 'その他'
+      },
+      // 2. 科目数枠
+      subject4Box: {
+        dx: -0.058,
+        dy: 0.360,
+        size: 0.032,
+        label: '4科目'
+      },
+      subject2Box: {
+        dx: -0.058,
+        dy: 0.425,
+        size: 0.032,
+        label: '2科目'
+      },
+      // 3. 学年別カスタム項目定義
+      customFieldDefs,
+      threshold: 0.25
+    };
+  },
+
+  /**
    * テンプレート内の共通ボックスサイズ（マスの大きさ）を取得
    * @param {object} template テンプレートオブジェクト
    * @returns {number}
@@ -41,16 +104,37 @@ export const CheckboxEngine = {
     if (template.hasChangeBox && (template.hasChangeBox.size || template.hasChangeBox.w)) {
       return template.hasChangeBox.size || template.hasChangeBox.w;
     }
+    if (template.participateBox && (template.participateBox.size || template.participateBox.w)) {
+      return template.participateBox.size || template.participateBox.w;
+    }
+    if (template.otherBox && (template.otherBox.size || template.otherBox.w)) {
+      return template.otherBox.size || template.otherBox.w;
+    }
+    if (template.subject4Box && (template.subject4Box.size || template.subject4Box.w)) {
+      return template.subject4Box.size || template.subject4Box.w;
+    }
+    if (template.subject2Box && (template.subject2Box.size || template.subject2Box.w)) {
+      return template.subject2Box.size || template.subject2Box.w;
+    }
     if (template.customBoxes && template.customBoxes.length > 0) {
       for (const box of template.customBoxes) {
         if (box && (box.size || box.w)) return box.size || box.w;
+      }
+    }
+    if (template.customFieldDefs && template.customFieldDefs.length > 0) {
+      for (const f of template.customFieldDefs) {
+        if (f.options) {
+          for (const opt of f.options) {
+            if (opt.box && (opt.box.size || opt.box.w)) return opt.box.size || opt.box.w;
+          }
+        }
       }
     }
     return 0.032;
   },
 
   /**
-   * テンプレート内のすべてのボックス（標準枠・カスタム枠すべて）のマスの大きさを同期
+   * テンプレート内のすべてのボックス（標準枠・継続確認枠・カスタム枠すべて）のマスの大きさを同期
    * @param {object} template テンプレートオブジェクト
    * @param {number} [targetSize] 同期するサイズ（省略時は現在の共通サイズを採用）
    */
@@ -60,22 +144,28 @@ export const CheckboxEngine = {
       ? targetSize
       : this.getCommonBoxSize(template);
 
-    if (template.noChangeBox) {
-      template.noChangeBox.size = s;
-      delete template.noChangeBox.w;
-      delete template.noChangeBox.h;
-    }
-    if (template.hasChangeBox) {
-      template.hasChangeBox.size = s;
-      delete template.hasChangeBox.w;
-      delete template.hasChangeBox.h;
-    }
+    const updateBox = (b) => {
+      if (b) {
+        b.size = s;
+        delete b.w;
+        delete b.h;
+      }
+    };
+
+    updateBox(template.noChangeBox);
+    updateBox(template.hasChangeBox);
+    updateBox(template.participateBox);
+    updateBox(template.otherBox);
+    updateBox(template.subject4Box);
+    updateBox(template.subject2Box);
+
     if (template.customBoxes && Array.isArray(template.customBoxes)) {
-      template.customBoxes.forEach(b => {
-        if (b) {
-          b.size = s;
-          delete b.w;
-          delete b.h;
+      template.customBoxes.forEach(b => updateBox(b));
+    }
+    if (template.customFieldDefs && Array.isArray(template.customFieldDefs)) {
+      template.customFieldDefs.forEach(f => {
+        if (f && Array.isArray(f.options)) {
+          f.options.forEach(opt => updateBox(opt.box));
         }
       });
     }
@@ -236,9 +326,27 @@ export const CheckboxEngine = {
       rect: getPixelRect(box)
     }));
 
+    // 継続確認モード: 学年別カスタム項目の矩形計算
+    const customFieldRects = (t.customFieldDefs || []).map(field => ({
+      id: field.id,
+      name: field.name,
+      type: field.type || 'single',
+      options: (field.options || []).map(opt => ({
+        id: opt.id,
+        label: opt.label,
+        rect: opt.box ? getPixelRect(opt.box) : null
+      }))
+    }));
+
     return {
       noChangeRect: t.noChangeBox ? getPixelRect(t.noChangeBox) : null,
       hasChangeRect: t.hasChangeBox ? getPixelRect(t.hasChangeBox) : null,
+      // 継続確認モード枠
+      participateRect: t.participateBox ? getPixelRect(t.participateBox) : null,
+      otherRect: t.otherBox ? getPixelRect(t.otherBox) : null,
+      subject4Rect: t.subject4Box ? getPixelRect(t.subject4Box) : null,
+      subject2Rect: t.subject2Box ? getPixelRect(t.subject2Box) : null,
+      customFieldRects,
       customRects,
       threshold: t.threshold !== undefined ? t.threshold : 0.20,
       bottomBorder,

@@ -391,6 +391,7 @@ export const ScanPage = {
     }
     const isAlreadyApproved = existingSub && existingSub.status === '承認済';
     const isSelectionMode = (this.project.projectType === 'selection');
+    const isContinuationMode = (this.project.projectType === 'continuation');
 
     this.container.innerHTML = `
       <div class="scan-split-container">
@@ -497,7 +498,92 @@ export const ScanPage = {
                 <div id="scan-zero-selected-note" style="margin-bottom: 8px; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.78rem; background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; display: ${Object.values(currentItem.checkResult?.customChecks || {}).filter(c => c.isChecked).length === 0 ? 'block' : 'none'};">
                   ⚠️ 現在0講座選択です（未受講・不参加として登録されます）
                 </div>
+              ` : (isContinuationMode ? `
+                <!-- 継続確認モードUI -->
+                <div class="approval-section-title">
+                  <span>📋 継続確認判定</span>
+                  <span class="badge ${currentItem.checkResult?.otherChecked ? 'badge-warning' : 'badge-success'}">
+                    自動判定: ${currentItem.checkResult?.otherChecked ? '⚠️ その他（要特記）' : '✅ 受講する'}
+                  </span>
+                </div>
+
+                <!-- 1. 受講可否ラジオカード -->
+                <div class="radio-card-group" style="margin-bottom: 10px;">
+                  <label class="radio-card ${!currentItem.checkResult?.otherChecked ? 'selected' : ''}" id="card-opt-cont-participate" style="cursor: pointer;">
+                    <input type="radio" name="continuation-choice" value="participate" ${!currentItem.checkResult?.otherChecked ? 'checked' : ''} style="display: none;">
+                    <div>
+                      <div class="font-bold" style="font-size: 0.88rem; color: #16a34a;">✅ 受講する</div>
+                      <div style="font-size: 0.75rem; color: var(--gray-500); line-height: 1.3;">所属クラス・科目を継続して受講</div>
+                    </div>
+                  </label>
+
+                  <label class="radio-card ${currentItem.checkResult?.otherChecked ? 'selected' : ''}" id="card-opt-cont-other" style="cursor: pointer; ${currentItem.checkResult?.otherChecked ? 'border-color: #f59e0b; background: #fffbeb;' : ''}">
+                    <input type="radio" name="continuation-choice" value="other" ${currentItem.checkResult?.otherChecked ? 'checked' : ''} style="display: none;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div class="font-bold" style="font-size: 0.88rem; color: #d97706;">⚠️ その他（特記自由記述あり）</div>
+                      <div style="font-size: 0.75rem; color: #b45309; line-height: 1.3;">左ペインの用紙記述を確認し、下の「特記事項」に入力してください</div>
+                    </div>
+                  </label>
+                </div>
+
+                <!-- 2. 科目数選択 -->
+                <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px;">
+                  <div style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700); margin-bottom: 6px;">
+                    📚 受講科目数
+                    <span class="badge badge-info" style="font-size: 0.72rem; margin-left: 4px;">
+                      ${currentItem.checkResult?.subject2Checked ? '自動判定: 2科' : (currentItem.checkResult?.subject4Checked ? '自動判定: 4科' : '既定: ' + (student?.course || '4科'))}
+                    </span>
+                  </div>
+                  <div style="display: flex; gap: 16px;">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                      <input type="radio" name="continuation-course" value="4科" ${(currentItem.checkResult?.subject2Checked) ? '' : 'checked'}>
+                      4科目
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                      <input type="radio" name="continuation-course" value="2科" ${(currentItem.checkResult?.subject2Checked) ? 'checked' : ''}>
+                      2科目
+                    </label>
+                  </div>
+                </div>
+
+                <!-- 3. 学年別カスタム項目 -->
+                ${(this.project.scanTemplate?.customFieldDefs || []).length > 0 ? `
+                  <div style="background: rgba(139, 92, 246, 0.05); border: 1px solid #c4b5fd; border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px;">
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #6d28d9; margin-bottom: 6px;">
+                      🏷️ 学年別カスタム項目
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                      ${this.project.scanTemplate.customFieldDefs.map(field => {
+                        const detectedVal = currentItem.checkResult?.customFields?.[field.id] || '';
+                        return `
+                          <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 6px 10px;">
+                            <div style="font-size: 0.78rem; font-weight: 700; color: var(--gray-800); margin-bottom: 4px;">
+                              ${field.name}:
+                              ${detectedVal ? `<span class="badge badge-purple" style="font-size: 0.72rem; margin-left: 4px;">判定: ${detectedVal}</span>` : ''}
+                            </div>
+                            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                              ${(field.options || []).map(opt => {
+                                const isChecked = (detectedVal === opt.label);
+                                return `
+                                  <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem;">
+                                    <input type="radio" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="${opt.label}" ${isChecked ? 'checked' : ''}>
+                                    ${opt.label}
+                                  </label>
+                                `;
+                              }).join('')}
+                              <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem; color: var(--gray-500);">
+                                <input type="radio" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="" ${!detectedVal ? 'checked' : ''}>
+                                なし
+                              </label>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  </div>
+                ` : ''}
               ` : `
+                <!-- 期間講習受講確認モードUI -->
                 <div class="approval-section-title">
                   <span>📝 受講内容判定</span>
                   <span class="badge ${currentItem.detectedHasChange ? 'badge-warning' : 'badge-success'}">
@@ -548,7 +634,7 @@ export const ScanPage = {
                     </div>
                   </label>
                 </div>
-              `}
+              `)}
 
               ${(this.project.scanTemplate?.customBoxes || []).length > 0 ? `
                 <div class="custom-checks-review-box" style="margin-top: ${isSelectionMode ? '0' : '10px'}; background: rgba(139, 92, 246, 0.06); border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 10px 12px;">
@@ -596,8 +682,11 @@ export const ScanPage = {
               ` : '')}
 
               <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.76rem; margin-bottom: 3px;">特記事項・メモ（手入力）</label>
-                <textarea id="txt-remarks" class="form-control" placeholder="特記事項やメモなど" style="min-height: 44px; height: 44px; font-size: 0.82rem; padding: 6px 10px;"></textarea>
+                <label class="form-label" style="font-size: 0.76rem; margin-bottom: 3px;">
+                  特記事項・メモ（手入力）
+                  ${isContinuationMode && currentItem.checkResult?.otherChecked ? '<span class="badge badge-warning" style="margin-left: 4px;">⚠️ その他手書き内容を転記してください</span>' : ''}
+                </label>
+                <textarea id="txt-remarks" class="form-control" placeholder="${isContinuationMode && currentItem.checkResult?.otherChecked ? '※「その他」の手書き内容（理由・希望など）を用紙画像から確認して入力してください' : '特記事項やメモなど'}" style="min-height: 48px; height: 48px; font-size: 0.82rem; padding: 6px 10px; ${isContinuationMode && currentItem.checkResult?.otherChecked ? 'border: 2px solid #f59e0b; background: #fffbeb;' : ''}"></textarea>
               </div>
             </div>
           </div>
@@ -1187,6 +1276,43 @@ export const ScanPage = {
       };
     }
 
+    // 継続確認モードのラジオ選択制御
+    const cardContPart = this.container.querySelector('#card-opt-cont-participate');
+    const cardContOther = this.container.querySelector('#card-opt-cont-other');
+    const radioContPart = this.container.querySelector('input[name="continuation-choice"][value="participate"]');
+    const radioContOther = this.container.querySelector('input[name="continuation-choice"][value="other"]');
+    const txtRemarks = this.container.querySelector('#txt-remarks');
+
+    if (cardContPart && cardContOther && radioContPart && radioContOther) {
+      const updateContUI = () => {
+        if (radioContPart.checked) {
+          cardContPart.classList.add('selected');
+          cardContOther.classList.remove('selected');
+          cardContOther.style.borderColor = '';
+          cardContOther.style.background = '';
+          if (txtRemarks) {
+            txtRemarks.style.border = '';
+            txtRemarks.style.background = '';
+          }
+        } else {
+          cardContPart.classList.remove('selected');
+          cardContOther.classList.add('selected');
+          cardContOther.style.borderColor = '#f59e0b';
+          cardContOther.style.background = '#fffbeb';
+          if (txtRemarks) {
+            txtRemarks.style.border = '2px solid #f59e0b';
+            txtRemarks.style.background = '#fffbeb';
+            txtRemarks.focus();
+          }
+        }
+      };
+
+      cardContPart.onclick = () => { radioContPart.checked = true; updateContUI(); };
+      cardContOther.onclick = () => { radioContOther.checked = true; updateContUI(); };
+      radioContPart.onchange = updateContUI;
+      radioContOther.onchange = updateContUI;
+    }
+
     // 志望校別・追加チェックボックスのリアルタイムカウンター・スタイル連動
     const customCheckboxes = this.container.querySelectorAll('.chk-custom-box-item');
     const zeroNote = this.container.querySelector('#scan-zero-selected-note');
@@ -1372,10 +1498,31 @@ export const ScanPage = {
       }
 
       let hasChange = false;
+      let enrollmentStatus = '';
       let enrollmentClass = student.className;
       let enrollmentCourse = student.course || '4科';
+      let customFields = {};
 
-      if (!isSelectionMode) {
+      if (isContinuationMode) {
+        const radioOther = this.container.querySelector('input[name="continuation-choice"][value="other"]');
+        enrollmentStatus = (radioOther && radioOther.checked) ? 'その他' : '受講する';
+        hasChange = (enrollmentStatus === 'その他');
+        enrollmentClass = student.className;
+
+        const radioCourse2 = this.container.querySelector('input[name="continuation-course"][value="2科"]');
+        enrollmentCourse = (radioCourse2 && radioCourse2.checked) ? '2科' : '4科';
+
+        // 学年別カスタム項目の値収集
+        this.container.querySelectorAll('[data-cont-field-id]').forEach(input => {
+          const fieldId = input.dataset.contFieldId;
+          if (input.type === 'radio' && input.checked) {
+            if (input.value) customFields[fieldId] = input.value;
+          } else if (input.type === 'checkbox' && input.checked) {
+            if (!customFields[fieldId]) customFields[fieldId] = [];
+            customFields[fieldId].push(input.value);
+          }
+        });
+      } else if (!isSelectionMode) {
         hasChange = radioHasChange ? radioHasChange.checked : false;
         if (hasChange) {
           const selClass = changeClassSelect ? changeClassSelect.value : '';
@@ -1434,8 +1581,10 @@ export const ScanPage = {
         const dataToSave = {
           status: '承認済',
           hasChange,
+          enrollmentStatus,
           enrollmentClass,
           enrollmentCourse,
+          customFields,
           inputMethod: 'スキャン',
           approvedBy: this.selectedStaff,
           remarks,

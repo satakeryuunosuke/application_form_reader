@@ -35,6 +35,7 @@ export const ManualPage = {
 
     const isCompleted = this.project.status === '完了';
     const isSelectionMode = (this.project.projectType === 'selection');
+    const isContinuationMode = (this.project.projectType === 'continuation');
     const now = new Date();
     const nowIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -179,6 +180,63 @@ export const ManualPage = {
               `}
             </div>
           </div>
+        ` : isContinuationMode ? `
+          <!-- 継続確認モード -->
+          <div class="form-group">
+            <label class="form-label">受講可否 <span class="required">*</span></label>
+            <div class="radio-card-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <label class="radio-card selected" id="man-card-participate" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
+                <input type="radio" name="man-continuation-status" value="受講する" checked ${isCompleted ? 'disabled' : ''}>
+                <div>
+                  <div class="font-bold" style="color: #15803d; font-size: 1rem;">⭕ 受講する</div>
+                  <div style="font-size: 0.76rem; color: var(--gray-500); margin-top: 2px;">新年度も継続して受講</div>
+                </div>
+              </label>
+
+              <label class="radio-card" id="man-card-other" style="${isCompleted ? 'cursor: not-allowed;' : ''}">
+                <input type="radio" name="man-continuation-status" value="その他" ${isCompleted ? 'disabled' : ''}>
+                <div>
+                  <div class="font-bold" style="color: #b45309; font-size: 1rem;">📝 その他</div>
+                  <div style="font-size: 0.76rem; color: var(--gray-500); margin-top: 2px;">用紙の記述内容を特記事項へ</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">受講科目数 <span class="required">*</span></label>
+            <div style="display: flex; gap: 12px;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; padding: 6px 16px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: #fff;" id="man-lbl-subject-4">
+                <input type="radio" name="man-continuation-subject" value="4科" checked ${isCompleted ? 'disabled' : ''}>
+                <span>4科目</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; padding: 6px 16px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: #fff;" id="man-lbl-subject-2">
+                <input type="radio" name="man-continuation-subject" value="2科" ${isCompleted ? 'disabled' : ''}>
+                <span>2科目</span>
+              </label>
+            </div>
+          </div>
+
+          ${(this.project.scanTemplate?.continuationCustomFields || []).length > 0 ? `
+            <div class="form-group" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 12px;">
+              <label class="form-label font-bold" style="color: var(--primary-700); margin-bottom: 8px;">🏷️ 学年別・カスタマイズ項目</label>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                ${this.project.scanTemplate.continuationCustomFields.map(field => `
+                  <div>
+                    <label style="font-size: 0.82rem; font-weight: 700; color: var(--gray-700); display: block; margin-bottom: 4px;">${field.name}</label>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                      ${(field.options || []).map((opt, optIdx) => `
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.82rem; background: #fff; border: 1px solid var(--gray-300); padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer;">
+                          <input type="radio" name="man-continuation-field-${field.id}" value="${opt}" ${optIdx === 0 ? 'checked' : ''} ${isCompleted ? 'disabled' : ''}>
+                          <span>${opt}</span>
+                        </label>
+                      `).join('')}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
         ` : `
           <div class="form-group">
             <label class="form-label">受講内容 <span class="required">*</span></label>
@@ -427,6 +485,41 @@ export const ManualPage = {
       };
     }
 
+    // 継続確認モード用イベント
+    const radioContParticipate = this.container.querySelector('input[name="man-continuation-status"][value="受講する"]');
+    const radioContOther = this.container.querySelector('input[name="man-continuation-status"][value="その他"]');
+    const cardContParticipate = this.container.querySelector('#man-card-participate');
+    const cardContOther = this.container.querySelector('#man-card-other');
+    const txtRemarks = this.container.querySelector('#man-txt-remarks');
+
+    if (radioContParticipate && radioContOther && cardContParticipate && cardContOther) {
+      const updateContRadio = () => {
+        if (radioContParticipate.checked) {
+          cardContParticipate.classList.add('selected');
+          cardContOther.classList.remove('selected');
+          if (txtRemarks) {
+            txtRemarks.style.borderColor = '';
+            txtRemarks.style.background = '';
+            txtRemarks.placeholder = '例: 紙紛失のため口頭連絡。12/28はZoom受講希望など';
+          }
+        } else {
+          cardContParticipate.classList.remove('selected');
+          cardContOther.classList.add('selected');
+          if (txtRemarks) {
+            txtRemarks.style.borderColor = '#f59e0b';
+            txtRemarks.style.background = '#fffbeb';
+            txtRemarks.placeholder = '【要入力】用紙のその他欄の記述内容を入力してください';
+            txtRemarks.focus();
+          }
+        }
+      };
+
+      radioContParticipate.onchange = updateContRadio;
+      radioContOther.onchange = updateContRadio;
+      cardContParticipate.onclick = () => { radioContParticipate.checked = true; updateContRadio(); };
+      cardContOther.onclick = () => { radioContOther.checked = true; updateContRadio(); };
+    }
+
     // 志望校別・講座チェックボックスのリアルタイムカウンター・連動
     const manCustomChecks = this.container.querySelectorAll('.chk-man-custom-box-item');
     const manZeroNote = this.container.querySelector('#man-zero-selected-note');
@@ -527,11 +620,14 @@ export const ManualPage = {
       const remarks = this.container.querySelector('#man-txt-remarks').value.trim();
 
       const isSelectionMode = (this.project.projectType === 'selection');
+      const isContinuationMode = (this.project.projectType === 'continuation');
       let hasChange = false;
       let enrollmentClass = this.selectedStudent.className;
       let enrollmentCourse = this.selectedStudent.course || '4科';
+      let enrollmentStatus = '受講する';
       const customChecks = {};
       let selectedCourses = [];
+      const customFields = {};
 
       if (isSelectionMode) {
         manCustomChecks.forEach(chk => {
@@ -544,6 +640,22 @@ export const ManualPage = {
         hasChange = totalSelected > 0;
         enrollmentClass = totalSelected > 0 ? `${totalSelected}講座申込` : '0講座（未受講）';
         enrollmentCourse = '-';
+      } else if (isContinuationMode) {
+        const contRadio = this.container.querySelector('input[name="man-continuation-status"]:checked');
+        enrollmentStatus = contRadio ? contRadio.value : '受講する';
+        hasChange = (enrollmentStatus === 'その他');
+
+        const subjRadio = this.container.querySelector('input[name="man-continuation-subject"]:checked');
+        enrollmentCourse = subjRadio ? subjRadio.value : '4科';
+        enrollmentClass = this.selectedStudent.className;
+
+        const customDefs = this.project.scanTemplate?.continuationCustomFields || [];
+        customDefs.forEach(field => {
+          const checkedOpt = this.container.querySelector(`input[name="man-continuation-field-${field.id}"]:checked`);
+          if (checkedOpt) {
+            customFields[field.id] = checkedOpt.value;
+          }
+        });
       } else {
         hasChange = radioHasChange ? radioHasChange.checked : false;
         if (hasChange) {
@@ -580,6 +692,9 @@ export const ManualPage = {
         if (isSelectionMode) {
           payload.customChecks = customChecks;
           payload.selectedCourses = selectedCourses;
+        } else if (isContinuationMode) {
+          payload.enrollmentStatus = enrollmentStatus;
+          payload.customFields = customFields;
         }
 
         await DB.saveSubmission(this.selectedStudent.submissionId, payload);
@@ -662,6 +777,7 @@ export const ManualPage = {
     remarksInput.value = stu.remarks || '';
 
     const isSelectionMode = (this.project.projectType === 'selection');
+    const isContinuationMode = (this.project.projectType === 'continuation');
     if (isSelectionMode) {
       const savedChecks = stu.customChecks || {};
       const manCustomChecks = this.container.querySelectorAll('.chk-man-custom-box-item');
@@ -691,6 +807,40 @@ export const ManualPage = {
       if (manZeroNote) {
         manZeroNote.style.display = (count === 0) ? 'block' : 'none';
       }
+    } else if (isContinuationMode) {
+      const radioParticipate = this.container.querySelector('input[name="man-continuation-status"][value="受講する"]');
+      const radioOther = this.container.querySelector('input[name="man-continuation-status"][value="その他"]');
+      const cardParticipate = this.container.querySelector('#man-card-participate');
+      const cardOther = this.container.querySelector('#man-card-other');
+
+      const isOther = (stu.enrollmentStatus === 'その他');
+      if (isOther) {
+        if (radioOther) radioOther.checked = true;
+        if (cardParticipate) cardParticipate.classList.remove('selected');
+        if (cardOther) cardOther.classList.add('selected');
+        remarksInput.style.borderColor = '#f59e0b';
+        remarksInput.style.background = '#fffbeb';
+      } else {
+        if (radioParticipate) radioParticipate.checked = true;
+        if (cardParticipate) cardParticipate.classList.add('selected');
+        if (cardOther) cardOther.classList.remove('selected');
+        remarksInput.style.borderColor = '';
+        remarksInput.style.background = '';
+      }
+
+      const subj = (stu.enrollmentCourse === '2科') ? '2科' : '4科';
+      const subjRadio = this.container.querySelector(`input[name="man-continuation-subject"][value="${subj}"]`);
+      if (subjRadio) subjRadio.checked = true;
+
+      const savedCustom = stu.customFields || {};
+      const customDefs = this.project.scanTemplate?.continuationCustomFields || [];
+      customDefs.forEach(field => {
+        const val = savedCustom[field.id];
+        if (val) {
+          const optRadio = this.container.querySelector(`input[name="man-continuation-field-${field.id}"][value="${val}"]`);
+          if (optRadio) optRadio.checked = true;
+        }
+      });
     } else {
       if (stu.status === '承認済' && (stu.hasChange || stu.enrollmentClass === '非受講')) {
         if (radioHasChange) radioHasChange.checked = true;

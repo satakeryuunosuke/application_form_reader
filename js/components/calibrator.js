@@ -334,6 +334,21 @@ export class TemplateCalibrator {
   }
 
   getTargetBox() {
+    // 継続確認モード枠
+    if (this.activeTab === 'participate' && this.template.participateBox) return this.template.participateBox;
+    if (this.activeTab === 'other' && this.template.otherBox) return this.template.otherBox;
+    if (this.activeTab === 'subject4' && this.template.subject4Box) return this.template.subject4Box;
+    if (this.activeTab === 'subject2' && this.template.subject2Box) return this.template.subject2Box;
+    if (this.template.customFieldDefs && this.template.customFieldDefs.length > 0) {
+      for (const field of this.template.customFieldDefs) {
+        if (field.options) {
+          const opt = field.options.find(o => o.id === this.activeTab);
+          if (opt && opt.box) return opt.box;
+        }
+      }
+    }
+
+    // 従来標準枠
     if (this.allowStandardBoxes) {
       if (this.activeTab === 'noChange' && this.template.noChangeBox) return this.template.noChangeBox;
       if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return this.template.hasChangeBox;
@@ -342,7 +357,12 @@ export class TemplateCalibrator {
       const found = this.template.customBoxes.find(b => b.id === this.activeTab);
       if (found) return found;
     }
+
     // activeTabが見つからない場合、存在する最初の枠をフォールバック
+    if (this.template.participateBox) {
+      this.activeTab = 'participate';
+      return this.template.participateBox;
+    }
     if (this.allowStandardBoxes && this.template.noChangeBox) {
       this.activeTab = 'noChange';
       return this.template.noChangeBox;
@@ -360,6 +380,21 @@ export class TemplateCalibrator {
   }
 
   getActiveBoxLabel() {
+    // 継続確認モード枠
+    if (this.activeTab === 'participate' && this.template.participateBox) return '🟩 「受講する」枠';
+    if (this.activeTab === 'other' && this.template.otherBox) return '🟧 「その他」枠';
+    if (this.activeTab === 'subject4' && this.template.subject4Box) return '🟦 「4科目」枠';
+    if (this.activeTab === 'subject2' && this.template.subject2Box) return '🟦 「2科目」枠';
+    if (this.template.customFieldDefs) {
+      for (const field of this.template.customFieldDefs) {
+        if (field.options) {
+          const opt = field.options.find(o => o.id === this.activeTab);
+          if (opt) return `🟪 「${field.name}: ${opt.label}」枠`;
+        }
+      }
+    }
+
+    // 従来枠
     if (this.allowStandardBoxes) {
       if (this.activeTab === 'noChange' && this.template.noChangeBox) return '🟩 「変更なし」枠';
       if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return '🟧 「変更あり」枠';
@@ -373,6 +408,37 @@ export class TemplateCalibrator {
 
   getAllBoxesList() {
     const list = [];
+
+    // 継続確認モード枠
+    if (this.template.participateBox) {
+      list.push({ id: 'participate', label: '受講可否: 「受講する」枠', type: 'continuation', color: '#16a34a', icon: '🟩' });
+    }
+    if (this.template.otherBox) {
+      list.push({ id: 'other', label: '受講可否: 「その他」枠', type: 'continuation', color: '#ea580c', icon: '🟧' });
+    }
+    if (this.template.subject4Box) {
+      list.push({ id: 'subject4', label: '科目数: 「4科目」枠', type: 'continuation', color: '#0284c7', icon: '🟦' });
+    }
+    if (this.template.subject2Box) {
+      list.push({ id: 'subject2', label: '科目数: 「2科目」枠', type: 'continuation', color: '#0284c7', icon: '🟦' });
+    }
+    if (this.template.customFieldDefs && Array.isArray(this.template.customFieldDefs)) {
+      this.template.customFieldDefs.forEach(field => {
+        (field.options || []).forEach(opt => {
+          list.push({
+            id: opt.id,
+            label: `${field.name}: 「${opt.label}」枠`,
+            type: 'customField',
+            color: '#8b5cf6',
+            icon: '🟪',
+            fieldId: field.id,
+            optionId: opt.id
+          });
+        });
+      });
+    }
+
+    // 従来期間講習枠
     if (this.allowStandardBoxes && this.template.noChangeBox) {
       list.push({ id: 'noChange', label: '「変更なし」枠', type: 'standard', color: '#16a34a', icon: '🟩' });
     }
@@ -1548,6 +1614,36 @@ export class TemplateCalibrator {
     const noChangeEval = (this.allowStandardBoxes && rects.noChangeRect) ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.noChangeRect, threshold) : null;
     const hasChangeEval = (this.allowStandardBoxes && rects.hasChangeRect) ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.hasChangeRect, threshold) : null;
 
+    // 継続確認モード枠の評価
+    const participateEval = rects.participateRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.participateRect, threshold) : null;
+    const otherEval = rects.otherRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.otherRect, threshold) : null;
+    const subject4Eval = rects.subject4Rect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.subject4Rect, threshold) : null;
+    const subject2Eval = rects.subject2Rect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.subject2Rect, threshold) : null;
+
+    // 継続確認モード枠の描画
+    if (rects.participateRect) {
+      this.drawTargetBox(ctx, rects.participateRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '受講する (正方形)', this.activeTab === 'participate');
+    }
+    if (rects.otherRect) {
+      this.drawTargetBox(ctx, rects.otherRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', 'その他 (正方形)', this.activeTab === 'other');
+    }
+    if (rects.subject4Rect) {
+      this.drawTargetBox(ctx, rects.subject4Rect, '#0284c7', 'rgba(2, 132, 199, 0.18)', '4科目 (正方形)', this.activeTab === 'subject4');
+    }
+    if (rects.subject2Rect) {
+      this.drawTargetBox(ctx, rects.subject2Rect, '#0284c7', 'rgba(2, 132, 199, 0.18)', '2科目 (正方形)', this.activeTab === 'subject2');
+    }
+    if (rects.customFieldRects && rects.customFieldRects.length > 0) {
+      rects.customFieldRects.forEach(field => {
+        (field.options || []).forEach(opt => {
+          if (opt.rect) {
+            const isOptActive = this.activeTab === opt.id;
+            this.drawTargetBox(ctx, opt.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${field.name}: ${opt.label}`, isOptActive);
+          }
+        });
+      });
+    }
+
     // 5. 「変更なし」枠（緑）
     if (this.allowStandardBoxes && rects.noChangeRect) {
       const isNoChangeActive = this.activeTab === 'noChange';
@@ -1577,7 +1673,13 @@ export class TemplateCalibrator {
     }
 
     // 8. 判定UIの更新
-    this.updateEvalStatus(noChangeEval, hasChangeEval, customEvals, isDetected);
+    this.updateEvalStatus(noChangeEval, hasChangeEval, customEvals, isDetected, {
+      participateEval,
+      otherEval,
+      subject4Eval,
+      subject2Eval,
+      customFieldRects: rects.customFieldRects
+    });
 
     // トランスフォーム（ズーム・パン）の再適用
     this.applyCanvasTransform();
@@ -1619,7 +1721,7 @@ export class TemplateCalibrator {
     ctx.restore();
   }
 
-  updateEvalStatus(noChangeEval, hasChangeEval, customEvals = [], isDetected = true) {
+  updateEvalStatus(noChangeEval, hasChangeEval, customEvals = [], isDetected = true, continuationData = {}) {
     const noRow = this.container.querySelector('#eval-no-change-row');
     const hasRow = this.container.querySelector('#eval-has-change-row');
     const emptyRow = this.container.querySelector('#eval-empty-row');
@@ -1638,9 +1740,11 @@ export class TemplateCalibrator {
     const overallRow = this.container.querySelector('#eval-overall-row');
     const overallStatusEl = this.container.querySelector('#eval-overall-status');
 
-    if (noRow) noRow.style.display = noChangeEval ? '' : 'none';
-    if (hasRow) hasRow.style.display = hasChangeEval ? '' : 'none';
-    if (emptyRow) emptyRow.style.display = (!noChangeEval && !hasChangeEval && customEvals.length === 0) ? '' : 'none';
+    const isContinuation = !!(continuationData.participateEval || continuationData.otherEval);
+
+    if (noRow) noRow.style.display = (!isContinuation && noChangeEval) ? '' : 'none';
+    if (hasRow) hasRow.style.display = (!isContinuation && hasChangeEval) ? '' : 'none';
+    if (emptyRow) emptyRow.style.display = (!isContinuation && !noChangeEval && !hasChangeEval && customEvals.length === 0) ? '' : 'none';
 
     if (!isDetected) {
       if (overallRow && overallStatusEl) {
@@ -1663,8 +1767,39 @@ export class TemplateCalibrator {
       return;
     }
 
-    // 受講確認モードの総合自動判定（変更なし / 変更あり の二者択一大小比較）
-    if (this.allowStandardBoxes && noChangeEval && hasChangeEval && overallRow && overallStatusEl) {
+    // 継続確認モードの総合自動判定
+    if (isContinuation && overallRow && overallStatusEl) {
+      overallRow.style.display = 'flex';
+      const partDark = continuationData.participateEval?.darkRatio || 0;
+      const otherDark = continuationData.otherEval?.darkRatio || 0;
+      const sub4Dark = continuationData.subject4Eval?.darkRatio || 0;
+      const sub2Dark = continuationData.subject2Eval?.darkRatio || 0;
+      const threshold = this.template.threshold !== undefined ? this.template.threshold : 0.25;
+      const minThreshold = threshold * 0.7;
+
+      let statusText = '⬜ 受講する (未記入)';
+      let badgeClass = 'badge badge-gray font-bold';
+
+      if (partDark >= minThreshold || otherDark >= minThreshold) {
+        if (otherDark > partDark) {
+          statusText = '⚠️ その他（要特記）';
+          badgeClass = 'badge badge-warning font-bold';
+        } else {
+          statusText = '✅ 受講する';
+          badgeClass = 'badge badge-success font-bold';
+        }
+      }
+
+      let courseText = '';
+      if (sub4Dark >= minThreshold || sub2Dark >= minThreshold) {
+        courseText = (sub2Dark > sub4Dark) ? ' [2科]' : ' [4科]';
+      }
+
+      overallStatusEl.className = badgeClass;
+      overallStatusEl.textContent = `${statusText}${courseText}`;
+    }
+    // 期間講習受講確認モードの総合自動判定（変更なし / 変更あり の二者択一大小比較）
+    else if (this.allowStandardBoxes && noChangeEval && hasChangeEval && overallRow && overallStatusEl) {
       overallRow.style.display = 'flex';
       const hasDark = hasChangeEval.darkRatio || 0;
       const noDark = noChangeEval.darkRatio || 0;

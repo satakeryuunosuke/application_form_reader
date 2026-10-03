@@ -266,6 +266,10 @@ export const DB = {
     const title = `${year}年度 ${grade}年 ${sessionDisplay}`;
     const determinedType = projectType || (normalizedSession === '志望校別対策講座' ? 'selection' : 'confirmation');
 
+    const defaultScanTemplate = (determinedType === 'continuation')
+      ? CheckboxEngine.getDefaultContinuationTemplate(grade)
+      : null;
+
     const project = {
       id: projectId,
       year: parseInt(year, 10),
@@ -275,7 +279,7 @@ export const DB = {
       projectType: determinedType,
       status: '進行中',
       completedAt: null,
-      scanTemplate: scanTemplate || null,
+      scanTemplate: scanTemplate || defaultScanTemplate,
       changeOptions: [...DEFAULT_CHANGE_OPTIONS],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -879,9 +883,11 @@ export const DB = {
       approvedBy: submissionData.approvedBy || existing.approvedBy || '',
       status: submissionData.status || '承認済',
       hasChange: submissionData.hasChange !== undefined ? submissionData.hasChange : (existing.hasChange || false),
+      enrollmentStatus: submissionData.enrollmentStatus || existing.enrollmentStatus || '',
       enrollmentClass: submissionData.enrollmentClass || existing.enrollmentClass || '',
       enrollmentCourse: submissionData.enrollmentCourse || existing.enrollmentCourse || '',
       remarks: submissionData.remarks !== undefined ? submissionData.remarks : (existing.remarks || ''),
+      customFields: submissionData.customFields !== undefined ? submissionData.customFields : (existing.customFields || {}),
       customChecks: submissionData.customChecks !== undefined ? submissionData.customChecks : (existing.customChecks || {}),
       scanImageBlob: submissionData.scanImageBlob !== undefined ? submissionData.scanImageBlob : (existing.scanImageBlob || null)
     };
@@ -934,11 +940,13 @@ export const DB = {
         data: {
           status: finalSubmission.status,
           hasChange: finalSubmission.hasChange,
+          enrollmentStatus: finalSubmission.enrollmentStatus || '',
           enrollmentClass: finalSubmission.enrollmentClass,
           enrollmentCourse: finalSubmission.enrollmentCourse,
           inputMethod: finalSubmission.inputMethod,
           approvedBy: finalSubmission.approvedBy,
           remarks: finalSubmission.remarks,
+          customFields: finalSubmission.customFields || {},
           customChecks: finalSubmission.customChecks || {},
           submittedAt: finalSubmission.submittedAt,
           approvedAt: finalSubmission.approvedAt,

@@ -397,6 +397,119 @@ export const CsvUtil = {
   },
 
   /**
+   * 継続確認モード用 CSVエクスポート
+   */
+  exportContinuationSubmissionsCsv(rows, customFieldsDef = [], fileName = '継続確認票_提出集計.csv') {
+    const customFieldNames = customFieldsDef.map(f => f.name || f.id);
+    const headers = [
+      '日能研番号',
+      '氏名',
+      '氏名カナ',
+      '所属クラス',
+      '提出ステータス',
+      '受講可否',
+      '受講科目数',
+      ...customFieldNames,
+      '受付方法',
+      '承認者',
+      '受付・承認日時',
+      '特記事項'
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    for (const r of rows) {
+      const escape = val => `"${(val || '').toString().replace(/"/g, '""')}"`;
+      const isApproved = (r.status === '承認済');
+      const enrollStatus = isApproved ? (r.enrollmentStatus || (r.hasChange ? 'その他' : '受講する')) : '-';
+      const enrollCourse = isApproved ? (r.enrollmentCourse || '4科') : '-';
+      
+      const customColValues = customFieldsDef.map(f => {
+        if (!isApproved) return escape('-');
+        const val = r.customFields?.[f.id] || '-';
+        return escape(val);
+      });
+
+      csvRows.push([
+        escape(r.nichinokenId),
+        escape(r.name),
+        escape(r.nameKana),
+        escape(r.className),
+        escape(r.status),
+        escape(enrollStatus),
+        escape(enrollCourse),
+        ...customColValues,
+        escape(r.inputMethod || '-'),
+        escape(r.approvedBy || '-'),
+        escape(r.approvedAt || r.submittedAt || '-'),
+        escape(r.remarks || '')
+      ].join(','));
+    }
+
+    const csvContent = csvRows.join('\r\n');
+    this.downloadFile(csvContent, fileName, 'text/csv;charset=utf-8;');
+  },
+
+  /**
+   * 継続確認モード用 Excel (.xlsx) エクスポート
+   */
+  exportContinuationSubmissionsExcel(rows, customFieldsDef = [], fileName = '継続確認票_提出集計.xlsx') {
+    if (typeof XLSX === 'undefined') {
+      this.exportContinuationSubmissionsCsv(rows, customFieldsDef, fileName.replace(/\.xlsx$/, '.csv'));
+      return;
+    }
+
+    const customFieldNames = customFieldsDef.map(f => f.name || f.id);
+    const headerRow = [
+      '日能研番号',
+      '氏名',
+      '氏名カナ',
+      '所属クラス',
+      '提出ステータス',
+      '受講可否',
+      '受講科目数',
+      ...customFieldNames,
+      '受付方法',
+      '承認者',
+      '受付・承認日時',
+      '特記事項'
+    ];
+
+    const data = [headerRow];
+
+    for (const r of rows) {
+      const isApproved = (r.status === '承認済');
+      const enrollStatus = isApproved ? (r.enrollmentStatus || (r.hasChange ? 'その他' : '受講する')) : '-';
+      const enrollCourse = isApproved ? (r.enrollmentCourse || '4科') : '-';
+      
+      const customColValues = customFieldsDef.map(f => {
+        if (!isApproved) return '-';
+        return r.customFields?.[f.id] || '-';
+      });
+
+      data.push([
+        r.nichinokenId || '',
+        r.name || '',
+        r.nameKana || '',
+        r.className || '',
+        r.status || '',
+        enrollStatus,
+        enrollCourse,
+        ...customColValues,
+        r.inputMethod || '-',
+        r.approvedBy || '-',
+        r.approvedAt || r.submittedAt || '-',
+        r.remarks || ''
+      ]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '継続確認集計');
+    XLSX.writeFile(wb, fileName);
+  },
+
+  /**
    * ファイルダウンロードヘルパー（BOM付与）
    */
   downloadFile(content, fileName, mimeType) {

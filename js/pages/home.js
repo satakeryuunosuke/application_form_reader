@@ -165,7 +165,7 @@ export const HomePage = {
               <span class="badge badge-info">${p.year}年度</span>
               <span class="badge badge-purple">${p.grade}年生</span>
               <span class="badge badge-success">${UI.formatSession(p.sessionName)}</span>
-              ${p.projectType === 'selection' ? '<span class="badge badge-purple font-bold" style="font-size: 0.72rem; padding: 2px 6px;">🎯 講座選択</span>' : ''}
+              ${p.projectType === 'selection' ? '<span class="badge badge-purple font-bold" style="font-size: 0.72rem; padding: 2px 6px;">🎯 講座選択</span>' : (p.projectType === 'continuation' ? '<span class="badge font-bold" style="font-size: 0.72rem; padding: 2px 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">📋 継続確認</span>' : '<span class="badge font-bold" style="font-size: 0.72rem; padding: 2px 6px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">📝 期間講習</span>')}
               ${isCompleted
                 ? '<span class="badge badge-gray" style="font-weight: 700;">🏁 完了</span>'
                 : '<span class="badge badge-success" style="font-weight: 700; background: #e8f5e9; color: #2e7d32;">🟢 進行中</span>'
@@ -634,19 +634,26 @@ export const HomePage = {
           <!-- 運用モード選択 -->
           <div class="form-group" style="margin-top: 14px;">
             <label class="form-label font-bold" style="font-size: 0.88rem; margin-bottom: 6px;">運用モード <span class="required">*</span></label>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
               <label class="radio-card ${selectedProjectType === 'confirmation' ? 'selected' : ''}" id="lbl-wiz-mode-confirmation" style="cursor: pointer; padding: 12px 14px;">
                 <input type="radio" name="wiz-project-type" value="confirmation" ${selectedProjectType === 'confirmation' ? 'checked' : ''} style="display: none;">
                 <div>
-                  <div class="font-bold" style="font-size: 0.88rem; color: var(--gray-900);">📝 受講確認モード</div>
-                  <div style="font-size: 0.76rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">夏期・冬期・通常授業向け。<br>「変更なし／変更あり」で所属クラスからの変更を確認・集計</div>
+                  <div class="font-bold" style="font-size: 0.88rem; color: var(--gray-900);">📝 期間講習受講確認</div>
+                  <div style="font-size: 0.75rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">夏期・冬期・春期講習向け。<br>「変更なし／変更あり」で所属クラスからの変更を確認・集計</div>
+                </div>
+              </label>
+              <label class="radio-card ${selectedProjectType === 'continuation' ? 'selected' : ''}" id="lbl-wiz-mode-continuation" style="cursor: pointer; padding: 12px 14px; border-color: ${selectedProjectType === 'continuation' ? 'var(--primary-solid)' : ''};">
+                <input type="radio" name="wiz-project-type" value="continuation" ${selectedProjectType === 'continuation' ? 'checked' : ''} style="display: none;">
+                <div>
+                  <div class="font-bold" style="font-size: 0.88rem; color: #0284c7;">📋 継続確認モード</div>
+                  <div style="font-size: 0.75rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">本科通常授業・新年度継続向け。<br>受講する／その他 ＋ 2科／4科 ＋ 学年別項目（通室コース、日特等）</div>
                 </div>
               </label>
               <label class="radio-card ${selectedProjectType === 'selection' ? 'selected' : ''}" id="lbl-wiz-mode-selection" style="cursor: pointer; padding: 12px 14px;">
                 <input type="radio" name="wiz-project-type" value="selection" ${selectedProjectType === 'selection' ? 'checked' : ''} style="display: none;">
                 <div>
-                  <div class="font-bold" style="font-size: 0.88rem; color: #6d28d9;">🎯 講座選択モード（志望校別）</div>
-                  <div style="font-size: 0.76rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">志望校別対策講座向け。<br>提示された講座群から希望講座を複数選んで申込・合計集計</div>
+                  <div class="font-bold" style="font-size: 0.88rem; color: #6d28d9;">🎯 講座選択（志望校別）</div>
+                  <div style="font-size: 0.75rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">志望校別対策講座向け。<br>提示された講座群から希望講座を複数選んで申込・合計集計</div>
                 </div>
               </label>
             </div>
@@ -768,8 +775,73 @@ export const HomePage = {
             </div>
             <div id="wizard-calib-mount" style="min-height: 380px;"></div>
           `;
+        } else if (selectedProjectType === 'continuation') {
+          // 継続確認モード
+          bodyContent = `
+            <div style="margin-bottom: var(--spacing-sm);">
+              <div style="display: flex; align-items: center; justify-content: space-between; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;">
+                <div>
+                  <span class="badge badge-info">${selectedYear}年度</span>
+                  <span class="badge badge-purple">${selectedGrade}年生</span>
+                  <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                  <span class="badge font-bold" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">📋 継続確認モード</span>
+                  <span style="font-size: 0.95rem; font-weight: 700; color: #0369a1; margin-left: 6px;">
+                    継続確認票の書式・スキャン読取位置設定
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; color: #0284c7;">
+                  登録生徒: <span class="text-mono font-bold">${parsedStudents.length}</span> 名
+                </div>
+              </div>
+              <p style="font-size: 0.88rem; color: var(--gray-700); margin-bottom: 12px;">
+                継続確認票の読取設定を行います。受講可否（受講する/その他）、科目数（4科目/2科目）に加え、学年ごとのカスタム項目（通室コース、日特など）を調整・追加できます。
+              </p>
+
+              <!-- 学年別カスタム項目管理パネル -->
+              <div class="custom-boxes-config-panel" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 14px; margin-bottom: var(--spacing-md);">
+                <div style="font-weight: bold; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span>🏷️ 学年別カスタム項目設定</span>
+                    <span class="badge badge-primary" style="font-size: 0.75rem;">自由設定</span>
+                  </div>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" id="wiz-btn-preset-course-days" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="3・4年生向け通室コース（月木/火金）を適用">
+                      📅 3/4年 通室コースプリセット
+                    </button>
+                    <button type="button" id="wiz-btn-preset-nittoku" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="6年生向け日特受講（受講/非受講）を適用">
+                      🎯 6年 日特プリセット
+                    </button>
+                  </div>
+                </div>
+                <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
+                  ※ 基本枠（受講する/その他、4科目/2科目）は自動設定されます。追加で確認したい項目（通室コース、選択講座等）を自由に追加・編集できます。
+                </p>
+
+                <!-- 新規項目追加フォーム -->
+                <div style="display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 8px; margin-bottom: 10px; align-items: end;">
+                  <div>
+                    <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">項目名</label>
+                    <input type="text" id="wiz-inp-cont-field-name" class="form-control" placeholder="例: 通室コース, 記述力講座" style="font-size: 0.85rem;">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">選択肢（カンマ区切りで入力）</label>
+                    <input type="text" id="wiz-inp-cont-field-options" class="form-control" placeholder="例: 月木, 火金 または 受講する, 受講しない" style="font-size: 0.85rem;">
+                  </div>
+                  <div>
+                    <button type="button" id="wiz-btn-add-cont-field" class="btn btn-primary btn-sm" style="height: 38px; white-space: nowrap;">
+                      ➕ 項目を追加
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 登録中カスタム項目一覧 -->
+                <div id="wiz-cont-fields-container" style="display: flex; flex-direction: column; gap: 6px;"></div>
+              </div>
+            </div>
+            <div id="wizard-calib-mount" style="min-height: 380px;"></div>
+          `;
         } else {
-          // 受講確認モード（講義追加モード追加前の状態）
+          // 期間講習受講確認モード
           bodyContent = `
             <div style="margin-bottom: var(--spacing-sm);">
               <div style="display: flex; align-items: center; justify-content: space-between; background: var(--primary-50); border: 1px solid var(--primary-200); border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 12px;">
@@ -777,6 +849,7 @@ export const HomePage = {
                   <span class="badge badge-info">${selectedYear}年度</span>
                   <span class="badge badge-purple">${selectedGrade}年生</span>
                   <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                  <span class="badge font-bold" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">📝 期間講習受講確認</span>
                   <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
                     受講確認票の書式・スキャン読取位置設定
                   </span>
@@ -786,7 +859,7 @@ export const HomePage = {
                 </div>
               </div>
               <p style="font-size: 0.88rem; color: var(--gray-700); margin-bottom: 8px;">
-                受講確認票のチェックボックス位置と判定閾値の調整を行います。<br>
+                受講確認票のチェックボックス位置（変更なし／変更あり）と判定閾値の調整を行います。<br>
                 通常は共通既定書式が自動適用されるため、必要に応じて微調整してください。
               </p>
             </div>
@@ -848,7 +921,9 @@ export const HomePage = {
       let calibratorInstance = null;
       if (wizardStep === 3) {
         const isSelectionMode = (selectedProjectType === 'selection');
+        const isContinuationMode = (selectedProjectType === 'continuation');
         let renderWizCustomBoxes = null;
+        let renderWizContFields = null;
 
         const mount = modal.querySelector('#wizard-calib-mount');
         if (mount) {
@@ -864,15 +939,183 @@ export const HomePage = {
               if (isSelectionMode && renderWizCustomBoxes) {
                 renderWizCustomBoxes();
               }
+              if (isContinuationMode && renderWizContFields) {
+                renderWizContFields();
+              }
             },
             {
-              defaultResetTemplate: defaultTemplate,
+              defaultResetTemplate: isContinuationMode ? CheckboxEngine.getDefaultContinuationTemplate(selectedGrade) : defaultTemplate,
               resetLabel: '🔄 共通既定書式に戻す',
               resetToastMsg: '共通既定書式の位置に復元しました',
-              allowStandardBoxes: !isSelectionMode,
+              allowStandardBoxes: (!isSelectionMode && !isContinuationMode),
               allowDeleteStandardBoxes: isSelectionMode
             }
           );
+        }
+
+        // 継続確認モードの学年別カスタム項目管理
+        if (isContinuationMode) {
+          renderWizContFields = () => {
+            const container = modal.querySelector('#wiz-cont-fields-container');
+            if (!container) return;
+            const fields = customTemplate.customFieldDefs || [];
+            if (fields.length === 0) {
+              container.innerHTML = `
+                <div style="text-align: center; padding: 12px; background: #fff; border: 1px dashed var(--gray-300); border-radius: var(--radius-sm); color: var(--gray-500); font-size: 0.8rem;">
+                  学年別カスタム項目は未登録です（上のプリセットまたは追加フォームから登録できます）
+                </div>
+              `;
+              return;
+            }
+
+            container.innerHTML = fields.map((f, fIdx) => `
+              <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong style="font-size: 0.86rem; color: #0284c7;">🏷️ ${f.name}</strong>
+                  <span style="font-size: 0.75rem; color: var(--gray-500); margin-left: 6px;">
+                    選択肢: ${(f.options || []).map(o => `<span class="badge" style="background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; font-size: 0.72rem; margin: 0 2px;">${o.label}</span>`).join('')}
+                  </span>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                  <button type="button" class="btn btn-ghost btn-sm wiz-btn-del-cont-field" data-idx="${fIdx}" style="color: var(--danger-solid); font-size: 0.75rem; padding: 2px 6px;" title="この項目を削除">
+                    🗑️ 削除
+                  </button>
+                </div>
+              </div>
+            `).join('');
+
+            // 削除ボタンイベント
+            container.querySelectorAll('.wiz-btn-del-cont-field').forEach(btn => {
+              btn.onclick = () => {
+                const idx = parseInt(btn.dataset.idx, 10);
+                if (customTemplate.customFieldDefs && customTemplate.customFieldDefs[idx]) {
+                  customTemplate.customFieldDefs.splice(idx, 1);
+                  if (calibratorInstance) {
+                    calibratorInstance.template = customTemplate;
+                    calibratorInstance.activeTab = calibratorInstance.template.participateBox ? 'participate' : null;
+                    calibratorInstance.render();
+                  }
+                  renderWizContFields();
+                }
+              };
+            });
+          };
+
+          renderWizContFields();
+
+          // プリセットボタン
+          const btnPresetCourse = modal.querySelector('#wiz-btn-preset-course-days');
+          if (btnPresetCourse) {
+            btnPresetCourse.onclick = () => {
+              if (!customTemplate.customFieldDefs) customTemplate.customFieldDefs = [];
+              // 既存の同名がなければ追加
+              if (!customTemplate.customFieldDefs.some(f => f.name === '通室コース')) {
+                customTemplate.customFieldDefs.push({
+                  id: 'field_course_days',
+                  name: '通室コース',
+                  type: 'single',
+                  options: [
+                    { id: 'opt_mon_thu', label: '月木コース', box: { dx: 0.05, dy: 0.225, size: 0.032 } },
+                    { id: 'opt_tue_fri', label: '火金コース', box: { dx: 0.05, dy: 0.292, size: 0.032 } }
+                  ]
+                });
+                CheckboxEngine.syncBoxSizes(customTemplate);
+                if (calibratorInstance) {
+                  calibratorInstance.template = customTemplate;
+                  calibratorInstance.render();
+                }
+                renderWizContFields();
+                UI.showToast('「通室コース」プリセットを追加しました', 'info');
+              } else {
+                UI.showToast('「通室コース」は既に追加されています', 'warning');
+              }
+            };
+          }
+
+          const btnPresetNittoku = modal.querySelector('#wiz-btn-preset-nittoku');
+          if (btnPresetNittoku) {
+            btnPresetNittoku.onclick = () => {
+              if (!customTemplate.customFieldDefs) customTemplate.customFieldDefs = [];
+              if (!customTemplate.customFieldDefs.some(f => f.name === '日特')) {
+                customTemplate.customFieldDefs.push({
+                  id: 'field_nittoku',
+                  name: '日特',
+                  type: 'single',
+                  options: [
+                    { id: 'opt_nittoku_yes', label: '日特受講', box: { dx: 0.15, dy: 0.225, size: 0.032 } },
+                    { id: 'opt_nittoku_no',  label: '日特非受講', box: { dx: 0.15, dy: 0.292, size: 0.032 } }
+                  ]
+                });
+                CheckboxEngine.syncBoxSizes(customTemplate);
+                if (calibratorInstance) {
+                  calibratorInstance.template = customTemplate;
+                  calibratorInstance.render();
+                }
+                renderWizContFields();
+                UI.showToast('「日特」プリセットを追加しました', 'info');
+              } else {
+                UI.showToast('「日特」は既に追加されています', 'warning');
+              }
+            };
+          }
+
+          // 自由項目追加
+          const btnAddContField = modal.querySelector('#wiz-btn-add-cont-field');
+          const inpContName = modal.querySelector('#wiz-inp-cont-field-name');
+          const inpContOptions = modal.querySelector('#wiz-inp-cont-field-options');
+
+          if (btnAddContField && inpContName && inpContOptions) {
+            btnAddContField.onclick = () => {
+              const name = inpContName.value.trim();
+              const optsStr = inpContOptions.value.trim();
+              if (!name) {
+                UI.showToast('項目名を入力してください', 'warning');
+                inpContName.focus();
+                return;
+              }
+              if (!optsStr) {
+                UI.showToast('選択肢を入力してください（カンマ区切り）', 'warning');
+                inpContOptions.focus();
+                return;
+              }
+              const optLabels = optsStr.split(/[,、]/).map(s => s.trim()).filter(Boolean);
+              if (optLabels.length === 0) {
+                UI.showToast('選択肢を1つ以上入力してください', 'warning');
+                return;
+              }
+
+              if (!customTemplate.customFieldDefs) customTemplate.customFieldDefs = [];
+              const fieldId = 'field_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+              const commonSize = CheckboxEngine.getCommonBoxSize(customTemplate);
+
+              const options = optLabels.map((lbl, idx) => ({
+                id: `opt_${Date.now()}_${idx}`,
+                label: lbl,
+                box: {
+                  dx: 0.05 + idx * 0.08,
+                  dy: 0.225 + (customTemplate.customFieldDefs.length * 0.06),
+                  size: commonSize
+                }
+              }));
+
+              customTemplate.customFieldDefs.push({
+                id: fieldId,
+                name,
+                type: 'single',
+                options
+              });
+
+              inpContName.value = '';
+              inpContOptions.value = '';
+
+              if (calibratorInstance) {
+                calibratorInstance.template = customTemplate;
+                calibratorInstance.render();
+              }
+              renderWizContFields();
+              UI.showToast(`項目「${name}」を追加しました`, 'success');
+            };
+          }
         }
 
         // 講座選択モードの場合のみ講座追加・カスタムボックス管理を有効化
@@ -1104,15 +1347,23 @@ export const HomePage = {
         const customWrapper = modal.querySelector('#wiz-session-custom-wrapper');
         const customInput = modal.querySelector('#wiz-session-custom');
         const modeConf = modal.querySelector('#lbl-wiz-mode-confirmation');
+        const modeCont = modal.querySelector('#lbl-wiz-mode-continuation');
         const modeSel = modal.querySelector('#lbl-wiz-mode-selection');
 
         const updateModeCards = () => {
-          if (modeConf && modeSel) {
+          if (modeConf) {
             modeConf.classList.toggle('selected', selectedProjectType === 'confirmation');
-            modeSel.classList.toggle('selected', selectedProjectType === 'selection');
             const confRadio = modeConf.querySelector('input');
-            const selRadio = modeSel.querySelector('input');
             if (confRadio) confRadio.checked = (selectedProjectType === 'confirmation');
+          }
+          if (modeCont) {
+            modeCont.classList.toggle('selected', selectedProjectType === 'continuation');
+            const contRadio = modeCont.querySelector('input');
+            if (contRadio) contRadio.checked = (selectedProjectType === 'continuation');
+          }
+          if (modeSel) {
+            modeSel.classList.toggle('selected', selectedProjectType === 'selection');
+            const selRadio = modeSel.querySelector('input');
             if (selRadio) selRadio.checked = (selectedProjectType === 'selection');
           }
         };
@@ -1120,6 +1371,12 @@ export const HomePage = {
         if (modeConf) {
           modeConf.onclick = () => {
             selectedProjectType = 'confirmation';
+            updateModeCards();
+          };
+        }
+        if (modeCont) {
+          modeCont.onclick = () => {
+            selectedProjectType = 'continuation';
             updateModeCards();
           };
         }
@@ -1223,8 +1480,26 @@ export const HomePage = {
               // 講座選択モードの場合、標準枠（変更なし/あり）を完全に除外
               delete customTemplate.noChangeBox;
               delete customTemplate.hasChangeBox;
+              delete customTemplate.participateBox;
+              delete customTemplate.otherBox;
+              delete customTemplate.subject4Box;
+              delete customTemplate.subject2Box;
+              delete customTemplate.customFieldDefs;
+            } else if (selectedProjectType === 'continuation') {
+              // 継続確認モードの場合
+              delete customTemplate.noChangeBox;
+              delete customTemplate.hasChangeBox;
+              delete customTemplate.customBoxes;
+              if (!customTemplate.participateBox || !customTemplate.customFieldDefs) {
+                customTemplate = CheckboxEngine.getDefaultContinuationTemplate(selectedGrade);
+              }
             } else {
-              // 受講確認モードの場合、講座追加前の状態（標準枠保持・customBoxes空）にする
+              // 期間講習受講確認モードの場合
+              delete customTemplate.participateBox;
+              delete customTemplate.otherBox;
+              delete customTemplate.subject4Box;
+              delete customTemplate.subject2Box;
+              delete customTemplate.customFieldDefs;
               const def = CheckboxEngine.getDefaultTemplate();
               if (!customTemplate.noChangeBox) customTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
               if (!customTemplate.hasChangeBox) customTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
