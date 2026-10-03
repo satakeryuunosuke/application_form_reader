@@ -426,7 +426,7 @@ export const CsvUtil = {
       
       const customColValues = customFieldsDef.map(f => {
         if (!isApproved) return escape('-');
-        const val = r.customFields?.[f.id] || '-';
+        const val = r.customFields?.[f.id] || r.customFields?.[f.name] || '-';
         return escape(val);
       });
 
@@ -484,7 +484,7 @@ export const CsvUtil = {
       
       const customColValues = customFieldsDef.map(f => {
         if (!isApproved) return '-';
-        return r.customFields?.[f.id] || '-';
+        return r.customFields?.[f.id] || r.customFields?.[f.name] || '-';
       });
 
       data.push([

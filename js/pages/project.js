@@ -561,7 +561,7 @@ export const ProjectPage = {
     const isSelectionMode = project.projectType === 'selection';
     const isContinuationMode = project.projectType === 'continuation';
     const changeOptions = DB.getProjectChangeOptions(project);
-    const continuationCustomFields = project.scanTemplate?.continuationCustomFields || [];
+    const continuationCustomFields = CheckboxEngine.getContinuationCustomFields(project.scanTemplate);
     const courseDist = stats.courseCountDistribution || {};
     const methodDist = stats.methodDistribution || {};
     const courseBoxes = (project.scanTemplate?.customBoxes || project.template?.customBoxes || []);
@@ -807,12 +807,12 @@ export const ProjectPage = {
                     </div>
                   </div>
                   <p class="dashboard-card-desc">
-                    通室コース（曜日）や日特受講など、学年ごとにカスタマイズされた確認項目です。
+                    通室コース（曜日）や日特受講（受講／変更あり: 他校舎受講・非受講等）など、学年ごとにカスタマイズされた確認項目です。
                   </p>
                   <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
                     ${continuationCustomFields.map(f => `
                       <div style="font-size: 0.8rem; background: var(--gray-50); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--gray-200);">
-                        <strong>🏷️ ${f.name}:</strong> <span style="color: var(--gray-600);">${(f.options || []).join(' / ')}</span>
+                        <strong>🏷️ ${f.name}:</strong> <span style="color: var(--gray-600);">${(f.options || []).map(opt => typeof opt === 'object' ? opt.label : opt).join(' / ')}</span>
                       </div>
                     `).join('')}
                     ${continuationCustomFields.length === 0 ? '<span style="font-size: 0.78rem; color: var(--gray-500);">学年別項目はありません（全学年共通項目のみ）</span>' : ''}
@@ -1035,7 +1035,7 @@ export const ProjectPage = {
           if (isSelectionMode) {
             CsvUtil.exportSelectionSubmissionsExcel(items, project.scanTemplate?.customBoxes || project.template?.customBoxes, fileName);
           } else if (isContinuationMode) {
-            CsvUtil.exportContinuationSubmissionsExcel(items, project.scanTemplate?.continuationCustomFields || [], fileName);
+            CsvUtil.exportContinuationSubmissionsExcel(items, CheckboxEngine.getContinuationCustomFields(project.scanTemplate), fileName);
           } else {
             CsvUtil.exportSubmissionsExcel(items, fileName);
           }
@@ -1060,7 +1060,7 @@ export const ProjectPage = {
           if (isSelectionMode) {
             CsvUtil.exportSelectionSubmissionsCsv(items, fileName);
           } else if (isContinuationMode) {
-            CsvUtil.exportContinuationSubmissionsCsv(items, project.scanTemplate?.continuationCustomFields || [], fileName);
+            CsvUtil.exportContinuationSubmissionsCsv(items, CheckboxEngine.getContinuationCustomFields(project.scanTemplate), fileName);
           } else {
             CsvUtil.exportSubmissionsCsv(items, fileName);
           }

@@ -6,6 +6,7 @@
 
 import { DB } from '../db.js';
 import { UI } from '../utils/ui.js';
+import { CheckboxEngine } from '../checkbox.js';
 
 export const ReviewPage = {
   container: null,
@@ -389,27 +390,49 @@ export const ReviewPage = {
                             </div>
                           </div>
 
-                          ${(this.project.scanTemplate?.continuationCustomFields || []).length > 0 ? `
-                            <div style="border-top: 1px dashed #a7f3d0; padding-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                              <div style="font-size: 0.78rem; font-weight: bold; color: #047857;">🏷️ 学年別・カスタマイズ項目:</div>
-                              ${this.project.scanTemplate.continuationCustomFields.map(field => {
-                                const curVal = item.customFields?.[field.id] || field.options?.[0] || '';
-                                return `
-                                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.82rem; flex-wrap: wrap;">
-                                    <span style="font-weight: 600; color: var(--gray-700);">${field.name}:</span>
-                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                      ${(field.options || []).map(opt => `
-                                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                          <input type="radio" name="edit-continuation-field-${field.id}" value="${opt}" ${curVal === opt ? 'checked' : ''}>
-                                          <span>${opt}</span>
-                                        </label>
-                                      `).join('')}
+                          ${(() => {
+                            const contFields = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
+                            if (contFields.length === 0) return '';
+                            return `
+                              <div style="border-top: 1px dashed #a7f3d0; padding-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                                <div style="font-size: 0.78rem; font-weight: bold; color: #047857;">🏷️ 学年別・カスタマイズ項目:</div>
+                                ${contFields.map(field => {
+                                  const isNittoku = (field.name === '日特' || field.id === 'field_nittoku');
+                                  const curVal = item.customFields?.[field.id] || item.customFields?.[field.name] || (typeof field.options?.[0] === 'object' ? field.options[0].label : field.options?.[0]) || '';
+                                  const isNittokuChange = isNittoku && (curVal === '変更あり');
+                                  return `
+                                    <div>
+                                      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.82rem; flex-wrap: wrap;">
+                                        <span style="font-weight: 600; color: var(--gray-700);">
+                                          ${field.name}${isNittoku ? ' <span style="font-size: 0.72rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}:
+                                        </span>
+                                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                          ${(field.options || []).map(opt => {
+                                            const optLabel = typeof opt === 'object' ? opt.label : opt;
+                                            return `
+                                              <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                                <input type="radio" class="rev-cont-field-input" data-field-name="${field.name}" name="edit-continuation-field-${field.id}" value="${optLabel}" ${curVal === optLabel ? 'checked' : ''}>
+                                                <span>${optLabel}</span>
+                                              </label>
+                                            `;
+                                          }).join('')}
+                                        </div>
+                                      </div>
+                                      ${isNittoku ? `
+                                        <div id="rev-nittoku-change-helper" style="display: ${isNittokuChange ? 'block' : 'none'}; margin-top: 6px; padding: 4px 8px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 4px; font-size: 0.74rem;">
+                                          <span style="color: #b45309; font-weight: bold;">💡 日特変更メモ:</span>
+                                          <div style="display: inline-flex; gap: 6px; margin-left: 6px;">
+                                            <button type="button" class="btn btn-secondary btn-sm btn-rev-nittoku-memo" data-memo="【日特】他校舎受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">他校舎受講</button>
+                                            <button type="button" class="btn btn-secondary btn-sm btn-rev-nittoku-memo" data-memo="【日特】非受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">非受講</button>
+                                          </div>
+                                        </div>
+                                      ` : ''}
                                     </div>
-                                  </div>
-                                `;
-                              }).join('')}
-                            </div>
-                          ` : ''}
+                                  `;
+                                }).join('')}
+                              </div>
+                            `;
+                          })()}
                         </div>
                       ` : `
                         <!-- 通常受講確認票用UI -->
@@ -630,6 +653,45 @@ export const ReviewPage = {
 
     if (!currentItem) return;
 
+    // 継続確認モード 学年別項目（日特等）イベント
+    const revContRadios = this.container.querySelectorAll('.rev-cont-field-input');
+    const revNittokuHelper = this.container.querySelector('#rev-nittoku-change-helper');
+    const revRemarksInp = this.container.querySelector('#inp-edit-remarks');
+
+    revContRadios.forEach(radio => {
+      radio.onchange = () => {
+        if (radio.dataset.fieldName === '日特') {
+          if (radio.value === '変更あり' && radio.checked) {
+            if (revNittokuHelper) revNittokuHelper.style.display = 'block';
+          } else if (radio.checked) {
+            if (revNittokuHelper) revNittokuHelper.style.display = 'none';
+          }
+        }
+      };
+    });
+
+    // 日特変更メモ クイック挿入ボタン
+    this.container.querySelectorAll('.btn-rev-nittoku-memo').forEach(btn => {
+      btn.onclick = () => {
+        const memo = btn.dataset.memo;
+        if (revRemarksInp && memo) {
+          const cur = revRemarksInp.value.trim();
+          if (!cur) {
+            revRemarksInp.value = memo;
+          } else if (!cur.includes(memo)) {
+            if (memo.includes('他校舎受講') && cur.includes('【日特】非受講')) {
+              revRemarksInp.value = cur.replace('【日特】非受講', memo);
+            } else if (memo.includes('非受講') && cur.includes('【日特】他校舎受講')) {
+              revRemarksInp.value = cur.replace('【日特】他校舎受講', memo);
+            } else {
+              revRemarksInp.value = `${cur} ${memo}`;
+            }
+          }
+          UI.showToast(`備考欄に「${memo}」を入力しました`, 'info');
+        }
+      };
+    });
+
     // 修正内容の保存
     const saveBtn = this.container.querySelector('#btn-save-edit');
     if (saveBtn) {
@@ -670,7 +732,7 @@ export const ReviewPage = {
           enrollmentCourse = subjRadio ? subjRadio.value : '4科';
           enrollmentClass = currentItem.className;
 
-          const customDefs = this.project.scanTemplate?.continuationCustomFields || [];
+          const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
           customDefs.forEach(field => {
             const checkedOpt = this.container.querySelector(`input[name="edit-continuation-field-${field.id}"]:checked`);
             if (checkedOpt) {

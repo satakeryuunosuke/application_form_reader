@@ -1,6 +1,7 @@
 import { DB } from '../db.js';
 import { UI } from '../utils/ui.js';
 import { ScannerEngine } from '../scanner.js';
+import { CheckboxEngine } from '../checkbox.js';
 import { Validator } from '../utils/validator.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
 import { ProjectPage } from './project.js';
@@ -547,41 +548,61 @@ export const ScanPage = {
                 </div>
 
                 <!-- 3. 学年別カスタム項目 -->
-                ${(this.project.scanTemplate?.customFieldDefs || []).length > 0 ? `
-                  <div style="background: rgba(139, 92, 246, 0.05); border: 1px solid #c4b5fd; border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px;">
-                    <div style="font-size: 0.8rem; font-weight: 700; color: #6d28d9; margin-bottom: 6px;">
-                      🏷️ 学年別カスタム項目
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                      ${this.project.scanTemplate.customFieldDefs.map(field => {
-                        const detectedVal = currentItem.checkResult?.customFields?.[field.id] || '';
-                        return `
-                          <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 6px 10px;">
-                            <div style="font-size: 0.78rem; font-weight: 700; color: var(--gray-800); margin-bottom: 4px;">
-                              ${field.name}:
-                              ${detectedVal ? `<span class="badge badge-purple" style="font-size: 0.72rem; margin-left: 4px;">判定: ${detectedVal}</span>` : ''}
+                ${(() => {
+                  const contFields = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
+                  if (contFields.length === 0) return '';
+                  return `
+                    <div style="background: rgba(139, 92, 246, 0.05); border: 1px solid #c4b5fd; border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px;">
+                      <div style="font-size: 0.8rem; font-weight: 700; color: #6d28d9; margin-bottom: 6px;">
+                        🏷️ 学年別カスタム項目
+                      </div>
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${contFields.map(field => {
+                          const detectedVal = currentItem.checkResult?.customFields?.[field.id] || currentItem.checkResult?.customFields?.[field.name] || '';
+                          const isNittoku = (field.name === '日特' || field.id === 'field_nittoku');
+                          const isNittokuChange = isNittoku && (detectedVal === '変更あり');
+                          return `
+                            <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 6px 10px;">
+                              <div style="font-size: 0.78rem; font-weight: 700; color: var(--gray-800); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                                <div>
+                                  ${field.name}${isNittoku ? ' <span style="font-size: 0.72rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}:
+                                  ${detectedVal ? (isNittokuChange 
+                                    ? `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; margin-left: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">⚠️ 判定: ${detectedVal}</span>` 
+                                    : `<span class="badge badge-purple" style="font-size: 0.72rem; margin-left: 4px;">判定: ${detectedVal}</span>`) : ''}
+                                </div>
+                              </div>
+                              <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                                ${(field.options || []).map(opt => {
+                                  const optLabel = typeof opt === 'object' ? opt.label : opt;
+                                  const isChecked = (detectedVal === optLabel);
+                                  return `
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem;">
+                                      <input type="radio" class="scan-cont-field-input" data-field-name="${field.name}" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="${optLabel}" ${isChecked ? 'checked' : ''}>
+                                      ${optLabel}
+                                    </label>
+                                  `;
+                                }).join('')}
+                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem; color: var(--gray-500);">
+                                  <input type="radio" class="scan-cont-field-input" data-field-name="${field.name}" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="" ${!detectedVal ? 'checked' : ''}>
+                                  なし
+                                </label>
+                              </div>
+                              ${isNittoku ? `
+                                <div id="scan-nittoku-change-helper" style="display: ${isNittokuChange ? 'block' : 'none'}; margin-top: 6px; padding: 4px 8px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 0.74rem;">
+                                  <span style="color: #b45309; font-weight: bold;">💡 日特変更メモ（備考欄へワンクリック入力）:</span>
+                                  <div style="display: inline-flex; gap: 6px; margin-left: 6px;">
+                                    <button type="button" class="btn btn-secondary btn-sm btn-scan-nittoku-memo" data-memo="【日特】他校舎受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">他校舎受講</button>
+                                    <button type="button" class="btn btn-secondary btn-sm btn-scan-nittoku-memo" data-memo="【日特】非受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">非受講</button>
+                                  </div>
+                                </div>
+                              ` : ''}
                             </div>
-                            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                              ${(field.options || []).map(opt => {
-                                const isChecked = (detectedVal === opt.label);
-                                return `
-                                  <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem;">
-                                    <input type="radio" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="${opt.label}" ${isChecked ? 'checked' : ''}>
-                                    ${opt.label}
-                                  </label>
-                                `;
-                              }).join('')}
-                              <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem; color: var(--gray-500);">
-                                <input type="radio" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="" ${!detectedVal ? 'checked' : ''}>
-                                なし
-                              </label>
-                            </div>
-                          </div>
-                        `;
-                      }).join('')}
+                          `;
+                        }).join('')}
+                      </div>
                     </div>
-                  </div>
-                ` : ''}
+                  `;
+                })()}
               ` : `
                 <!-- 期間講習受講確認モードUI -->
                 <div class="approval-section-title">
@@ -716,7 +737,24 @@ export const ScanPage = {
    */
   renderExistingInfoSnippet(student, existingSub) {
     if (!student || !existingSub || existingSub.status !== '承認済') return '';
-    const courseDisp = existingSub.enrollmentCourse || (existingSub.enrollmentClass === '非受講' ? '' : (student.course || '4科'));
+    const isContinuation = (this.project?.projectType === 'continuation');
+    let statusText = '';
+    if (isContinuation) {
+      const isOther = (existingSub.enrollmentStatus === 'その他');
+      const cCourse = existingSub.enrollmentCourse || '4科';
+      const cFields = existingSub.customFields || {};
+      const cFieldBadges = Object.entries(cFields).map(([k, v]) => `🏷️ ${v}`).join(' ');
+      statusText = `
+        受講: <strong>${isOther ? '📝 その他' : '⭕ 受講する'} (${cCourse})</strong>
+        ${cFieldBadges ? `<div style="margin-top: 2px; font-size: 0.74rem; color: #4338ca;">${cFieldBadges}</div>` : ''}
+      `;
+    } else {
+      const courseDisp = existingSub.enrollmentCourse || (existingSub.enrollmentClass === '非受講' ? '' : (student.course || '4科'));
+      statusText = `
+        受講: <strong>${existingSub.enrollmentClass || (existingSub.hasChange ? '変更あり' : student.className)}${courseDisp && courseDisp !== '非受講' ? ' (' + courseDisp + ')' : ''}</strong>
+        ${existingSub.hasChange ? '<span class="badge badge-warning" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更あり</span>' : '<span class="badge badge-success" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更なし</span>'}
+      `;
+    }
     return `
       <div style="background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: var(--radius-md); padding: 8px 10px; font-size: 0.78rem;">
         <div style="font-weight: 700; color: var(--warning-text); display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;">
@@ -724,8 +762,7 @@ export const ScanPage = {
           <span style="font-weight: normal; font-size: 0.74rem;">${UI.formatDate(existingSub.approvedAt || existingSub.submittedAt)}</span>
         </div>
         <div style="color: var(--gray-700); line-height: 1.4;">
-          受講: <strong>${existingSub.enrollmentClass || (existingSub.hasChange ? '変更あり' : student.className)}${courseDisp && courseDisp !== '非受講' ? ' (' + courseDisp + ')' : ''}</strong>
-          ${existingSub.hasChange ? '<span class="badge badge-warning" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更あり</span>' : '<span class="badge badge-success" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更なし</span>'}
+          ${statusText}
           ${existingSub.approvedBy ? ` | 担当: <strong>${existingSub.approvedBy}</strong>` : ''}
           ${existingSub.remarks ? `<div style="color: var(--gray-600); margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">備考: ${existingSub.remarks}</div>` : ''}
         </div>
@@ -1399,6 +1436,44 @@ export const ScanPage = {
         });
       }
     }
+
+    // 継続確認モード 学年別項目（日特等）イベント
+    const scanContRadios = this.container.querySelectorAll('.scan-cont-field-input');
+    const scanNittokuHelper = this.container.querySelector('#scan-nittoku-change-helper');
+    const scanRemarksEl = this.container.querySelector('#txt-remarks');
+
+    scanContRadios.forEach(radio => {
+      radio.onchange = () => {
+        if (radio.dataset.fieldName === '日特') {
+          if (radio.value === '変更あり' && radio.checked) {
+            if (scanNittokuHelper) scanNittokuHelper.style.display = 'block';
+          } else if (radio.checked) {
+            if (scanNittokuHelper) scanNittokuHelper.style.display = 'none';
+          }
+        }
+      };
+    });
+
+    this.container.querySelectorAll('.btn-scan-nittoku-memo').forEach(btn => {
+      btn.onclick = () => {
+        const memo = btn.dataset.memo;
+        if (scanRemarksEl && memo) {
+          const cur = scanRemarksEl.value.trim();
+          if (!cur) {
+            scanRemarksEl.value = memo;
+          } else if (!cur.includes(memo)) {
+            if (memo.includes('他校舎受講') && cur.includes('【日特】非受講')) {
+              scanRemarksEl.value = cur.replace('【日特】非受講', memo);
+            } else if (memo.includes('非受講') && cur.includes('【日特】他校舎受講')) {
+              scanRemarksEl.value = cur.replace('【日特】他校舎受講', memo);
+            } else {
+              scanRemarksEl.value = `${cur} ${memo}`;
+            }
+          }
+          UI.showToast(`備考欄に「${memo}」を入力しました`, 'info');
+        }
+      };
+    });
 
     // 日能研番号の手動再検索
     const nichinokenIdInput = this.container.querySelector('#inp-nichinoken-id');

@@ -270,6 +270,15 @@ export const DB = {
       ? CheckboxEngine.getDefaultContinuationTemplate(grade)
       : null;
 
+    const templateToUse = scanTemplate || defaultScanTemplate;
+    if (templateToUse) {
+      if (templateToUse.customFieldDefs && !templateToUse.continuationCustomFields) {
+        templateToUse.continuationCustomFields = templateToUse.customFieldDefs;
+      } else if (templateToUse.continuationCustomFields && !templateToUse.customFieldDefs) {
+        templateToUse.customFieldDefs = templateToUse.continuationCustomFields;
+      }
+    }
+
     const project = {
       id: projectId,
       year: parseInt(year, 10),
@@ -279,7 +288,7 @@ export const DB = {
       projectType: determinedType,
       status: '進行中',
       completedAt: null,
-      scanTemplate: scanTemplate || defaultScanTemplate,
+      scanTemplate: templateToUse,
       changeOptions: [...DEFAULT_CHANGE_OPTIONS],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

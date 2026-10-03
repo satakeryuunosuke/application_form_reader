@@ -52,8 +52,8 @@ export const CheckboxEngine = {
         name: '日特',
         type: 'single',
         options: [
-          { id: 'opt_nittoku_yes', label: '日特受講', box: { dx: 0.15, dy: 0.225, size: 0.032 } },
-          { id: 'opt_nittoku_no',  label: '日特非受講', box: { dx: 0.15, dy: 0.292, size: 0.032 } }
+          { id: 'opt_nittoku_yes', label: '受講', box: { dx: 0.15, dy: 0.225, size: 0.032 } },
+          { id: 'opt_nittoku_change', label: '変更あり', box: { dx: 0.15, dy: 0.292, size: 0.032 } }
         ]
       });
     }
@@ -89,6 +89,28 @@ export const CheckboxEngine = {
       customFieldDefs,
       threshold: 0.25
     };
+  },
+
+  /**
+   * テンプレートから学年別カスタム項目定義を正規化して取得
+   * @param {object} template テンプレートオブジェクト
+   * @returns {Array} [{ id, name, type, options: [{ id, label, box }] }]
+   */
+  getContinuationCustomFields(template) {
+    if (!template) return [];
+    const fields = template.customFieldDefs || template.continuationCustomFields || [];
+    return fields.map(f => {
+      const opts = (f.options || []).map(opt => {
+        if (typeof opt === 'string') {
+          return { id: opt, label: opt };
+        }
+        return opt;
+      });
+      return {
+        ...f,
+        options: opts
+      };
+    });
   },
 
   /**

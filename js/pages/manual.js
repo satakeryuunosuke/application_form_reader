@@ -4,6 +4,7 @@
 
 import { DB } from '../db.js';
 import { UI } from '../utils/ui.js';
+import { CheckboxEngine } from '../checkbox.js';
 import { ProjectPage } from './project.js';
 import { FolderConnector } from '../sync/folder-connector.js';
 
@@ -217,26 +218,47 @@ export const ManualPage = {
             </div>
           </div>
 
-          ${(this.project.scanTemplate?.continuationCustomFields || []).length > 0 ? `
-            <div class="form-group" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 12px;">
-              <label class="form-label font-bold" style="color: var(--primary-700); margin-bottom: 8px;">🏷️ 学年別・カスタマイズ項目</label>
-              <div style="display: flex; flex-direction: column; gap: 10px;">
-                ${this.project.scanTemplate.continuationCustomFields.map(field => `
-                  <div>
-                    <label style="font-size: 0.82rem; font-weight: 700; color: var(--gray-700); display: block; margin-bottom: 4px;">${field.name}</label>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                      ${(field.options || []).map((opt, optIdx) => `
-                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.82rem; background: #fff; border: 1px solid var(--gray-300); padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer;">
-                          <input type="radio" name="man-continuation-field-${field.id}" value="${opt}" ${optIdx === 0 ? 'checked' : ''} ${isCompleted ? 'disabled' : ''}>
-                          <span>${opt}</span>
+          ${(() => {
+            const contFields = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
+            if (contFields.length === 0) return '';
+            return `
+              <div class="form-group" style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 12px;">
+                <label class="form-label font-bold" style="color: var(--primary-700); margin-bottom: 8px;">🏷️ 学年別・カスタマイズ項目</label>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  ${contFields.map(field => {
+                    const isNittoku = (field.name === '日特' || field.id === 'field_nittoku');
+                    return `
+                      <div>
+                        <label style="font-size: 0.82rem; font-weight: 700; color: var(--gray-700); display: block; margin-bottom: 4px;">
+                          ${field.name}${isNittoku ? ' <span style="font-size: 0.74rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}
                         </label>
-                      `).join('')}
-                    </div>
-                  </div>
-                `).join('')}
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                          ${(field.options || []).map((opt, optIdx) => {
+                            const optLabel = typeof opt === 'object' ? opt.label : opt;
+                            return `
+                              <label style="display: flex; align-items: center; gap: 5px; font-size: 0.82rem; background: #fff; border: 1px solid var(--gray-300); padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer;">
+                                <input type="radio" class="man-cont-field-input" data-field-name="${field.name}" name="man-continuation-field-${field.id}" value="${optLabel}" ${optIdx === 0 ? 'checked' : ''} ${isCompleted ? 'disabled' : ''}>
+                                <span>${optLabel}</span>
+                              </label>
+                            `;
+                          }).join('')}
+                        </div>
+                        ${isNittoku ? `
+                          <div id="man-nittoku-change-helper" style="display: none; margin-top: 6px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 4px; font-size: 0.76rem;">
+                            <span style="color: #b45309; font-weight: bold;">💡 日特変更メモ（備考欄へワンクリック入力）:</span>
+                            <div style="display: inline-flex; gap: 6px; margin-left: 8px; vertical-align: middle;">
+                              <button type="button" class="btn btn-secondary btn-sm btn-quick-nittoku-memo" data-memo="【日特】他校舎受講" style="padding: 1px 7px; font-size: 0.74rem; background: #fff; border: 1px solid #fde68a;">他校舎受講</button>
+                              <button type="button" class="btn btn-secondary btn-sm btn-quick-nittoku-memo" data-memo="【日特】非受講" style="padding: 1px 7px; font-size: 0.74rem; background: #fff; border: 1px solid #fde68a;">非受講</button>
+                            </div>
+                          </div>
+                        ` : ''}
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
               </div>
-            </div>
-          ` : ''}
+            `;
+          })()}
         ` : `
           <div class="form-group">
             <label class="form-label">受講内容 <span class="required">*</span></label>
@@ -508,6 +530,45 @@ export const ManualPage = {
       cardContOther.onclick = () => { radioContOther.checked = true; updateContRadio(); };
     }
 
+    // 継続確認モード 学年別項目（日特等）イベント
+    const contFieldRadios = this.container.querySelectorAll('.man-cont-field-input');
+    const nittokuHelper = this.container.querySelector('#man-nittoku-change-helper');
+    const remarksInp = this.container.querySelector('#man-txt-remarks');
+
+    contFieldRadios.forEach(radio => {
+      radio.onchange = () => {
+        if (radio.dataset.fieldName === '日特') {
+          if (radio.value === '変更あり' && radio.checked) {
+            if (nittokuHelper) nittokuHelper.style.display = 'block';
+          } else if (radio.checked) {
+            if (nittokuHelper) nittokuHelper.style.display = 'none';
+          }
+        }
+      };
+    });
+
+    // 日特変更メモ クイック挿入ボタン
+    this.container.querySelectorAll('.btn-quick-nittoku-memo').forEach(btn => {
+      btn.onclick = () => {
+        const memo = btn.dataset.memo;
+        if (remarksInp && memo) {
+          const cur = remarksInp.value.trim();
+          if (!cur) {
+            remarksInp.value = memo;
+          } else if (!cur.includes(memo)) {
+            if (memo.includes('他校舎受講') && cur.includes('【日特】非受講')) {
+              remarksInp.value = cur.replace('【日特】非受講', memo);
+            } else if (memo.includes('非受講') && cur.includes('【日特】他校舎受講')) {
+              remarksInp.value = cur.replace('【日特】他校舎受講', memo);
+            } else {
+              remarksInp.value = `${cur} ${memo}`;
+            }
+          }
+          UI.showToast(`備考欄に「${memo}」を入力しました`, 'info');
+        }
+      };
+    });
+
     // 志望校別・講座チェックボックスのリアルタイムカウンター・連動
     const manCustomChecks = this.container.querySelectorAll('.chk-man-custom-box-item');
     const manZeroNote = this.container.querySelector('#man-zero-selected-note');
@@ -637,7 +698,7 @@ export const ManualPage = {
         enrollmentCourse = subjRadio ? subjRadio.value : '4科';
         enrollmentClass = this.selectedStudent.className;
 
-        const customDefs = this.project.scanTemplate?.continuationCustomFields || [];
+        const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
         customDefs.forEach(field => {
           const checkedOpt = this.container.querySelector(`input[name="man-continuation-field-${field.id}"]:checked`);
           if (checkedOpt) {
@@ -817,12 +878,18 @@ export const ManualPage = {
       if (subjRadio) subjRadio.checked = true;
 
       const savedCustom = stu.customFields || {};
-      const customDefs = this.project.scanTemplate?.continuationCustomFields || [];
+      const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
       customDefs.forEach(field => {
-        const val = savedCustom[field.id];
+        const val = savedCustom[field.id] || savedCustom[field.name];
         if (val) {
           const optRadio = this.container.querySelector(`input[name="man-continuation-field-${field.id}"][value="${val}"]`);
-          if (optRadio) optRadio.checked = true;
+          if (optRadio) {
+            optRadio.checked = true;
+            if (field.name === '日特' && val === '変更あり') {
+              const helper = this.container.querySelector('#man-nittoku-change-helper');
+              if (helper) helper.style.display = 'block';
+            }
+          }
         }
       });
     } else {

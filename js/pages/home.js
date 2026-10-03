@@ -807,8 +807,8 @@ export const HomePage = {
                     <button type="button" id="wiz-btn-preset-course-days" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="3・4年生向け通室コース（月木/火金）を適用">
                       📅 3/4年 通室コースプリセット
                     </button>
-                    <button type="button" id="wiz-btn-preset-nittoku" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="6年生向け日特受講（受講/非受講）を適用">
-                      🎯 6年 日特プリセット
+                    <button type="button" id="wiz-btn-preset-nittoku" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" title="6年生向け日特（受講／変更あり: 他校舎受講・非受講等）を適用">
+                      🎯 6年 日特プリセット (受講/変更あり)
                     </button>
                   </div>
                 </div>
@@ -1041,8 +1041,8 @@ export const HomePage = {
                   name: '日特',
                   type: 'single',
                   options: [
-                    { id: 'opt_nittoku_yes', label: '日特受講', box: { dx: 0.15, dy: 0.225, size: 0.032 } },
-                    { id: 'opt_nittoku_no',  label: '日特非受講', box: { dx: 0.15, dy: 0.292, size: 0.032 } }
+                    { id: 'opt_nittoku_yes', label: '受講', box: { dx: 0.15, dy: 0.225, size: 0.032 } },
+                    { id: 'opt_nittoku_change', label: '変更あり', box: { dx: 0.15, dy: 0.292, size: 0.032 } }
                   ]
                 });
                 CheckboxEngine.syncBoxSizes(customTemplate);
@@ -1051,7 +1051,7 @@ export const HomePage = {
                   calibratorInstance.render();
                 }
                 renderWizContFields();
-                UI.showToast('「日特」プリセットを追加しました', 'info');
+                UI.showToast('「日特（受講／変更あり）」プリセットを追加しました', 'info');
               } else {
                 UI.showToast('「日特」は既に追加されています', 'warning');
               }

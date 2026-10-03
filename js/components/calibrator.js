@@ -1813,8 +1813,28 @@ export class TemplateCalibrator {
         courseText = (sub2Dark > sub4Dark) ? ' [2科]' : ' [4科]';
       }
 
+      let nittokuText = '';
+      if (continuationData.evaluatedCustomFields) {
+        const nittokuField = continuationData.evaluatedCustomFields.find(f => f.name === '日特');
+        if (nittokuField && nittokuField.options) {
+          const changeOpt = nittokuField.options.find(o => o.label === '変更あり' || o.id === 'opt_nittoku_change');
+          const yesOpt = nittokuField.options.find(o => o.label === '受講' || o.id === 'opt_nittoku_yes');
+          if (changeOpt && yesOpt) {
+            const cDark = changeOpt.eval?.darkRatio || 0;
+            const yDark = yesOpt.eval?.darkRatio || 0;
+            if (cDark >= minThreshold || yDark >= minThreshold) {
+              if (cDark > yDark) {
+                nittokuText = ' (⚠️日特:変更あり)';
+              } else {
+                nittokuText = ' (日特:受講)';
+              }
+            }
+          }
+        }
+      }
+
       overallStatusEl.className = badgeClass;
-      overallStatusEl.textContent = `${statusText}${courseText}`;
+      overallStatusEl.textContent = `${statusText}${courseText}${nittokuText}`;
     }
     // 期間講習受講確認モードの総合自動判定（変更なし / 変更あり の二者択一大小比較）
     else if (this.allowStandardBoxes && noChangeEval && hasChangeEval && overallRow && overallStatusEl) {

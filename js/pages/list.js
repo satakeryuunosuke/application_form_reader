@@ -4,6 +4,7 @@
 
 import { DB } from '../db.js';
 import { UI } from '../utils/ui.js';
+import { CheckboxEngine } from '../checkbox.js';
 import { ProjectPage } from './project.js';
 import { FolderConnector } from '../sync/folder-connector.js';
 import { SyncManager } from '../sync/sync-manager.js';
@@ -19,6 +20,7 @@ export const ListPage = {
   currentPrevCourseFilter: 'all',
   currentPostCourseFilter: 'all',
   currentCourseFilter: 'all',
+  currentNittokuFilter: 'all',
   currentSortKey: 'id',
   currentSortOrder: 'asc',
   searchQuery: '',
@@ -92,6 +94,8 @@ export const ListPage = {
     const isSelectionMode = project.projectType === 'selection';
     const isContinuationMode = project.projectType === 'continuation';
     const courseBoxes = (project.scanTemplate?.customBoxes || project.template?.customBoxes || []).filter(b => b && b.label);
+    const continuationCustomFields = CheckboxEngine.getContinuationCustomFields(project.scanTemplate);
+    const hasNittokuField = continuationCustomFields.some(f => f.name === '日特' || f.id === 'field_nittoku');
 
     // 変更前クラス一覧
     const prevClasses = classes;
@@ -198,6 +202,16 @@ export const ListPage = {
                     <option value="2科" ${this.currentPostCourseFilter === '2科' ? 'selected' : ''}>2科目</option>
                   </select>
                 </div>
+
+                ${hasNittokuField ? `
+                  <div class="filter-single-select-wrap">
+                    <select id="sel-filter-nittoku" class="filter-single-select ${this.currentNittokuFilter !== 'all' ? 'is-active' : ''}" title="日特受講・変更ありで絞り込み">
+                      <option value="all" ${this.currentNittokuFilter === 'all' ? 'selected' : ''}>🎯 日特: すべて</option>
+                      <option value="受講" ${this.currentNittokuFilter === '受講' ? 'selected' : ''}>⭕ 受講</option>
+                      <option value="変更あり" ${this.currentNittokuFilter === '変更あり' ? 'selected' : ''}>⚠️ 変更あり (他校舎・非受講等)</option>
+                    </select>
+                  </div>
+                ` : ''}
               ` : `
                 <!-- 通常モード: 変更前 所属グループ -->
                 <div class="filter-pill-cluster ${this.currentPrevClassFilter !== 'all' || this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前の所属情報">
@@ -337,6 +351,14 @@ export const ListPage = {
       };
     }
 
+    const nittokuSelect = this.container.querySelector('#sel-filter-nittoku');
+    if (nittokuSelect) {
+      nittokuSelect.onchange = () => {
+        this.currentNittokuFilter = nittokuSelect.value;
+        this.applyFiltersAndRenderTable();
+      };
+    }
+
     const sortSelect = this.container.querySelector('#sel-sort-order');
     if (sortSelect) {
       sortSelect.onchange = () => {
@@ -357,6 +379,7 @@ export const ListPage = {
       this.currentPrevCourseFilter = 'all';
       this.currentPostCourseFilter = 'all';
       this.currentCourseFilter = 'all';
+      this.currentNittokuFilter = 'all';
       this.currentSortKey = 'id';
       this.currentSortOrder = 'asc';
       searchInput.value = '';
@@ -514,6 +537,18 @@ export const ListPage = {
           if (item.status === '未提出') return false;
           const course = item.enrollmentCourse || '4科';
           if (course !== this.currentPostCourseFilter) return false;
+        }
+
+        // 3.5. 日特フィルター
+        if (this.currentNittokuFilter && this.currentNittokuFilter !== 'all') {
+          if (item.status === '未提出') return false;
+          const cFields = item.customFields || {};
+          const nittokuVal = cFields.field_nittoku || cFields['日特'] || '';
+          if (this.currentNittokuFilter === '受講') {
+            if (nittokuVal !== '受講' && nittokuVal !== '日特受講') return false;
+          } else if (this.currentNittokuFilter === '変更あり') {
+            if (nittokuVal !== '変更あり' && !nittokuVal.includes('変更あり') && !nittokuVal.includes('非受講')) return false;
+          }
         }
 
         // 4. 検索クエリ
@@ -788,9 +823,17 @@ export const ListPage = {
           if (fieldEntries.length > 0) {
             customFieldsHtml = `
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                ${fieldEntries.map(([k, val]) => `
-                  <span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px;">🏷️ ${val}</span>
-                `).join('')}
+                ${fieldEntries.map(([k, val]) => {
+                  if (k === 'field_nittoku' || k === '日特') {
+                    const isChange = (val === '変更あり' || val.includes('変更あり') || val.includes('非受講'));
+                    if (isChange) {
+                      return `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;" title="日特変更あり（他校舎受講・非受講等）">⚠️ 日特: ${val}</span>`;
+                    } else {
+                      return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">🎯 日特: ${val}</span>`;
+                    }
+                  }
+                  return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px;">🏷️ ${val}</span>`;
+                }).join('')}
               </div>
             `;
           }
