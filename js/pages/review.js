@@ -398,8 +398,11 @@ export const ReviewPage = {
                                 <div style="font-size: 0.78rem; font-weight: bold; color: #047857;">🏷️ 学年別・カスタマイズ項目:</div>
                                 ${contFields.map(field => {
                                   const isNittoku = (field.name === '日特' || field.id === 'field_nittoku');
-                                  const curVal = item.customFields?.[field.id] || item.customFields?.[field.name] || (typeof field.options?.[0] === 'object' ? field.options[0].label : field.options?.[0]) || '';
-                                  const isNittokuChange = isNittoku && (curVal === '変更あり');
+                                  const rawVal = item.customFields?.[field.id] || item.customFields?.[field.name] || (typeof field.options?.[0] === 'object' ? field.options[0].label : field.options?.[0]) || '';
+                                  const isTD = isNittoku ? (rawVal === 'TD' || rawVal === '受講' || rawVal === '日特受講') : false;
+                                  const curVal = isNittoku ? (isTD ? '受講' : '変更あり') : rawVal;
+                                  const isNittokuChange = isNittoku && !isTD;
+                                  const campusCodeVal = (isNittoku && isNittokuChange && rawVal !== '非受講' && rawVal !== '日特非受講' && rawVal !== '変更あり') ? rawVal : '';
                                   return `
                                     <div>
                                       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.82rem; flex-wrap: wrap;">
@@ -419,11 +422,22 @@ export const ReviewPage = {
                                         </div>
                                       </div>
                                       ${isNittoku ? `
-                                        <div id="rev-nittoku-change-helper" style="display: ${isNittokuChange ? 'block' : 'none'}; margin-top: 6px; padding: 4px 8px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 4px; font-size: 0.74rem;">
-                                          <span style="color: #b45309; font-weight: bold;">💡 日特変更メモ:</span>
-                                          <div style="display: inline-flex; gap: 6px; margin-left: 6px;">
-                                            <button type="button" class="btn btn-secondary btn-sm btn-rev-nittoku-memo" data-memo="【日特】他校舎受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">他校舎受講</button>
-                                            <button type="button" class="btn btn-secondary btn-sm btn-rev-nittoku-memo" data-memo="【日特】非受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">非受講</button>
+                                        <div id="rev-nittoku-change-panel" style="display: ${isNittokuChange ? 'block' : 'none'}; margin-top: 6px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 0.76rem;">
+                                          <div style="font-weight: 700; color: #b45309; margin-bottom: 4px;">
+                                            変更先受講形態（エクセル出力値）:
+                                          </div>
+                                          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-weight: bold; color: var(--danger-solid, #dc2626);">
+                                              <input type="radio" name="rev-nittoku-change-type" value="非受講" ${!campusCodeVal ? 'checked' : ''}>
+                                              <span>🚫 非受講</span>
+                                            </label>
+                                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-weight: bold; color: #0284c7;">
+                                              <input type="radio" name="rev-nittoku-change-type" value="campus" ${campusCodeVal ? 'checked' : ''}>
+                                              <span>🏫 他校舎受講</span>
+                                            </label>
+                                            <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                              <input type="text" id="rev-inp-nittoku-campus" class="form-control form-control-sm" placeholder="他校舎コード（自由記述）" value="${campusCodeVal}" style="width: 170px; font-size: 0.78rem; padding: 2px 6px; background: #fff;" ${!campusCodeVal ? 'disabled' : ''}>
+                                            </div>
                                           </div>
                                         </div>
                                       ` : ''}
@@ -655,39 +669,31 @@ export const ReviewPage = {
 
     // 継続確認モード 学年別項目（日特等）イベント
     const revContRadios = this.container.querySelectorAll('.rev-cont-field-input');
-    const revNittokuHelper = this.container.querySelector('#rev-nittoku-change-helper');
-    const revRemarksInp = this.container.querySelector('#inp-edit-remarks');
+    const revNittokuPanel = this.container.querySelector('#rev-nittoku-change-panel');
+    const revNittokuTypeRadios = this.container.querySelectorAll('input[name="rev-nittoku-change-type"]');
+    const revNittokuCampusInput = this.container.querySelector('#rev-inp-nittoku-campus');
 
     revContRadios.forEach(radio => {
       radio.onchange = () => {
         if (radio.dataset.fieldName === '日特') {
           if (radio.value === '変更あり' && radio.checked) {
-            if (revNittokuHelper) revNittokuHelper.style.display = 'block';
+            if (revNittokuPanel) revNittokuPanel.style.display = 'block';
           } else if (radio.checked) {
-            if (revNittokuHelper) revNittokuHelper.style.display = 'none';
+            if (revNittokuPanel) revNittokuPanel.style.display = 'none';
           }
         }
       };
     });
 
-    // 日特変更メモ クイック挿入ボタン
-    this.container.querySelectorAll('.btn-rev-nittoku-memo').forEach(btn => {
-      btn.onclick = () => {
-        const memo = btn.dataset.memo;
-        if (revRemarksInp && memo) {
-          const cur = revRemarksInp.value.trim();
-          if (!cur) {
-            revRemarksInp.value = memo;
-          } else if (!cur.includes(memo)) {
-            if (memo.includes('他校舎受講') && cur.includes('【日特】非受講')) {
-              revRemarksInp.value = cur.replace('【日特】非受講', memo);
-            } else if (memo.includes('非受講') && cur.includes('【日特】他校舎受講')) {
-              revRemarksInp.value = cur.replace('【日特】他校舎受講', memo);
-            } else {
-              revRemarksInp.value = `${cur} ${memo}`;
-            }
+    revNittokuTypeRadios.forEach(radio => {
+      radio.onchange = () => {
+        if (revNittokuCampusInput) {
+          if (radio.value === 'campus' && radio.checked) {
+            revNittokuCampusInput.disabled = false;
+            revNittokuCampusInput.focus();
+          } else if (radio.checked) {
+            revNittokuCampusInput.disabled = true;
           }
-          UI.showToast(`備考欄に「${memo}」を入力しました`, 'info');
         }
       };
     });
@@ -735,8 +741,25 @@ export const ReviewPage = {
           const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
           customDefs.forEach(field => {
             const checkedOpt = this.container.querySelector(`input[name="edit-continuation-field-${field.id}"]:checked`);
-            if (checkedOpt) {
-              customFields[field.id] = checkedOpt.value;
+            if (field.name === '日特') {
+              const rawVal = checkedOpt ? checkedOpt.value : '';
+              if (rawVal === '受講' || rawVal === 'TD') {
+                customFields[field.id] = 'TD';
+              } else if (rawVal === '変更あり') {
+                const changeType = this.container.querySelector('input[name="rev-nittoku-change-type"]:checked')?.value;
+                if (changeType === 'campus') {
+                  const campusCode = this.container.querySelector('#rev-inp-nittoku-campus')?.value.trim() || '他校舎';
+                  customFields[field.id] = campusCode;
+                } else {
+                  customFields[field.id] = '非受講';
+                }
+              } else if (rawVal) {
+                customFields[field.id] = rawVal;
+              }
+            } else {
+              if (checkedOpt) {
+                customFields[field.id] = checkedOpt.value;
+              }
             }
           });
         }

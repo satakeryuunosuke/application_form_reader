@@ -560,7 +560,10 @@ export const ScanPage = {
                         ${contFields.map(field => {
                           const detectedVal = currentItem.checkResult?.customFields?.[field.id] || currentItem.checkResult?.customFields?.[field.name] || '';
                           const isNittoku = (field.name === '日特' || field.id === 'field_nittoku');
-                          const isNittokuChange = isNittoku && (detectedVal === '変更あり');
+                          const isTD = isNittoku ? (detectedVal === 'TD' || detectedVal === '受講' || detectedVal === '日特受講') : false;
+                          const curVal = isNittoku ? (isTD ? '受講' : (detectedVal ? '変更あり' : '')) : detectedVal;
+                          const isNittokuChange = isNittoku && (curVal === '変更あり');
+                          const campusCodeVal = (isNittoku && isNittokuChange && detectedVal !== '非受講' && detectedVal !== '日特非受講' && detectedVal !== '変更あり') ? detectedVal : '';
                           return `
                             <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 6px 10px;">
                               <div style="font-size: 0.78rem; font-weight: 700; color: var(--gray-800); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
@@ -574,7 +577,7 @@ export const ScanPage = {
                               <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
                                 ${(field.options || []).map(opt => {
                                   const optLabel = typeof opt === 'object' ? opt.label : opt;
-                                  const isChecked = (detectedVal === optLabel);
+                                  const isChecked = (curVal === optLabel);
                                   return `
                                     <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem;">
                                       <input type="radio" class="scan-cont-field-input" data-field-name="${field.name}" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="${optLabel}" ${isChecked ? 'checked' : ''}>
@@ -583,16 +586,27 @@ export const ScanPage = {
                                   `;
                                 }).join('')}
                                 <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem; color: var(--gray-500);">
-                                  <input type="radio" class="scan-cont-field-input" data-field-name="${field.name}" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="" ${!detectedVal ? 'checked' : ''}>
+                                  <input type="radio" class="scan-cont-field-input" data-field-name="${field.name}" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="" ${!curVal ? 'checked' : ''}>
                                   なし
                                 </label>
                               </div>
                               ${isNittoku ? `
-                                <div id="scan-nittoku-change-helper" style="display: ${isNittokuChange ? 'block' : 'none'}; margin-top: 6px; padding: 4px 8px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 0.74rem;">
-                                  <span style="color: #b45309; font-weight: bold;">💡 日特変更メモ（備考欄へワンクリック入力）:</span>
-                                  <div style="display: inline-flex; gap: 6px; margin-left: 6px;">
-                                    <button type="button" class="btn btn-secondary btn-sm btn-scan-nittoku-memo" data-memo="【日特】他校舎受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">他校舎受講</button>
-                                    <button type="button" class="btn btn-secondary btn-sm btn-scan-nittoku-memo" data-memo="【日特】非受講" style="padding: 1px 6px; font-size: 0.72rem; background: #fff; border: 1px solid #fde68a;">非受講</button>
+                                <div id="scan-nittoku-change-panel" style="display: ${isNittokuChange ? 'block' : 'none'}; margin-top: 6px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 0.76rem;">
+                                  <div style="font-weight: 700; color: #b45309; margin-bottom: 4px;">
+                                    変更先受講形態（エクセル出力値）:
+                                  </div>
+                                  <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-weight: bold; color: var(--danger-solid, #dc2626);">
+                                      <input type="radio" name="scan-nittoku-change-type" value="非受講" ${!campusCodeVal ? 'checked' : ''}>
+                                      <span>🚫 非受講</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-weight: bold; color: #0284c7;">
+                                      <input type="radio" name="scan-nittoku-change-type" value="campus" ${campusCodeVal ? 'checked' : ''}>
+                                      <span>🏫 他校舎受講</span>
+                                    </label>
+                                    <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                      <input type="text" id="scan-inp-nittoku-campus" class="form-control form-control-sm" placeholder="他校舎コード（自由記述）" value="${campusCodeVal}" style="width: 170px; font-size: 0.78rem; padding: 2px 6px; background: #fff;" ${!campusCodeVal ? 'disabled' : ''}>
+                                    </div>
                                   </div>
                                 </div>
                               ` : ''}
@@ -1439,38 +1453,31 @@ export const ScanPage = {
 
     // 継続確認モード 学年別項目（日特等）イベント
     const scanContRadios = this.container.querySelectorAll('.scan-cont-field-input');
-    const scanNittokuHelper = this.container.querySelector('#scan-nittoku-change-helper');
-    const scanRemarksEl = this.container.querySelector('#txt-remarks');
+    const scanNittokuPanel = this.container.querySelector('#scan-nittoku-change-panel');
+    const scanNittokuTypeRadios = this.container.querySelectorAll('input[name="scan-nittoku-change-type"]');
+    const scanNittokuCampusInput = this.container.querySelector('#scan-inp-nittoku-campus');
 
     scanContRadios.forEach(radio => {
       radio.onchange = () => {
         if (radio.dataset.fieldName === '日特') {
           if (radio.value === '変更あり' && radio.checked) {
-            if (scanNittokuHelper) scanNittokuHelper.style.display = 'block';
+            if (scanNittokuPanel) scanNittokuPanel.style.display = 'block';
           } else if (radio.checked) {
-            if (scanNittokuHelper) scanNittokuHelper.style.display = 'none';
+            if (scanNittokuPanel) scanNittokuPanel.style.display = 'none';
           }
         }
       };
     });
 
-    this.container.querySelectorAll('.btn-scan-nittoku-memo').forEach(btn => {
-      btn.onclick = () => {
-        const memo = btn.dataset.memo;
-        if (scanRemarksEl && memo) {
-          const cur = scanRemarksEl.value.trim();
-          if (!cur) {
-            scanRemarksEl.value = memo;
-          } else if (!cur.includes(memo)) {
-            if (memo.includes('他校舎受講') && cur.includes('【日特】非受講')) {
-              scanRemarksEl.value = cur.replace('【日特】非受講', memo);
-            } else if (memo.includes('非受講') && cur.includes('【日特】他校舎受講')) {
-              scanRemarksEl.value = cur.replace('【日特】他校舎受講', memo);
-            } else {
-              scanRemarksEl.value = `${cur} ${memo}`;
-            }
+    scanNittokuTypeRadios.forEach(radio => {
+      radio.onchange = () => {
+        if (scanNittokuCampusInput) {
+          if (radio.value === 'campus' && radio.checked) {
+            scanNittokuCampusInput.disabled = false;
+            scanNittokuCampusInput.focus();
+          } else if (radio.checked) {
+            scanNittokuCampusInput.disabled = true;
           }
-          UI.showToast(`備考欄に「${memo}」を入力しました`, 'info');
         }
       };
     });
@@ -1577,15 +1584,42 @@ export const ScanPage = {
         enrollmentCourse = (radioCourse2 && radioCourse2.checked) ? '2科' : '4科';
 
         // 学年別カスタム項目の値収集
-        this.container.querySelectorAll('[data-cont-field-id]').forEach(input => {
-          const fieldId = input.dataset.contFieldId;
-          if (input.type === 'radio' && input.checked) {
-            if (input.value) customFields[fieldId] = input.value;
-          } else if (input.type === 'checkbox' && input.checked) {
-            if (!customFields[fieldId]) customFields[fieldId] = [];
-            customFields[fieldId].push(input.value);
-          }
-        });
+        const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
+        if (customDefs.length > 0) {
+          customDefs.forEach(field => {
+            const checkedRadio = this.container.querySelector(`input[name="cont-field-${field.id}"]:checked`);
+            if (field.name === '日特') {
+              const rawVal = checkedRadio ? checkedRadio.value : '';
+              if (rawVal === '受講' || rawVal === 'TD') {
+                customFields[field.id] = 'TD';
+              } else if (rawVal === '変更あり') {
+                const changeType = this.container.querySelector('input[name="scan-nittoku-change-type"]:checked')?.value;
+                if (changeType === 'campus') {
+                  const campusCode = this.container.querySelector('#scan-inp-nittoku-campus')?.value.trim() || '他校舎';
+                  customFields[field.id] = campusCode;
+                } else {
+                  customFields[field.id] = '非受講';
+                }
+              } else if (rawVal) {
+                customFields[field.id] = rawVal;
+              }
+            } else {
+              if (checkedRadio && checkedRadio.value) {
+                customFields[field.id] = checkedRadio.value;
+              }
+            }
+          });
+        } else {
+          this.container.querySelectorAll('[data-cont-field-id]').forEach(input => {
+            const fieldId = input.dataset.contFieldId;
+            if (input.type === 'radio' && input.checked) {
+              if (input.value) customFields[fieldId] = input.value;
+            } else if (input.type === 'checkbox' && input.checked) {
+              if (!customFields[fieldId]) customFields[fieldId] = [];
+              customFields[fieldId].push(input.value);
+            }
+          });
+        }
       } else if (!isSelectionMode) {
         hasChange = radioHasChange ? radioHasChange.checked : false;
         if (hasChange) {

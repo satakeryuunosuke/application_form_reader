@@ -207,8 +207,10 @@ export const ListPage = {
                   <div class="filter-single-select-wrap">
                     <select id="sel-filter-nittoku" class="filter-single-select ${this.currentNittokuFilter !== 'all' ? 'is-active' : ''}" title="日特受講・変更ありで絞り込み">
                       <option value="all" ${this.currentNittokuFilter === 'all' ? 'selected' : ''}>🎯 日特: すべて</option>
-                      <option value="受講" ${this.currentNittokuFilter === '受講' ? 'selected' : ''}>⭕ 受講</option>
-                      <option value="変更あり" ${this.currentNittokuFilter === '変更あり' ? 'selected' : ''}>⚠️ 変更あり (他校舎・非受講等)</option>
+                      <option value="TD" ${this.currentNittokuFilter === 'TD' ? 'selected' : ''}>🎯 TD (自校舎受講)</option>
+                      <option value="change" ${this.currentNittokuFilter === 'change' ? 'selected' : ''}>⚠️ 変更あり (すべて)</option>
+                      <option value="非受講" ${this.currentNittokuFilter === '非受講' ? 'selected' : ''}>🚫 非受講</option>
+                      <option value="campus" ${this.currentNittokuFilter === 'campus' ? 'selected' : ''}>🏫 他校舎受講</option>
                     </select>
                   </div>
                 ` : ''}
@@ -544,10 +546,19 @@ export const ListPage = {
           if (item.status === '未提出') return false;
           const cFields = item.customFields || {};
           const nittokuVal = cFields.field_nittoku || cFields['日特'] || '';
-          if (this.currentNittokuFilter === '受講') {
-            if (nittokuVal !== '受講' && nittokuVal !== '日特受講') return false;
-          } else if (this.currentNittokuFilter === '変更あり') {
-            if (nittokuVal !== '変更あり' && !nittokuVal.includes('変更あり') && !nittokuVal.includes('非受講')) return false;
+          const isTD = (nittokuVal === 'TD' || nittokuVal === '受講' || nittokuVal === '日特受講');
+          const isNo = (nittokuVal === '非受講' || nittokuVal === '日特非受講');
+          const isCampus = (!isTD && !isNo && nittokuVal !== '' && nittokuVal !== '変更あり');
+          const isChange = (!isTD && nittokuVal !== '');
+
+          if (this.currentNittokuFilter === 'TD' || this.currentNittokuFilter === '受講') {
+            if (!isTD) return false;
+          } else if (this.currentNittokuFilter === 'change' || this.currentNittokuFilter === '変更あり') {
+            if (!isChange) return false;
+          } else if (this.currentNittokuFilter === '非受講') {
+            if (!isNo) return false;
+          } else if (this.currentNittokuFilter === 'campus') {
+            if (!isCampus) return false;
           }
         }
 
@@ -825,11 +836,12 @@ export const ListPage = {
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                 ${fieldEntries.map(([k, val]) => {
                   if (k === 'field_nittoku' || k === '日特') {
-                    const isChange = (val === '変更あり' || val.includes('変更あり') || val.includes('非受講'));
-                    if (isChange) {
-                      return `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;" title="日特変更あり（他校舎受講・非受講等）">⚠️ 日特: ${val}</span>`;
+                    if (val === 'TD' || val === '受講' || val === '日特受講') {
+                      return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;" title="日特受講（自校舎 TD）">🎯 日特: TD</span>`;
+                    } else if (val === '非受講' || val === '日特非受講') {
+                      return `<span class="badge font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;" title="日特非受講">🚫 日特: 非受講</span>`;
                     } else {
-                      return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">🎯 日特: ${val}</span>`;
+                      return `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;" title="日特他校舎受講">🏫 日特: ${val}</span>`;
                     }
                   }
                   return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px;">🏷️ ${val}</span>`;

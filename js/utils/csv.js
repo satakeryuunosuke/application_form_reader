@@ -426,7 +426,14 @@ export const CsvUtil = {
       
       const customColValues = customFieldsDef.map(f => {
         if (!isApproved) return escape('-');
-        const val = r.customFields?.[f.id] || r.customFields?.[f.name] || '-';
+        let val = r.customFields?.[f.id] || r.customFields?.[f.name] || '-';
+        if (f.name === '日特' || f.id === 'field_nittoku') {
+          if (val === '受講' || val === '日特受講' || val === 'TD') {
+            val = 'TD';
+          } else if (val === '日特非受講') {
+            val = '非受講';
+          }
+        }
         return escape(val);
       });
 
@@ -484,7 +491,15 @@ export const CsvUtil = {
       
       const customColValues = customFieldsDef.map(f => {
         if (!isApproved) return '-';
-        return r.customFields?.[f.id] || r.customFields?.[f.name] || '-';
+        let val = r.customFields?.[f.id] || r.customFields?.[f.name] || '-';
+        if (f.name === '日特' || f.id === 'field_nittoku') {
+          if (val === '受講' || val === '日特受講' || val === 'TD') {
+            val = 'TD';
+          } else if (val === '日特非受講') {
+            val = '非受講';
+          }
+        }
+        return val;
       });
 
       data.push([

@@ -244,11 +244,24 @@ export const ManualPage = {
                           }).join('')}
                         </div>
                         ${isNittoku ? `
-                          <div id="man-nittoku-change-helper" style="display: none; margin-top: 6px; padding: 6px 10px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 4px; font-size: 0.76rem;">
-                            <span style="color: #b45309; font-weight: bold;">💡 日特変更メモ（備考欄へワンクリック入力）:</span>
-                            <div style="display: inline-flex; gap: 6px; margin-left: 8px; vertical-align: middle;">
-                              <button type="button" class="btn btn-secondary btn-sm btn-quick-nittoku-memo" data-memo="【日特】他校舎受講" style="padding: 1px 7px; font-size: 0.74rem; background: #fff; border: 1px solid #fde68a;">他校舎受講</button>
-                              <button type="button" class="btn btn-secondary btn-sm btn-quick-nittoku-memo" data-memo="【日特】非受講" style="padding: 1px 7px; font-size: 0.74rem; background: #fff; border: 1px solid #fde68a;">非受講</button>
+                          <!-- 日特: 変更あり詳細パネル（非受講 or 自由記述で他校舎コード） -->
+                          <div id="man-nittoku-change-panel" style="display: none; margin-top: 8px; padding: 10px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius-sm);">
+                            <div style="font-size: 0.78rem; font-weight: 700; color: #b45309; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                              <span>変更先受講形態（エクセル出力値）:</span>
+                              <span style="font-weight: normal; font-size: 0.72rem; color: #92400e;">受講時: <strong>TD</strong> ／ 変更あり時: <strong>非受講</strong> または <strong>他校舎コード</strong></span>
+                            </div>
+                            <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+                              <label style="display: flex; align-items: center; gap: 5px; font-size: 0.82rem; cursor: pointer; font-weight: bold; color: var(--danger-solid, #dc2626);">
+                                <input type="radio" name="man-nittoku-change-type" value="非受講" checked ${isCompleted ? 'disabled' : ''}>
+                                <span>🚫 非受講</span>
+                              </label>
+                              <label style="display: flex; align-items: center; gap: 5px; font-size: 0.82rem; cursor: pointer; font-weight: bold; color: #0284c7;">
+                                <input type="radio" name="man-nittoku-change-type" value="campus" ${isCompleted ? 'disabled' : ''}>
+                                <span>🏫 他校舎受講</span>
+                              </label>
+                              <div style="display: inline-flex; align-items: center; gap: 6px;">
+                                <input type="text" id="man-inp-nittoku-campus" class="form-control form-control-sm" placeholder="他校舎コード（自由記述）" style="width: 190px; font-size: 0.8rem; padding: 4px 8px; background: #fff;" disabled ${isCompleted ? 'disabled' : ''}>
+                              </div>
                             </div>
                           </div>
                         ` : ''}
@@ -532,39 +545,31 @@ export const ManualPage = {
 
     // 継続確認モード 学年別項目（日特等）イベント
     const contFieldRadios = this.container.querySelectorAll('.man-cont-field-input');
-    const nittokuHelper = this.container.querySelector('#man-nittoku-change-helper');
-    const remarksInp = this.container.querySelector('#man-txt-remarks');
+    const nittokuPanel = this.container.querySelector('#man-nittoku-change-panel');
+    const nittokuTypeRadios = this.container.querySelectorAll('input[name="man-nittoku-change-type"]');
+    const nittokuCampusInput = this.container.querySelector('#man-inp-nittoku-campus');
 
     contFieldRadios.forEach(radio => {
       radio.onchange = () => {
         if (radio.dataset.fieldName === '日特') {
           if (radio.value === '変更あり' && radio.checked) {
-            if (nittokuHelper) nittokuHelper.style.display = 'block';
+            if (nittokuPanel) nittokuPanel.style.display = 'block';
           } else if (radio.checked) {
-            if (nittokuHelper) nittokuHelper.style.display = 'none';
+            if (nittokuPanel) nittokuPanel.style.display = 'none';
           }
         }
       };
     });
 
-    // 日特変更メモ クイック挿入ボタン
-    this.container.querySelectorAll('.btn-quick-nittoku-memo').forEach(btn => {
-      btn.onclick = () => {
-        const memo = btn.dataset.memo;
-        if (remarksInp && memo) {
-          const cur = remarksInp.value.trim();
-          if (!cur) {
-            remarksInp.value = memo;
-          } else if (!cur.includes(memo)) {
-            if (memo.includes('他校舎受講') && cur.includes('【日特】非受講')) {
-              remarksInp.value = cur.replace('【日特】非受講', memo);
-            } else if (memo.includes('非受講') && cur.includes('【日特】他校舎受講')) {
-              remarksInp.value = cur.replace('【日特】他校舎受講', memo);
-            } else {
-              remarksInp.value = `${cur} ${memo}`;
-            }
+    nittokuTypeRadios.forEach(radio => {
+      radio.onchange = () => {
+        if (nittokuCampusInput) {
+          if (radio.value === 'campus' && radio.checked) {
+            nittokuCampusInput.disabled = false;
+            nittokuCampusInput.focus();
+          } else if (radio.checked) {
+            nittokuCampusInput.disabled = true;
           }
-          UI.showToast(`備考欄に「${memo}」を入力しました`, 'info');
         }
       };
     });
@@ -701,8 +706,25 @@ export const ManualPage = {
         const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
         customDefs.forEach(field => {
           const checkedOpt = this.container.querySelector(`input[name="man-continuation-field-${field.id}"]:checked`);
-          if (checkedOpt) {
-            customFields[field.id] = checkedOpt.value;
+          if (field.name === '日特') {
+            const rawVal = checkedOpt ? checkedOpt.value : '';
+            if (rawVal === '受講' || rawVal === 'TD') {
+              customFields[field.id] = 'TD';
+            } else if (rawVal === '変更あり') {
+              const changeType = this.container.querySelector('input[name="man-nittoku-change-type"]:checked')?.value;
+              if (changeType === 'campus') {
+                const campusCode = this.container.querySelector('#man-inp-nittoku-campus')?.value.trim() || '他校舎';
+                customFields[field.id] = campusCode;
+              } else {
+                customFields[field.id] = '非受講';
+              }
+            } else if (rawVal) {
+              customFields[field.id] = rawVal;
+            }
+          } else {
+            if (checkedOpt) {
+              customFields[field.id] = checkedOpt.value;
+            }
           }
         });
       } else {
@@ -882,13 +904,31 @@ export const ManualPage = {
       customDefs.forEach(field => {
         const val = savedCustom[field.id] || savedCustom[field.name];
         if (val) {
-          const optRadio = this.container.querySelector(`input[name="man-continuation-field-${field.id}"][value="${val}"]`);
-          if (optRadio) {
-            optRadio.checked = true;
-            if (field.name === '日特' && val === '変更あり') {
-              const helper = this.container.querySelector('#man-nittoku-change-helper');
-              if (helper) helper.style.display = 'block';
+          if (field.name === '日特') {
+            const isTD = (val === 'TD' || val === '受講' || val === '日特受講');
+            const targetVal = isTD ? '受講' : '変更あり';
+            const optRadio = this.container.querySelector(`input[name="man-continuation-field-${field.id}"][value="${targetVal}"]`);
+            if (optRadio) optRadio.checked = true;
+
+            const panel = this.container.querySelector('#man-nittoku-change-panel');
+            const campusInp = this.container.querySelector('#man-inp-nittoku-campus');
+            if (!isTD) {
+              if (panel) panel.style.display = 'block';
+              if (val === '非受講' || val === '日特非受講' || val === '変更あり') {
+                const noRadio = this.container.querySelector('input[name="man-nittoku-change-type"][value="非受講"]');
+                if (noRadio) noRadio.checked = true;
+                if (campusInp) { campusInp.disabled = true; campusInp.value = ''; }
+              } else {
+                const campusRadio = this.container.querySelector('input[name="man-nittoku-change-type"][value="campus"]');
+                if (campusRadio) campusRadio.checked = true;
+                if (campusInp) { campusInp.disabled = false; campusInp.value = val; }
+              }
+            } else {
+              if (panel) panel.style.display = 'none';
             }
+          } else {
+            const optRadio = this.container.querySelector(`input[name="man-continuation-field-${field.id}"][value="${val}"]`);
+            if (optRadio) optRadio.checked = true;
           }
         }
       });
