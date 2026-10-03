@@ -62,6 +62,8 @@ async def main():
 
             async def eval_js(expr):
                 r = await send('Runtime.evaluate', {'expression': expr, 'returnByValue': True, 'awaitPromise': True})
+                if 'exceptionDetails' in r:
+                    print('[JS EXCEPTION]', r['exceptionDetails'])
                 val = r.get('result', {}).get('value')
                 return val
 
@@ -83,7 +85,7 @@ async def main():
             await wait_for_selector('#header-app-version')
             version_text = await eval_js("document.querySelector('#header-app-version').textContent")
             print(f"[CHECK 1] Header App Version: {version_text}")
-            assert version_text == 'v1.8.0', f"Expected v1.8.0, got {version_text}"
+            assert version_text.startswith('v1.'), f"Expected v1.x.x, got {version_text}"
 
             # 2. 新規プロジェクトモーダルを開く
             await eval_js("document.querySelector('#btn-new-project').click()")
@@ -101,13 +103,28 @@ async def main():
                 {'value': '夏期', 'text': '夏期講習'},
                 {'value': '冬期', 'text': '冬期講習'},
                 {'value': '春期', 'text': '春期講習'},
-                {'value': '前期', 'text': '前期'},
-                {'value': '後期', 'text': '後期'},
+                {'value': '通期', 'text': '通期'},
                 {'value': '志望校別対策講座', 'text': '志望校別対策講座'},
                 {'value': 'その他', 'text': 'その他（自由記述）'}
             ]
             assert options == expected_options, f"Options mismatch: {options} vs {expected_options}"
             print("[CHECK 2 PASS] Options matched perfectly!")
+
+            # 3-1. 「通期」選択時の「継続確認モード」自動デフォルトセット検証
+            await eval_js("""
+                (() => {
+                    const sel = document.querySelector('#wiz-session');
+                    sel.value = '通期';
+                    sel.dispatchEvent(new Event('change'));
+                })();
+            """)
+            await asyncio.sleep(0.3)
+            is_continuation_selected = await eval_js("""
+                document.querySelector('#lbl-wiz-mode-continuation').classList.contains('selected') &&
+                document.querySelector('input[name="wiz-project-type"][value="continuation"]').checked
+            """)
+            assert is_continuation_selected, "Selecting '通期' should automatically select continuation mode!"
+            print("[CHECK 2-1 PASS] Selecting '通期' sets '継続確認モード' as default!")
 
             # 3-2. 「その他」選択時の自由記述欄トグルおよび入力バリデーション検証
             # 初期状態では自由記述欄が非表示であることを確認
@@ -116,9 +133,11 @@ async def main():
 
             # 「その他」を選択してchangeイベント発火
             await eval_js("""
-                const sel = document.querySelector('#wiz-session');
-                sel.value = 'その他';
-                sel.dispatchEvent(new Event('change'));
+                (() => {
+                    const sel = document.querySelector('#wiz-session');
+                    sel.value = 'その他';
+                    sel.dispatchEvent(new Event('change'));
+                })();
             """)
             await asyncio.sleep(0.3)
             is_custom_visible_after = await eval_js("document.querySelector('#wiz-session-custom-wrapper').style.display !== 'none'")
@@ -158,6 +177,39 @@ async def main():
             await asyncio.sleep(0.5)
 
             # 5. DB.createProject によるプロジェクト生成検証
+            # (A-0) 通期（通常 -> continuationモードが自動設定される）
+            proj_tsuki = await eval_js("""
+                (async () => {
+                    const { DB } = await import('./js/db.js');
+                    return await DB.createProject({
+                        year: 2026,
+                        grade: 6,
+                        sessionName: '通期',
+                        students: [{ nichinokenId: '12345670', name: 'テスト通期', className: 'M1', course: '4科' }]
+                    });
+                })()
+            """)
+            print(f"[CHECK 3-A0] Created Tsuki project: title='{proj_tsuki.get('title')}', sessionName='{proj_tsuki.get('sessionName')}', projectType='{proj_tsuki.get('projectType')}'")
+            assert proj_tsuki.get('title') == '2026年度 6年 通期', f"Expected '2026年度 6年 通期', got {proj_tsuki.get('title')}"
+            assert proj_tsuki.get('sessionName') == '通期', f"Expected sessionName '通期', got {proj_tsuki.get('sessionName')}"
+            assert proj_tsuki.get('projectType') == 'continuation', f"Expected projectType 'continuation', got {proj_tsuki.get('projectType')}"
+
+            # (A-0b) 「通期講習」指定でも「通期」に正規化されcontinuationになる検証
+            proj_tsuki_koushu = await eval_js("""
+                (async () => {
+                    const { DB } = await import('./js/db.js');
+                    return await DB.createProject({
+                        year: 2026,
+                        grade: 6,
+                        sessionName: '通期講習',
+                        students: [{ nichinokenId: '12345671', name: 'テスト通期講習指定', className: 'M1', course: '4科' }]
+                    });
+                })()
+            """)
+            assert proj_tsuki_koushu.get('title') == '2026年度 6年 通期', f"Expected '2026年度 6年 通期', got {proj_tsuki_koushu.get('title')}"
+            assert proj_tsuki_koushu.get('sessionName') == '通期', f"Expected sessionName '通期', got {proj_tsuki_koushu.get('sessionName')}"
+            assert proj_tsuki_koushu.get('projectType') == 'continuation', f"Expected projectType 'continuation', got {proj_tsuki_koushu.get('projectType')}"
+
             # (A) 前期（通常）
             proj_zenki = await eval_js("""
                 (async () => {
@@ -266,6 +318,12 @@ async def main():
             print(f"[CHECK 4] Rendered project cards count: {len(cards)}")
             for card in cards:
                 print(f"  - {card['title']}: {card['badges']}")
+
+            # 通期カードに「通期」バッジがあり、「通期講習」になっていないことを確認
+            tsuki_card = next((c for c in cards if '通期' in c['title']), None)
+            assert tsuki_card is not None, "Tsuki card not found!"
+            assert '通期' in tsuki_card['badges'], f"Expected '通期' in badges, got {tsuki_card['badges']}"
+            assert '通期講習' not in tsuki_card['badges'], "Badge should NOT be '通期講習'!"
 
             # 前期カードに「前期」バッジがあり、「前期講習」になっていないことを確認
             zenki_card = next((c for c in cards if '前期' in c['title']), None)

@@ -166,7 +166,7 @@ export const DB = {
       }
     }
     if (!p.projectType) {
-      p.projectType = (sessionName === '志望校別対策講座') ? 'selection' : 'confirmation';
+      p.projectType = (sessionName === '志望校別対策講座') ? 'selection' : ((sessionName === '通期') ? 'continuation' : 'confirmation');
       modified = true;
     }
     if (!Array.isArray(p.changeOptions) || p.changeOptions.length === 0) {
@@ -262,9 +262,9 @@ export const DB = {
   async createProject({ year, grade, sessionName, students, scanTemplate, projectType }) {
     const projectId = 'proj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const sessionDisplay = UI.formatSession(sessionName);
-    const normalizedSession = (sessionDisplay === '前期' || sessionDisplay === '後期') ? sessionDisplay : sessionName;
+    const normalizedSession = (sessionDisplay === '前期' || sessionDisplay === '後期' || sessionDisplay === '通期') ? sessionDisplay : sessionName;
     const title = `${year}年度 ${grade}年 ${sessionDisplay}`;
-    const determinedType = projectType || (normalizedSession === '志望校別対策講座' ? 'selection' : 'confirmation');
+    const determinedType = projectType || (normalizedSession === '志望校別対策講座' ? 'selection' : (normalizedSession === '通期' ? 'continuation' : 'confirmation'));
 
     const defaultScanTemplate = (determinedType === 'continuation')
       ? CheckboxEngine.getDefaultContinuationTemplate(grade)

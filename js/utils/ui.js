@@ -285,6 +285,7 @@ export const UI = {
     const clean = String(sessionName).trim();
     if (clean === '前期' || clean === '前期講習' || clean.startsWith('前期')) return '前期';
     if (clean === '後期' || clean === '後期講習' || clean.startsWith('後期')) return '後期';
+    if (clean === '通期' || clean === '通期講習' || clean.startsWith('通期')) return '通期';
     if (clean === '夏期') return '夏期講習';
     if (clean === '冬期') return '冬期講習';
     if (clean === '春期') return '春期講習';
@@ -295,7 +296,7 @@ export const UI = {
   },
 
   /**
-   * プロジェクトタイトルの表示整形（「前期講習」->「前期」、「後期講習」->「後期」）
+   * プロジェクトタイトルの表示整形（「前期講習」->「前期」、「後期講習」->「後期」、「通期講習」->「通期」）
    * @param {string} title
    * @returns {string}
    */
@@ -303,7 +304,8 @@ export const UI = {
     if (!title) return '';
     return String(title)
       .replace(/前期講習/g, '前期')
-      .replace(/後期講習/g, '後期');
+      .replace(/後期講習/g, '後期')
+      .replace(/通期講習/g, '通期');
   },
 
   /**

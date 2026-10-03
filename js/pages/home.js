@@ -619,8 +619,7 @@ export const HomePage = {
                 <option value="夏期" ${selectedSessionOption === '夏期' ? 'selected' : ''}>夏期講習</option>
                 <option value="冬期" ${selectedSessionOption === '冬期' ? 'selected' : ''}>冬期講習</option>
                 <option value="春期" ${selectedSessionOption === '春期' ? 'selected' : ''}>春期講習</option>
-                <option value="前期" ${selectedSessionOption === '前期' ? 'selected' : ''}>前期</option>
-                <option value="後期" ${selectedSessionOption === '後期' ? 'selected' : ''}>後期</option>
+                <option value="通期" ${selectedSessionOption === '通期' ? 'selected' : ''}>通期</option>
                 <option value="志望校別対策講座" ${selectedSessionOption === '志望校別対策講座' ? 'selected' : ''}>志望校別対策講座</option>
                 <option value="その他" ${selectedSessionOption === 'その他' ? 'selected' : ''}>その他（自由記述）</option>
               </select>
@@ -1399,12 +1398,25 @@ export const HomePage = {
               customWrapper.style.display = 'none';
             }
 
-            // 志望校別対策講座が選ばれたら自動的に講座選択モードをセット
-            if (sessionEl.value === '志望校別対策講座') {
+            // 通期が選ばれたら自動的に継続確認モードをデフォルトセット
+            if (sessionEl.value === '通期') {
+              selectedProjectType = 'continuation';
+              updateModeCards();
+            } else if (sessionEl.value === '志望校別対策講座') {
+              // 志望校別対策講座が選ばれたら自動的に講座選択モードをセット
               selectedProjectType = 'selection';
+              updateModeCards();
+            } else if (sessionEl.value === '夏期' || sessionEl.value === '冬期' || sessionEl.value === '春期') {
+              selectedProjectType = 'confirmation';
               updateModeCards();
             }
           };
+
+          // 初期選択が通期の場合に継続確認モードを適用
+          if (sessionEl.value === '通期' && selectedProjectType === 'confirmation') {
+            selectedProjectType = 'continuation';
+            updateModeCards();
+          }
         }
       }
 
