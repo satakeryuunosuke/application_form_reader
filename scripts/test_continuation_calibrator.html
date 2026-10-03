@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Continuation Calibrator Unit Test</title>
+  <script src="../lib/dexie.min.js"></script>
+  <script src="../lib/xlsx.full.min.js"></script>
+  <script src="../lib/pdf.min.js"></script>
+  <script src="../lib/zxing-library.min.js"></script>
+</head>
+<body>
+  <h1>Continuation Calibrator Unit Test</h1>
+  <div id="test-container" style="width: 800px; height: 600px;"></div>
+  <pre id="test-results" style="font-size: 14px; background: #f0f0f0; padding: 20px;"></pre>
+
+  <script type="module">
+    import { CheckboxEngine } from '../js/checkbox.js';
+    import { TemplateCalibrator } from '../js/components/calibrator.js';
+
+    const log = [];
+    function report(msg, pass = true) {
+      const line = `${pass ? '✅ PASS' : '❌ FAIL'}: ${msg}`;
+      log.push(line);
+      console.log(line);
+      document.getElementById('test-results').textContent = log.join('\n');
+    }
+
+    async function runTests() {
+      try {
+        console.log('--- STARTING CONTINUATION CALIBRATOR TESTS ---');
+
+        // 1. 継続確認モード
+        const mount = document.getElementById('test-container');
+        const contTemplate = CheckboxEngine.getDefaultContinuationTemplate(3);
+        const calib = new TemplateCalibrator(mount, contTemplate, null, { allowStandardBoxes: false });
+
+        const switchTab = (tabId) => {
+          const btn = mount.querySelector(`.calib-tab-btn[data-tab="${tabId}"]`);
+          if (btn) {
+            btn.click();
+          } else {
+            calib.activeTab = tabId;
+            calib.updateTabsUI();
+            calib.syncSlidersFromTemplate();
+            calib.drawOverlay();
+          }
+        };
+
+        // 1. 「受講する」枠
+        switchTab('participate');
+        const activeTitlePart = mount.querySelector('#eval-active-title').textContent;
+        const activeRatioPart = mount.querySelector('#eval-active-ratio').textContent;
+        report(`Continuation participate tab title: "${activeTitlePart}"`, activeTitlePart.includes('受講する'));
+        report(`Continuation participate tab ratio: "${activeRatioPart}"`, activeRatioPart.includes('黒画素率:'));
+
+        // 2. 「その他」枠
+        switchTab('other');
+        const activeTitleOther = mount.querySelector('#eval-active-title').textContent;
+        const activeRatioOther = mount.querySelector('#eval-active-ratio').textContent;
+        report(`Continuation other tab title: "${activeTitleOther}"`, activeTitleOther.includes('その他'));
+        report(`Continuation other tab ratio: "${activeRatioOther}"`, activeRatioOther.includes('黒画素率:'));
+
+        // 3. 「4科目」枠
+        switchTab('subject4');
+        const activeTitleSub4 = mount.querySelector('#eval-active-title').textContent;
+        const activeRatioSub4 = mount.querySelector('#eval-active-ratio').textContent;
+        report(`Continuation subject4 tab title: "${activeTitleSub4}"`, activeTitleSub4.includes('4科目'));
+        report(`Continuation subject4 tab ratio: "${activeRatioSub4}"`, activeRatioSub4.includes('黒画素率:'));
+
+        // 4. 「2科目」枠
+        switchTab('subject2');
+        const activeTitleSub2 = mount.querySelector('#eval-active-title').textContent;
+        const activeRatioSub2 = mount.querySelector('#eval-active-ratio').textContent;
+        report(`Continuation subject2 tab title: "${activeTitleSub2}"`, activeTitleSub2.includes('2科目'));
+        report(`Continuation subject2 tab ratio: "${activeRatioSub2}"`, activeRatioSub2.includes('黒画素率:'));
+
+        // 5. 学年別項目「月木コース」
+        switchTab('opt_mon_thu');
+        const customOptTitle = mount.querySelector('#eval-active-title').textContent;
+        const customOptRatio = mount.querySelector('#eval-active-ratio').textContent;
+        report(`Continuation custom field tab title: "${customOptTitle}"`, customOptTitle.includes('通室コース: 「月木コース」'));
+        report(`Continuation custom field tab ratio: "${customOptRatio}"`, customOptRatio.includes('黒画素率:'));
+
+        // 6. アコーディオン内の一覧行数（全6枠: 受講する, その他, 4科, 2科, 月木, 火金）
+        const customRows = mount.querySelectorAll('#eval-custom-rows .eval-row');
+        report(`Continuation mode summary list has 6 rows (actual=${customRows.length})`, customRows.length === 6);
+
+        // 7. サマリーバーのテキスト
+        const summaryText = mount.querySelector('#eval-summary-text').textContent;
+        report(`Summary bar text shows "全 6 枠" (actual="${summaryText}")`, summaryText.includes('全 6 枠'));
+
+        // 8. 総合自動判定の表示
+        const overallStatus = mount.querySelector('#eval-overall-status').textContent;
+        report(`Overall status badge exists (text="${overallStatus}")`, overallStatus.length > 0);
+
+        // 9. 通常モード（期間講習受講確認モード: 変更なし／変更あり）の検証
+        const mount2 = document.createElement('div');
+        mount2.style.width = '800px';
+        mount2.style.height = '600px';
+        document.body.appendChild(mount2);
+        const calibStandard = new TemplateCalibrator(mount2, { allowStandardBoxes: true });
+        calibStandard.setTemplate(CheckboxEngine.getDefaultTemplate());
+        const standardNoChangeRatio = mount2.querySelector('#eval-no-change-ratio').textContent;
+        const standardHasChangeRatio = mount2.querySelector('#eval-has-change-ratio').textContent;
+        report(`Standard mode displays noChange ratio ("${standardNoChangeRatio}")`, standardNoChangeRatio.includes('黒画素:'));
+        report(`Standard mode displays hasChange ratio ("${standardHasChangeRatio}")`, standardHasChangeRatio.includes('黒画素:'));
+
+        // 10. 講座選択モード（志望校別講座などの customBoxes）の検証
+        const mount3 = document.createElement('div');
+        mount3.style.width = '800px';
+        mount3.style.height = '600px';
+        document.body.appendChild(mount3);
+        const selectionTemplate = {
+          threshold: 0.25,
+          customBoxes: [
+            { id: 'course_1', label: '開成対策', dx: 0.05, dy: 0.2, size: 0.032 },
+            { id: 'course_2', label: '麻布対策', dx: 0.05, dy: 0.3, size: 0.032 }
+          ]
+        };
+        const calibSelection = new TemplateCalibrator(mount3, selectionTemplate, null, { allowStandardBoxes: false });
+        const selSmartSelect = mount3.querySelector('#calib-smart-box-select');
+        if (selSmartSelect) {
+          selSmartSelect.value = 'course_1';
+          selSmartSelect.dispatchEvent(new Event('change'));
+        } else {
+          calibSelection.activeTab = 'course_1';
+          calibSelection.updateTabsUI();
+          calibSelection.syncSlidersFromTemplate();
+          calibSelection.drawOverlay();
+        }
+        const selActiveContainerDisplay = mount3.querySelector('#eval-active-focus-container').style.display;
+        const selActiveTitle = mount3.querySelector('#eval-active-title').textContent;
+        const selActiveRatio = mount3.querySelector('#eval-active-ratio').textContent;
+        report(`Selection mode active focus container display: "${selActiveContainerDisplay}"`, selActiveContainerDisplay === 'flex');
+        report(`Selection mode custom tab title: "${selActiveTitle}"`, selActiveTitle.includes('開成対策'));
+        report(`Selection mode custom tab ratio: "${selActiveRatio}"`, selActiveRatio.includes('黒画素率:'));
+        const selRows = mount3.querySelectorAll('#eval-custom-rows .eval-row');
+        report(`Selection mode renders all custom boxes in summary (count=${selRows.length})`, selRows.length === 2);
+
+        report('--- ALL CONTINUATION & REGRESSION TESTS FINISHED ---', true);
+        window.TESTS_FINISHED = true;
+      } catch (err) {
+        console.error('Test error:', err);
+        report(`Fatal Error: ${err.message}`, false);
+        window.TESTS_FINISHED = true;
+      }
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

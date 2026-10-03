@@ -207,11 +207,13 @@ export class TemplateCalibrator {
                 </div>
               </div>
 
+              <!-- 総合自動判定（期間講習受講確認モード または 継続確認モード） -->
+              <div class="eval-row" id="eval-overall-row" style="display: none; background: #f8fafc; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 5px 8px; margin-bottom: 6px;">
+                <span class="eval-label font-bold" style="font-size: 0.82rem; color: var(--gray-800);">総合自動判定:</span>
+                <span id="eval-overall-status" class="badge badge-success font-bold" style="font-size: 0.82rem;">-</span>
+              </div>
+
               ${this.allowStandardBoxes ? `
-                <div class="eval-row" id="eval-overall-row" style="${(this.template.noChangeBox && this.template.hasChangeBox) ? '' : 'display: none;'} background: #f8fafc; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 5px 8px; margin-bottom: 6px;">
-                  <span class="eval-label font-bold" style="font-size: 0.82rem; color: var(--gray-800);">総合自動判定:</span>
-                  <span id="eval-overall-status" class="badge badge-success font-bold" style="font-size: 0.82rem;">-</span>
-                </div>
                 <div class="eval-row" id="eval-no-change-row" style="${this.template.noChangeBox ? '' : 'display: none;'}">
                   <span class="eval-label">変更なし判定:</span>
                   <span id="eval-no-change-status" class="badge badge-gray">-</span>
@@ -1633,14 +1635,29 @@ export class TemplateCalibrator {
     if (rects.subject2Rect) {
       this.drawTargetBox(ctx, rects.subject2Rect, '#0284c7', 'rgba(2, 132, 199, 0.18)', '2科目 (正方形)', this.activeTab === 'subject2');
     }
+    const evaluatedCustomFields = [];
     if (rects.customFieldRects && rects.customFieldRects.length > 0) {
       rects.customFieldRects.forEach(field => {
+        const fieldItem = {
+          id: field.id,
+          name: field.name,
+          type: field.type,
+          options: []
+        };
         (field.options || []).forEach(opt => {
           if (opt.rect) {
             const isOptActive = this.activeTab === opt.id;
             this.drawTargetBox(ctx, opt.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${field.name}: ${opt.label}`, isOptActive);
+            const optEval = CheckboxEngine.evaluateCheckbox(this.sourceCanvas, opt.rect, threshold);
+            fieldItem.options.push({
+              id: opt.id,
+              label: opt.label,
+              eval: optEval,
+              isActive: isOptActive
+            });
           }
         });
+        evaluatedCustomFields.push(fieldItem);
       });
     }
 
@@ -1678,7 +1695,8 @@ export class TemplateCalibrator {
       otherEval,
       subject4Eval,
       subject2Eval,
-      customFieldRects: rects.customFieldRects
+      customFieldRects: rects.customFieldRects,
+      evaluatedCustomFields
     });
 
     // トランスフォーム（ズーム・パン）の再適用
@@ -1846,37 +1864,117 @@ export class TemplateCalibrator {
       }
     }
 
-    // 講座選択モード または customEvals がある場合のサマリーバー & 選択中枠ハイライト表示
+    // 継続確認モード枠・カスタム枠の統合リスト構築
+    const displayList = [];
+    if (isContinuation) {
+      if (continuationData.participateEval) {
+        displayList.push({
+          id: 'participate',
+          icon: '🟩',
+          label: '受講可否: 「受講する」枠',
+          eval: continuationData.participateEval,
+          isActive: this.activeTab === 'participate',
+          badgeClass: 'badge-success'
+        });
+      }
+      if (continuationData.otherEval) {
+        displayList.push({
+          id: 'other',
+          icon: '🟧',
+          label: '受講可否: 「その他」枠',
+          eval: continuationData.otherEval,
+          isActive: this.activeTab === 'other',
+          badgeClass: 'badge-warning'
+        });
+      }
+      if (continuationData.subject4Eval) {
+        displayList.push({
+          id: 'subject4',
+          icon: '🟦',
+          label: '科目数: 「4科目」枠',
+          eval: continuationData.subject4Eval,
+          isActive: this.activeTab === 'subject4',
+          badgeClass: 'badge-info'
+        });
+      }
+      if (continuationData.subject2Eval) {
+        displayList.push({
+          id: 'subject2',
+          icon: '🟦',
+          label: '科目数: 「2科目」枠',
+          eval: continuationData.subject2Eval,
+          isActive: this.activeTab === 'subject2',
+          badgeClass: 'badge-info'
+        });
+      }
+      if (continuationData.evaluatedCustomFields) {
+        continuationData.evaluatedCustomFields.forEach(field => {
+          (field.options || []).forEach(opt => {
+            displayList.push({
+              id: opt.id,
+              icon: '🟪',
+              label: `${field.name}: 「${opt.label}」枠`,
+              eval: opt.eval,
+              isActive: this.activeTab === opt.id,
+              badgeClass: 'badge-purple'
+            });
+          });
+        });
+      }
+    }
+    // 志望校別等の customEvals も統合
+    if (customEvals && customEvals.length > 0) {
+      customEvals.forEach(c => {
+        displayList.push({
+          id: c.id,
+          icon: '🟪',
+          label: `${c.label}枠`,
+          eval: c.eval,
+          isActive: c.isActive,
+          badgeClass: 'badge-purple'
+        });
+      });
+    }
+
+    // 講座選択モード・継続確認モード・または 4枠以上の場合のサマリーバー & 選択中枠ハイライト表示
     const allBoxes = this.getAllBoxesList();
-    const useSmart = !this.allowStandardBoxes || allBoxes.length >= 4;
+    const useSmart = !this.allowStandardBoxes || isContinuation || allBoxes.length >= 4;
 
     if (useSmart && activeFocusContainer && activeTitleEl && activeRatioEl && activeBadgeEl) {
       activeFocusContainer.style.display = 'flex';
       let activeLabel = '未選択';
       let activePct = 0;
       let isChk = false;
+      let activeBadgeClass = 'badge-purple';
 
       if (this.activeTab === 'noChange' && noChangeEval) {
         activeLabel = '🟩 「変更なし」枠';
         activePct = Math.round(noChangeEval.darkRatio * 100);
         isChk = noChangeEval.isChecked;
+        activeBadgeClass = 'badge-success';
       } else if (this.activeTab === 'hasChange' && hasChangeEval) {
         activeLabel = '🟧 「変更あり」枠';
         activePct = Math.round(hasChangeEval.darkRatio * 100);
         isChk = hasChangeEval.isChecked;
+        activeBadgeClass = 'badge-warning';
       } else {
-        const found = customEvals.find(c => c.id === this.activeTab);
-        if (found) {
-          activeLabel = `🟪 ${found.label}`;
-          activePct = Math.round(found.eval.darkRatio * 100);
+        const found = displayList.find(c => c.id === this.activeTab);
+        if (found && found.eval) {
+          activeLabel = `${found.icon} ${found.label}`;
+          activePct = Math.round((found.eval.darkRatio || 0) * 100);
           isChk = found.eval.isChecked;
+          activeBadgeClass = found.badgeClass || 'badge-purple';
+        } else {
+          activeLabel = this.getActiveBoxLabel() || '選択中の枠';
+          activePct = 0;
+          isChk = false;
         }
       }
 
       activeTitleEl.textContent = activeLabel;
       activeRatioEl.textContent = `黒画素率: ${activePct}%（判定閾値: ${Math.round((this.template.threshold || 0.25) * 100)}%）`;
       activeBadgeEl.innerHTML = isChk
-        ? `<span class="badge badge-purple font-bold" style="background:#8b5cf6; color:#fff; font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
+        ? `<span class="badge ${activeBadgeClass} font-bold" style="font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
         : `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 4px 8px;">⬜ なし</span>`;
     } else if (activeFocusContainer) {
       activeFocusContainer.style.display = 'none';
@@ -1884,29 +1982,29 @@ export class TemplateCalibrator {
 
     // サマリーバーの表示
     if (summaryBar && summaryText) {
-      if (customEvals.length > 0) {
+      if (displayList.length > 0) {
         summaryBar.style.display = 'flex';
-        const checkedCount = customEvals.filter(c => c.eval.isChecked).length;
-        summaryText.innerHTML = `全 <strong>${customEvals.length}</strong> 枠（✅ あり: <strong style="color: #6d28d9;">${checkedCount}</strong> 件）`;
+        const checkedCount = displayList.filter(c => c.eval?.isChecked).length;
+        summaryText.innerHTML = `全 <strong>${displayList.length}</strong> 枠（✅ あり: <strong style="color: #6d28d9;">${checkedCount}</strong> 件）`;
       } else {
         summaryBar.style.display = 'none';
       }
     }
 
     if (customRowsEl) {
-      if (customEvals.length === 0) {
+      if (displayList.length === 0) {
         customRowsEl.innerHTML = '';
       } else {
-        customRowsEl.innerHTML = customEvals.map(item => {
-          const pct = Math.round(item.eval.darkRatio * 100);
-          const isChk = item.eval.isChecked;
+        customRowsEl.innerHTML = displayList.map(item => {
+          const pct = Math.round(((item.eval?.darkRatio) || 0) * 100);
+          const isChk = !!item.eval?.isChecked;
           const statusBadge = isChk
-            ? `<span class="badge badge-purple font-bold" style="background:#8b5cf6; color:#fff;">✅ あり</span>`
+            ? `<span class="badge ${item.badgeClass || 'badge-purple'} font-bold">✅ あり</span>`
             : `<span class="badge badge-gray">⬜ なし</span>`;
           return `
             <div class="eval-row" style="${item.isActive ? 'background: rgba(139, 92, 246, 0.08); border-radius: 4px; padding: 2px 4px;' : ''}">
-              <span class="eval-label" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.label}">
-                🟪 ${item.label}:
+              <span class="eval-label" style="max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.label}">
+                ${item.icon || '🟪'} ${item.label}:
               </span>
               ${statusBadge}
               <span class="text-mono eval-ratio">黒画素: ${pct}%</span>
