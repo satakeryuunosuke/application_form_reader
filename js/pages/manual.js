@@ -490,27 +490,15 @@ export const ManualPage = {
     const radioContOther = this.container.querySelector('input[name="man-continuation-status"][value="その他"]');
     const cardContParticipate = this.container.querySelector('#man-card-participate');
     const cardContOther = this.container.querySelector('#man-card-other');
-    const txtRemarks = this.container.querySelector('#man-txt-remarks');
 
     if (radioContParticipate && radioContOther && cardContParticipate && cardContOther) {
       const updateContRadio = () => {
         if (radioContParticipate.checked) {
           cardContParticipate.classList.add('selected');
           cardContOther.classList.remove('selected');
-          if (txtRemarks) {
-            txtRemarks.style.borderColor = '';
-            txtRemarks.style.background = '';
-            txtRemarks.placeholder = '例: 紙紛失のため口頭連絡。12/28はZoom受講希望など';
-          }
         } else {
           cardContParticipate.classList.remove('selected');
           cardContOther.classList.add('selected');
-          if (txtRemarks) {
-            txtRemarks.style.borderColor = '#f59e0b';
-            txtRemarks.style.background = '#fffbeb';
-            txtRemarks.placeholder = '【要入力】用紙のその他欄の記述内容を入力してください';
-            txtRemarks.focus();
-          }
         }
       };
 
@@ -818,14 +806,10 @@ export const ManualPage = {
         if (radioOther) radioOther.checked = true;
         if (cardParticipate) cardParticipate.classList.remove('selected');
         if (cardOther) cardOther.classList.add('selected');
-        remarksInput.style.borderColor = '#f59e0b';
-        remarksInput.style.background = '#fffbeb';
       } else {
         if (radioParticipate) radioParticipate.checked = true;
         if (cardParticipate) cardParticipate.classList.add('selected');
         if (cardOther) cardOther.classList.remove('selected');
-        remarksInput.style.borderColor = '';
-        remarksInput.style.background = '';
       }
 
       const subj = (stu.enrollmentCourse === '2科') ? '2科' : '4科';

@@ -809,11 +809,7 @@ export const ListPage = {
             <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${row.inputMethod}</span>` : '-'}</td>
             <td class="col-approver">${row.approvedBy || '-'}</td>
             <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
-            <td class="col-remarks" title="${row.remarks || ''}">
-              ${row.enrollmentStatus === 'その他' && row.remarks 
-                ? `<span style="background: #fffbeb; color: #b45309; font-weight: 600; padding: 2px 6px; border-radius: 3px; border: 1px solid #fde68a;">📝 ${row.remarks}</span>`
-                : `<span>${row.remarks || '-'}</span>`}
-            </td>
+            <td class="col-remarks" title="${row.remarks || ''}"><span>${row.remarks || '-'}</span></td>
             <td class="col-history" style="text-align: center;">
               <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
                 📜 履歴 <span class="badge ${historyCount > 0 ? 'badge-info' : 'badge-gray'}" style="padding: 1px 4px; font-size: 0.7rem; margin-left: 2px;">${historyCount}</span>

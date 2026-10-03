@@ -684,9 +684,8 @@ export const ScanPage = {
               <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
                 <label class="form-label" style="font-size: 0.76rem; margin-bottom: 3px;">
                   特記事項・メモ（手入力）
-                  ${isContinuationMode && currentItem.checkResult?.otherChecked ? '<span class="badge badge-warning" style="margin-left: 4px;">⚠️ その他手書き内容を転記してください</span>' : ''}
                 </label>
-                <textarea id="txt-remarks" class="form-control" placeholder="${isContinuationMode && currentItem.checkResult?.otherChecked ? '※「その他」の手書き内容（理由・希望など）を用紙画像から確認して入力してください' : '特記事項やメモなど'}" style="min-height: 48px; height: 48px; font-size: 0.82rem; padding: 6px 10px; ${isContinuationMode && currentItem.checkResult?.otherChecked ? 'border: 2px solid #f59e0b; background: #fffbeb;' : ''}"></textarea>
+                <textarea id="txt-remarks" class="form-control" placeholder="特記事項やメモなど" style="min-height: 48px; height: 48px; font-size: 0.82rem; padding: 6px 10px;"></textarea>
               </div>
             </div>
           </div>
@@ -1281,7 +1280,6 @@ export const ScanPage = {
     const cardContOther = this.container.querySelector('#card-opt-cont-other');
     const radioContPart = this.container.querySelector('input[name="continuation-choice"][value="participate"]');
     const radioContOther = this.container.querySelector('input[name="continuation-choice"][value="other"]');
-    const txtRemarks = this.container.querySelector('#txt-remarks');
 
     if (cardContPart && cardContOther && radioContPart && radioContOther) {
       const updateContUI = () => {
@@ -1290,20 +1288,11 @@ export const ScanPage = {
           cardContOther.classList.remove('selected');
           cardContOther.style.borderColor = '';
           cardContOther.style.background = '';
-          if (txtRemarks) {
-            txtRemarks.style.border = '';
-            txtRemarks.style.background = '';
-          }
         } else {
           cardContPart.classList.remove('selected');
           cardContOther.classList.add('selected');
           cardContOther.style.borderColor = '#f59e0b';
           cardContOther.style.background = '#fffbeb';
-          if (txtRemarks) {
-            txtRemarks.style.border = '2px solid #f59e0b';
-            txtRemarks.style.background = '#fffbeb';
-            txtRemarks.focus();
-          }
         }
       };
 
