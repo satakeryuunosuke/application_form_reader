@@ -786,6 +786,7 @@ export const ScanPage = {
 
   bindApprovalEvents(currentItem) {
     const isSelectionMode = (this.project.projectType === 'selection');
+    const isContinuationMode = (this.project.projectType === 'continuation');
     const img = this.container.querySelector('#scanned-image-preview');
     const zoomVal = this.container.querySelector('#zoom-val');
     const viewerWrap = this.container.querySelector('#image-viewer-wrap');
