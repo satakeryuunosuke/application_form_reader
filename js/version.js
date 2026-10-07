@@ -2,7 +2,7 @@
  * アプリケーション バージョン & システム情報定義
  */
 
-export const APP_VERSION = 'v1.27.3';
+export const APP_VERSION = 'v1.27.4';
 export const APP_BUILD_DATE = '2026-10-07';
 export const APP_NAME = '受講確認票 処理システム';
 
@@ -14,6 +14,7 @@ export const SYSTEM_INFO = {
   retentionPeriod: '無期限（ユーザー手動管理）',
   security: '完全クライアントサイド（外部通信ゼロ・個人情報保護）',
   features: [
+    'ローカル検証サーバー（server.py）のGit追跡解除・.gitignore登録（外部公開リポジトリからの完全除外によるセキュリティリスク低減）',
     'セキュリティ強化（P2：CSV/Excel出力時の数式インジェクション（CSV Injection / Formula Injection）対策、および共有フォルダ同期時のリモートイベントオブジェクト検証・サニタイズ・リプレイ時フィールド完全同期）',
     'セキュリティ脆弱性対策（P1：全画面における動的HTML出力のサニタイズ・escapeHtml導入によるDOM-based/Stored XSS防御、およびPDF.jsフォント描画時コード実行脆弱性CVE-2024-4367の防御設定 isEvalSupported: false を適用）',
     'スキャン読み取り画面における「承認して次へ」処理の不具合修正（イベントバインド時のスコープ外未定義変数 isContinuationMode による ReferenceError 例外を解消し、全運用モードでのEnterキー／承認ボタンによる保存・次ページ遷移を正常復旧）',

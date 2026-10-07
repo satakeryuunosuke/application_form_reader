@@ -49,3 +49,6 @@ ENV/
 *.temp
 *.bak
 *.old
+
+# ローカル開発・検証用サーバー（非公開）
+server.py
