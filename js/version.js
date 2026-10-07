@@ -2,8 +2,8 @@
  * アプリケーション バージョン & システム情報定義
  */
 
-export const APP_VERSION = 'v1.27.5';
-export const APP_BUILD_DATE = '2026-10-07';
+export const APP_VERSION = 'v1.27.6';
+export const APP_BUILD_DATE = '2026-10-08';
 export const APP_NAME = '受講確認票 処理システム';
 
 export const SYSTEM_INFO = {
