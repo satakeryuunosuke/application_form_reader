@@ -2,7 +2,24 @@
  * UI ヘルパー（トースト、モーダル、ローディング）
  */
 
+/**
+ * HTML 特殊文字をエスケープして XSS (Cross-Site Scripting) を防止
+ * @param {any} val
+ * @returns {string}
+ */
+export function escapeHtml(val) {
+  if (val === null || val === undefined) return '';
+  return String(val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export const UI = {
+  escapeHtml,
+
   /**
    * トースト通知を表示
    * @param {string} message
@@ -27,7 +44,14 @@ export const UI = {
       warning: '🔔'
     };
 
-    toast.innerHTML = `<span>${iconMap[type] || 'ℹ️'}</span> <span>${message}</span>`;
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = iconMap[type] || 'ℹ️';
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = String(message !== undefined && message !== null ? message : '');
+
+    toast.appendChild(iconSpan);
+    toast.appendChild(document.createTextNode(' '));
+    toast.appendChild(msgSpan);
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -76,8 +100,8 @@ export const UI = {
             <div class="loading-spinner-inner"></div>
             <div class="loading-spinner-icon" id="app-loading-icon">${icon}</div>
           </div>
-          <div class="loading-title" id="app-loading-title">${title}</div>
-          <div class="loading-msg" id="app-loading-msg">${message}</div>
+          <div class="loading-title" id="app-loading-title">${escapeHtml(title)}</div>
+          <div class="loading-msg" id="app-loading-msg">${escapeHtml(message)}</div>
           <div class="loading-timer" id="app-loading-timer">通信中... (0秒)</div>
           <div class="loading-cancel-area" id="app-loading-cancel-area">
             <button class="btn btn-secondary btn-sm" id="btn-app-loading-cancel" style="color: var(--danger-solid); border-color: var(--danger-border, #fca5a5);">
@@ -229,10 +253,10 @@ export const UI = {
       modal.innerHTML = `
         <div class="modal-content" style="max-width: 440px;">
           <div class="modal-header">
-            <h3 class="modal-title font-bold" style="font-size: 1.1rem;">${title}</h3>
+            <h3 class="modal-title font-bold" style="font-size: 1.1rem;">${escapeHtml(title)}</h3>
           </div>
           <div class="modal-body">
-            <p style="color: var(--gray-700); line-height: 1.6;">${message}</p>
+            <p style="color: var(--gray-700); line-height: 1.6;">${escapeHtml(message)}</p>
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary btn-cancel">キャンセル</button>
@@ -331,8 +355,19 @@ export const UI = {
     let startX = 0;
     let startY = 0;
 
-    const safeTitle = title || 'スキャン確認票';
-    const downloadName = (safeTitle).replace(/[\\\/:*?"<>|\s]+/g, '_') + '.png';
+    const safeTitle = escapeHtml(title || 'スキャン確認票');
+    const downloadName = (title || 'スキャン確認票').replace(/[\\\/:*?"<>|\s]+/g, '_') + '.png';
+    const safeDownloadName = escapeHtml(downloadName);
+
+    // 画像URLの安全性検証（data:, blob:, 相対パスのみ許可し javascript: 等をブロック）
+    const isSafeSrc = typeof imgSrc === 'string' && (
+      imgSrc.startsWith('data:image/') ||
+      imgSrc.startsWith('blob:') ||
+      imgSrc.startsWith('./') ||
+      imgSrc.startsWith('/') ||
+      !imgSrc.includes(':')
+    ) && !imgSrc.trim().toLowerCase().startsWith('javascript:');
+    const validSrc = isSafeSrc ? imgSrc : '';
 
     lightbox.innerHTML = `
       <div class="image-lightbox-header">
@@ -348,14 +383,14 @@ export const UI = {
             <button id="lb-zoom-fit" class="btn btn-ghost btn-sm" style="color: #fff; padding: 2px 6px;" title="画面に合わせる">全体</button>
             <button id="lb-zoom-reset" class="btn btn-ghost btn-sm" style="color: #fff; padding: 2px 6px;" title="原寸大 (100%)">100%</button>
           </div>
-          <a href="${imgSrc}" download="${downloadName}" class="btn btn-ghost btn-sm" style="color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 4px 10px;" title="画像をローカルに保存">
+          <a href="${validSrc}" download="${safeDownloadName}" class="btn btn-ghost btn-sm" style="color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 4px 10px;" title="画像をローカルに保存">
             💾 画像保存
           </a>
           <button class="btn btn-ghost btn-sm btn-close-lightbox" style="color: #fff; font-size: 1.3rem; line-height: 1; padding: 2px 8px;" title="閉じる (Esc)">✕</button>
         </div>
       </div>
       <div class="image-lightbox-body" id="lb-body">
-        <img src="${imgSrc}" class="image-lightbox-img" id="lb-img" alt="確認票拡大原本" draggable="false">
+        <img src="${validSrc}" class="image-lightbox-img" id="lb-img" alt="確認票拡大原本" draggable="false">
         <div class="lightbox-hint">💡 マウスホイールで拡大縮小 / ドラッグで移動 / Escで閉じる</div>
       </div>
     `;

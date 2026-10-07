@@ -5,7 +5,7 @@
  */
 
 import { DB } from '../db.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 import { CheckboxEngine } from '../checkbox.js';
 
 export const ReviewPage = {
@@ -153,7 +153,7 @@ export const ReviewPage = {
                 <select id="sel-jump-student" class="form-control" style="font-size: 0.82rem; padding: 4px 8px; max-width: 260px;">
                   ${this.reviewItems.map((item, idx) => `
                     <option value="${idx}" ${idx === this.currentIndex ? 'selected' : ''}>
-                      ${idx + 1}. ${item.name} (${item.nichinokenId || '番号なし'}) - ${item.className || ''}
+                      ${idx + 1}. ${escapeHtml(item.name)} (${escapeHtml(item.nichinokenId || '番号なし')}) - ${escapeHtml(item.className || '')}
                     </option>
                   `).join('')}
                 </select>
@@ -279,14 +279,14 @@ export const ReviewPage = {
         <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: var(--spacing-sm);">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
             <div style="font-size: 1.18rem; font-weight: 800; color: var(--gray-900);">
-              ${item.name}
+              ${escapeHtml(item.name)}
             </div>
-            <span class="badge badge-info text-mono font-bold" style="font-size: 0.92rem;">${item.nichinokenId}</span>
+            <span class="badge badge-info text-mono font-bold" style="font-size: 0.92rem;">${escapeHtml(item.nichinokenId)}</span>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--gray-600); flex-wrap: wrap;">
-            <span>所属クラス: <strong class="badge badge-purple" style="font-size: 0.8rem;">${item.className}</strong></span>
-            <span>コース: <strong>${item.course || '4科'}</strong></span>
-            ${item.nameKana ? `<span>カナ: ${item.nameKana}</span>` : ''}
+            <span>所属クラス: <strong class="badge badge-purple" style="font-size: 0.8rem;">${escapeHtml(item.className)}</strong></span>
+            <span>コース: <strong>${escapeHtml(item.course || '4科')}</strong></span>
+            ${item.nameKana ? `<span>カナ: ${escapeHtml(item.nameKana)}</span>` : ''}
           </div>
         </div>
 
@@ -313,12 +313,12 @@ export const ReviewPage = {
                   <div class="history-card" style="border: 1.5px solid var(--primary-400); box-shadow: var(--shadow-sm);">
                     <div class="history-card-header">
                       <div class="history-meta-left">
-                        <span class="badge badge-primary font-bold">${hist.inputMethod || item.inputMethod || 'スキャン'}</span>
+                        <span class="badge badge-primary font-bold">${escapeHtml(hist.inputMethod || item.inputMethod || 'スキャン')}</span>
                         <span class="history-time" style="font-weight: 600;">${UI.formatDate(hist.timestamp || hist.approvedAt || item.approvedAt || item.submittedAt)}</span>
                         <span class="badge badge-success" style="font-size: 0.72rem; font-weight: bold;">最新の確定内容</span>
                       </div>
                       <div class="history-staff">
-                        担当: <strong style="color: var(--gray-800);">${hist.approvedBy || item.approvedBy || '-'}</strong>
+                        担当: <strong style="color: var(--gray-800);">${escapeHtml(hist.approvedBy || item.approvedBy || '-')}</strong>
                       </div>
                     </div>
 
@@ -353,8 +353,8 @@ export const ReviewPage = {
                                 return `
                                   <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; background: ${isChk ? '#f5f3ff' : 'transparent'}; border: 1px solid ${isChk ? '#c4b5fd' : 'transparent'}; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='${isChk ? '#f5f3ff' : 'transparent'}'">
                                     <div style="display: flex; align-items: center; gap: 8px;">
-                                      <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''} style="width: 16px; height: 16px;">
-                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
+                                      <input type="checkbox" class="chk-rev-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isChk ? 'checked' : ''} style="width: 16px; height: 16px;">
+                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : 'var(--gray-800)'};">${escapeHtml(box.label)}</span>
                                     </div>
                                     ${isChk ? '<span class="badge badge-purple" style="font-size: 0.68rem; padding: 2px 6px;">✅ 選択中</span>' : '<span class="badge badge-gray" style="font-size: 0.68rem; padding: 2px 6px;">⬜ 未選択</span>'}
                                   </label>
@@ -407,15 +407,15 @@ export const ReviewPage = {
                                     <div>
                                       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.82rem; flex-wrap: wrap;">
                                         <span style="font-weight: 600; color: var(--gray-700);">
-                                          ${field.name}${isNittoku ? ' <span style="font-size: 0.72rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}:
+                                          ${escapeHtml(field.name)}${isNittoku ? ' <span style="font-size: 0.72rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}:
                                         </span>
                                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                           ${(field.options || []).map(opt => {
                                             const optLabel = typeof opt === 'object' ? opt.label : opt;
                                             return `
                                               <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                                <input type="radio" class="rev-cont-field-input" data-field-name="${field.name}" name="edit-continuation-field-${field.id}" value="${optLabel}" ${curVal === optLabel ? 'checked' : ''}>
-                                                <span>${optLabel}</span>
+                                                <input type="radio" class="rev-cont-field-input" data-field-name="${escapeHtml(field.name)}" name="edit-continuation-field-${escapeHtml(field.id)}" value="${escapeHtml(optLabel)}" ${curVal === optLabel ? 'checked' : ''}>
+                                                <span>${escapeHtml(optLabel)}</span>
                                               </label>
                                             `;
                                           }).join('')}
@@ -436,7 +436,7 @@ export const ReviewPage = {
                                               <span>🏫 他校舎受講</span>
                                             </label>
                                             <div style="display: inline-flex; align-items: center; gap: 4px;">
-                                              <input type="text" id="rev-inp-nittoku-campus" class="form-control form-control-sm" placeholder="他校舎コード（自由記述）" value="${campusCodeVal}" style="width: 170px; font-size: 0.78rem; padding: 2px 6px; background: #fff;" ${!campusCodeVal ? 'disabled' : ''}>
+                                              <input type="text" id="rev-inp-nittoku-campus" class="form-control form-control-sm" placeholder="他校舎コード（自由記述）" value="${escapeHtml(campusCodeVal)}" style="width: 170px; font-size: 0.78rem; padding: 2px 6px; background: #fff;" ${!campusCodeVal ? 'disabled' : ''}>
                                             </div>
                                           </div>
                                         </div>
@@ -466,13 +466,13 @@ export const ReviewPage = {
                           <div class="form-group" style="margin-bottom: 0;">
                             <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">受講クラス・受講形態</label>
                             <select id="sel-edit-class" class="form-control" style="font-size: 0.85rem; padding: 5px 8px;">
-                              <option value="${item.className}">所属: ${item.className}</option>
+                              <option value="${escapeHtml(item.className)}">所属: ${escapeHtml(item.className)}</option>
                               ${classOptions.filter(c => c !== item.className).map(c => `
-                                <option value="${c}" ${item.enrollmentClass === c ? 'selected' : ''}>${c}</option>
+                                <option value="${escapeHtml(c)}" ${item.enrollmentClass === c ? 'selected' : ''}>${escapeHtml(c)}</option>
                               `).join('')}
                               ${DB.getProjectChangeOptions(this.project).map(opt => {
                                 let icon = opt === '非受講' ? '🚫' : (opt === '他教室で受講' ? '🏫' : '📝');
-                                return `<option value="${opt}" ${item.enrollmentClass === opt ? 'selected' : ''}>${icon} ${opt}</option>`;
+                                return `<option value="${escapeHtml(opt)}" ${item.enrollmentClass === opt ? 'selected' : ''}>${icon} ${escapeHtml(opt)}</option>`;
                               }).join('')}
                             </select>
                           </div>
@@ -499,8 +499,8 @@ export const ReviewPage = {
                                   const isChk = cur ? cur.isChecked : false;
                                   return `
                                     <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
-                                      <input type="checkbox" class="chk-rev-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChk ? 'checked' : ''}>
-                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'};">${box.label}</span>
+                                      <input type="checkbox" class="chk-rev-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isChk ? 'checked' : ''}>
+                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'};">${escapeHtml(box.label)}</span>
                                     </label>
                                   `;
                                 }).join('')}
@@ -511,7 +511,7 @@ export const ReviewPage = {
 
                       <div class="form-group" style="margin-bottom: 0;">
                         <label class="form-label" style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700);">備考・メモ</label>
-                        <input type="text" id="inp-edit-remarks" class="form-control" placeholder="修正理由や特記事項など" value="${item.remarks || ''}" style="font-size: 0.85rem;">
+                        <input type="text" id="inp-edit-remarks" class="form-control" placeholder="修正理由や特記事項など" value="${escapeHtml(item.remarks || '')}" style="font-size: 0.85rem;">
                       </div>
 
                       <div style="margin-top: 4px;">
@@ -532,7 +532,7 @@ export const ReviewPage = {
                 const isOther = (cStatus === 'その他');
                 enrollmentDisp = `
                   <span class="badge ${isOther ? 'badge-warning' : 'badge-success'} font-bold">
-                    ${isOther ? '📝 その他' : '⭕ 受講する'} (${cCourse})
+                    ${isOther ? '📝 その他' : '⭕ 受講する'} (${escapeHtml(cCourse)})
                   </span>
                 `;
               } else {
@@ -540,9 +540,9 @@ export const ReviewPage = {
                 if (hist.enrollmentClass === '非受講' || histCourse === '非受講') {
                   enrollmentDisp = '<strong style="color: var(--danger-solid);">🚫 非受講</strong>';
                 } else if (hist.hasChange) {
-                  enrollmentDisp = `<span class="badge badge-warning font-bold">🔄 ${hist.enrollmentClass} (${histCourse})</span>`;
+                  enrollmentDisp = `<span class="badge badge-warning font-bold">🔄 ${escapeHtml(hist.enrollmentClass)} (${escapeHtml(histCourse)})</span>`;
                 } else {
-                  enrollmentDisp = `<span class="badge badge-success font-bold">✅ ${hist.enrollmentClass || item.className} (${histCourse})</span>`;
+                  enrollmentDisp = `<span class="badge badge-success font-bold">✅ ${escapeHtml(hist.enrollmentClass || item.className)} (${escapeHtml(histCourse)})</span>`;
                 }
               }
 
@@ -552,11 +552,11 @@ export const ReviewPage = {
                   <div class="history-card" style="background: var(--gray-50); border-color: var(--gray-200);">
                     <div class="history-card-header">
                       <div class="history-meta-left">
-                        <span class="badge badge-gray">${hist.inputMethod || '登録'}</span>
+                        <span class="badge badge-gray">${escapeHtml(hist.inputMethod || '登録')}</span>
                         <span class="history-time" style="font-size: 0.78rem; color: var(--gray-500);">${UI.formatDate(hist.timestamp || hist.approvedAt)}</span>
                       </div>
                       <div class="history-staff" style="font-size: 0.78rem; color: var(--gray-600);">
-                        担当: <strong>${hist.approvedBy || '-'}</strong>
+                        担当: <strong>${escapeHtml(hist.approvedBy || '-')}</strong>
                       </div>
                     </div>
 
@@ -572,7 +572,7 @@ export const ReviewPage = {
                         <div style="font-size: 0.7rem; font-weight: bold; color: #047857; margin-bottom: 2px;">学年別項目:</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                           ${Object.entries(hist.customFields).map(([k, v]) => `
-                            <span class="badge badge-gray" style="font-size: 0.72rem;">🏷️ ${v}</span>
+                            <span class="badge badge-gray" style="font-size: 0.72rem;">🏷️ ${escapeHtml(v)}</span>
                           `).join('')}
                         </div>
                       </div>
@@ -583,7 +583,7 @@ export const ReviewPage = {
                         <div style="font-size: 0.7rem; font-weight: bold; color: #6d28d9; margin-bottom: 2px;">志望校別講座・追加チェック:</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                           ${Object.values(hist.customChecks).filter(c => c.isChecked).map(c => `
-                            <span class="badge badge-purple" style="font-size: 0.72rem;">✅ ${c.label}</span>
+                            <span class="badge badge-purple" style="font-size: 0.72rem;">✅ ${escapeHtml(c.label)}</span>
                           `).join('')}
                         </div>
                       </div>
@@ -591,7 +591,7 @@ export const ReviewPage = {
 
                     ${hist.remarks ? `
                       <div class="history-remarks-box" style="margin-top: 6px; padding: 4px 8px; font-size: 0.78rem;">
-                        <span style="font-weight: bold; color: var(--gray-600);">特記事項:</span> ${hist.remarks}
+                        <span style="font-weight: bold; color: var(--gray-600);">特記事項:</span> ${escapeHtml(hist.remarks)}
                       </div>
                     ` : ''}
                   </div>

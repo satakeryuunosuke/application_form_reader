@@ -4,7 +4,7 @@
 
 import { DB } from '../db.js';
 import { CsvUtil } from '../utils/csv.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 import { ScannerEngine } from '../scanner.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
@@ -162,9 +162,9 @@ export const HomePage = {
         <div>
           <div class="project-card-top">
             <div class="project-meta-badges">
-              <span class="badge badge-info">${p.year}年度</span>
-              <span class="badge badge-purple">${p.grade}年生</span>
-              <span class="badge badge-success">${UI.formatSession(p.sessionName)}</span>
+              <span class="badge badge-info">${escapeHtml(p.year)}年度</span>
+              <span class="badge badge-purple">${escapeHtml(p.grade)}年生</span>
+              <span class="badge badge-success">${escapeHtml(UI.formatSession(p.sessionName))}</span>
               ${p.projectType === 'selection' ? '<span class="badge badge-purple font-bold" style="font-size: 0.72rem; padding: 2px 6px;">🎯 講座選択</span>' : (p.projectType === 'continuation' ? '<span class="badge font-bold" style="font-size: 0.72rem; padding: 2px 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">📋 継続確認</span>' : '<span class="badge font-bold" style="font-size: 0.72rem; padding: 2px 6px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">📝 期間講習</span>')}
               ${isCompleted
                 ? '<span class="badge badge-gray" style="font-weight: 700;">🏁 完了</span>'
@@ -173,7 +173,7 @@ export const HomePage = {
               ${isShared ? '<span class="badge badge-info" style="font-size: 0.72rem; padding: 2px 6px;">📁 共有同期</span>' : ''}
             </div>
           </div>
-          <h3 class="project-title">${UI.formatProjectTitle(p.title)}</h3>
+          <h3 class="project-title">${escapeHtml(UI.formatProjectTitle(p.title))}</h3>
           <div style="font-size: 0.8rem; color: var(--gray-500); margin-top: 4px;">
             作成日: ${UI.formatDate(p.createdAt)}
             ${p.completedAt ? ` | 完了日: ${UI.formatDate(p.completedAt)}` : ''}
@@ -1684,17 +1684,17 @@ export const HomePage = {
               ${archived.map(p => `
                 <tr>
                   <td>
-                    <span class="badge badge-info">${p.meta.year}年度</span>
-                    <span class="badge badge-purple">${p.meta.grade}年</span>
-                    <span class="badge badge-success">${UI.formatSession(p.meta.sessionName)}</span>
+                    <span class="badge badge-info">${escapeHtml(p.meta.year)}年度</span>
+                    <span class="badge badge-purple">${escapeHtml(p.meta.grade)}年</span>
+                    <span class="badge badge-success">${escapeHtml(UI.formatSession(p.meta.sessionName))}</span>
                   </td>
-                  <td class="font-bold" style="color: var(--gray-800);">${UI.formatProjectTitle(p.meta.title)}</td>
+                  <td class="font-bold" style="color: var(--gray-800);">${escapeHtml(UI.formatProjectTitle(p.meta.title))}</td>
                   <td class="text-mono">${p.studentCount > 0 ? `${p.studentCount} 名` : '-'}</td>
                   <td class="text-mono" style="font-size: 0.8rem; color: var(--gray-600);">
                     ${p.meta.completedAt ? UI.formatDate(p.meta.completedAt) : (p.meta.archivedAt ? UI.formatDate(p.meta.archivedAt) : '-')}
                   </td>
                   <td style="text-align: right;">
-                    <button class="btn btn-primary btn-sm btn-restore-project" data-id="${p.id}" data-title="${UI.formatProjectTitle(p.meta.title)}">
+                    <button class="btn btn-primary btn-sm btn-restore-project" data-id="${escapeHtml(p.id)}" data-title="${escapeHtml(UI.formatProjectTitle(p.meta.title))}">
                       🔄 進行中に戻す
                     </button>
                   </td>

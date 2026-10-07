@@ -3,7 +3,7 @@
  */
 
 import { DB } from '../db.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { ProjectPage } from './project.js';
 import { FolderConnector } from '../sync/folder-connector.js';
@@ -773,14 +773,14 @@ export const ListPage = {
 
         html += `
           <tr>
-            <td class="col-id text-mono font-bold">${row.nichinokenId}</td>
-            <td class="col-name font-bold">${row.name}</td>
-            <td class="col-kana">${row.nameKana || ''}</td>
-            <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${row.className}</span></td>
+            <td class="col-id text-mono font-bold">${escapeHtml(row.nichinokenId)}</td>
+            <td class="col-name font-bold">${escapeHtml(row.name)}</td>
+            <td class="col-kana">${escapeHtml(row.nameKana || '')}</td>
+            <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${escapeHtml(row.className)}</span></td>
             <td class="col-status">${statusBadge}</td>
             <td class="col-compact-course text-mono font-bold">
               ${row.status === '承認済' 
-                ? `<span class="badge" style="background: #ede7f6; color: #512da8; font-size: 0.85rem; padding: 2px 8px;">${row.totalCourseCount || 0} 講座</span>`
+                ? `<span class="badge" style="background: #ede7f6; color: #512da8; font-size: 0.85rem; padding: 2px 8px;">${Number(row.totalCourseCount) || 0} 講座</span>`
                 : '<span class="text-muted">-</span>'}
             </td>
             <td class="col-courses-list">
@@ -793,18 +793,18 @@ export const ListPage = {
                         const isVideo = cName.includes('動画');
                         const bg = isZoom ? '#e0f2fe' : (isVideo ? '#ffedd5' : '#ede9fe');
                         const color = isZoom ? '#0369a1' : (isVideo ? '#c2410c' : '#6d28d9');
-                        return `<span class="badge" style="background: ${bg}; color: ${color}; font-size: 0.75rem; padding: 2px 6px; font-weight: 600;">🟪 ${cName}</span>`;
+                        return `<span class="badge" style="background: ${bg}; color: ${color}; font-size: 0.75rem; padding: 2px 6px; font-weight: 600;">🟪 ${escapeHtml(cName)}</span>`;
                       }).join('')}
                      </div>`
                   : '<span class="text-muted" style="font-size: 0.82rem;">申込なし（0講座）</span>'
               ) : '<span class="text-muted">-</span>'}
             </td>
-            <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${row.inputMethod}</span>` : '-'}</td>
-            <td class="col-approver">${row.approvedBy || '-'}</td>
+            <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${escapeHtml(row.inputMethod)}</span>` : '-'}</td>
+            <td class="col-approver">${escapeHtml(row.approvedBy || '-')}</td>
             <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
-            <td class="col-remarks" title="${row.remarks || ''}"><span>${row.remarks || '-'}</span></td>
+            <td class="col-remarks" title="${escapeHtml(row.remarks || '')}"><span>${escapeHtml(row.remarks || '-')}</span></td>
             <td class="col-history" style="text-align: center;">
-              <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
+              <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${escapeHtml(row.studentId)}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
                 📜 履歴 <span class="badge ${historyCount > 0 ? 'badge-info' : 'badge-gray'}" style="padding: 1px 4px; font-size: 0.7rem; margin-left: 2px;">${historyCount}</span>
                 ${hasScanImg ? '<span title="スキャン原本画像あり" style="font-size: 0.8rem; margin-left: 1px;">📷</span>' : ''}
               </button>
@@ -827,7 +827,7 @@ export const ListPage = {
             ? '<span class="badge badge-warning font-bold" style="font-size: 0.82rem; padding: 2px 7px;">📝 その他</span>'
             : '<span class="badge badge-success font-bold" style="font-size: 0.82rem; padding: 2px 7px;">⭕ 受講する</span>';
           
-          enrollCourseBadge = `<span class="badge badge-purple font-bold" style="font-size: 0.82rem; padding: 2px 6px;">${row.enrollmentCourse || '4科'}</span>`;
+          enrollCourseBadge = `<span class="badge badge-purple font-bold" style="font-size: 0.82rem; padding: 2px 6px;">${escapeHtml(row.enrollmentCourse || '4科')}</span>`;
 
           const cFields = row.customFields || {};
           const fieldEntries = Object.entries(cFields);
@@ -835,16 +835,17 @@ export const ListPage = {
             customFieldsHtml = `
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                 ${fieldEntries.map(([k, val]) => {
+                  const safeVal = escapeHtml(val);
                   if (k === 'field_nittoku' || k === '日特') {
                     if (val === 'TD' || val === '受講' || val === '日特受講') {
                       return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;" title="日特受講（自校舎 TD）">🎯 日特: TD</span>`;
                     } else if (val === '非受講' || val === '日特非受講') {
                       return `<span class="badge font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;" title="日特非受講">🚫 日特: 非受講</span>`;
                     } else {
-                      return `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;" title="日特他校舎受講">🏫 日特: ${val}</span>`;
+                      return `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; padding: 1px 6px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;" title="日特他校舎受講">🏫 日特: ${safeVal}</span>`;
                     }
                   }
-                  return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px;">🏷️ ${val}</span>`;
+                  return `<span class="badge badge-info font-bold" style="font-size: 0.72rem; padding: 1px 6px;">🏷️ ${safeVal}</span>`;
                 }).join('')}
               </div>
             `;
@@ -853,20 +854,20 @@ export const ListPage = {
 
         html += `
           <tr>
-            <td class="col-id text-mono font-bold">${row.nichinokenId}</td>
-            <td class="col-name font-bold">${row.name}</td>
-            <td class="col-kana">${row.nameKana || ''}</td>
-            <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${row.className}</span></td>
+            <td class="col-id text-mono font-bold">${escapeHtml(row.nichinokenId)}</td>
+            <td class="col-name font-bold">${escapeHtml(row.name)}</td>
+            <td class="col-kana">${escapeHtml(row.nameKana || '')}</td>
+            <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${escapeHtml(row.className)}</span></td>
             <td class="col-status">${statusBadge}</td>
             <td class="col-compact-class" style="text-align: center;">${enrollStatusBadge}</td>
             <td class="col-compact-course" style="text-align: center;">${enrollCourseBadge}</td>
             <td class="col-custom-fields">${customFieldsHtml}</td>
-            <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${row.inputMethod}</span>` : '-'}</td>
-            <td class="col-approver">${row.approvedBy || '-'}</td>
+            <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${escapeHtml(row.inputMethod)}</span>` : '-'}</td>
+            <td class="col-approver">${escapeHtml(row.approvedBy || '-')}</td>
             <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
-            <td class="col-remarks" title="${row.remarks || ''}"><span>${row.remarks || '-'}</span></td>
+            <td class="col-remarks" title="${escapeHtml(row.remarks || '')}"><span>${escapeHtml(row.remarks || '-')}</span></td>
             <td class="col-history" style="text-align: center;">
-              <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
+              <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${escapeHtml(row.studentId)}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
                 📜 履歴 <span class="badge ${historyCount > 0 ? 'badge-info' : 'badge-gray'}" style="padding: 1px 4px; font-size: 0.7rem; margin-left: 2px;">${historyCount}</span>
                 ${hasScanImg ? '<span title="スキャン原本画像あり" style="font-size: 0.8rem; margin-left: 1px;">📷</span>' : ''}
               </button>
@@ -889,45 +890,45 @@ export const ListPage = {
         } else if (row.enrollmentClass === '他教室で受講') {
           statusBadge = '<span class="badge badge-warning">変更あり</span>';
           enrollmentBadge = `<span class="badge" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 0.85rem; font-weight: bold; padding: 2px 6px;">🏫 他教室で受講</span>`;
-          enrollmentCourseBadge = `<span class="badge ${isCourseChanged ? 'badge-warning font-bold' : 'badge-purple'}" style="font-size: 0.85rem; padding: 2px 6px;">${row.enrollmentCourse || row.course || '4科'}</span>`;
+          enrollmentCourseBadge = `<span class="badge ${isCourseChanged ? 'badge-warning font-bold' : 'badge-purple'}" style="font-size: 0.85rem; padding: 2px 6px;">${escapeHtml(row.enrollmentCourse || row.course || '4科')}</span>`;
         } else if (row.hasChange) {
           statusBadge = '<span class="badge badge-warning">変更あり</span>';
-          enrollmentBadge = `<span class="badge badge-warning" style="font-size: 0.85rem; font-weight: bold; padding: 2px 6px;">${row.enrollmentClass}</span>`;
-          enrollmentCourseBadge = `<span class="badge ${isCourseChanged ? 'badge-warning font-bold' : 'badge-purple'}" style="font-size: 0.85rem; padding: 2px 6px;">${row.enrollmentCourse || row.course || '4科'}</span>`;
+          enrollmentBadge = `<span class="badge badge-warning" style="font-size: 0.85rem; font-weight: bold; padding: 2px 6px;">${escapeHtml(row.enrollmentClass)}</span>`;
+          enrollmentCourseBadge = `<span class="badge ${isCourseChanged ? 'badge-warning font-bold' : 'badge-purple'}" style="font-size: 0.85rem; padding: 2px 6px;">${escapeHtml(row.enrollmentCourse || row.course || '4科')}</span>`;
         } else {
           statusBadge = '<span class="badge badge-success">変更なし</span>';
-          enrollmentBadge = `<span class="badge badge-info" style="font-size: 0.85rem; padding: 2px 6px;">${row.enrollmentClass}</span>`;
-          enrollmentCourseBadge = `<span class="badge badge-purple" style="font-size: 0.85rem; padding: 2px 6px;">${row.enrollmentCourse || row.course || '4科'}</span>`;
+          enrollmentBadge = `<span class="badge badge-info" style="font-size: 0.85rem; padding: 2px 6px;">${escapeHtml(row.enrollmentClass)}</span>`;
+          enrollmentCourseBadge = `<span class="badge badge-purple" style="font-size: 0.85rem; padding: 2px 6px;">${escapeHtml(row.enrollmentCourse || row.course || '4科')}</span>`;
         }
       }
 
       html += `
         <tr>
-          <td class="col-id text-mono font-bold">${row.nichinokenId}</td>
-          <td class="col-name font-bold">${row.name}</td>
-          <td class="col-kana">${row.nameKana || ''}</td>
-          <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${row.className}</span></td>
-          <td class="col-compact-course"><span class="badge badge-purple" style="padding: 2px 6px;">${row.course || '4科'}</span></td>
+          <td class="col-id text-mono font-bold">${escapeHtml(row.nichinokenId)}</td>
+          <td class="col-name font-bold">${escapeHtml(row.name)}</td>
+          <td class="col-kana">${escapeHtml(row.nameKana || '')}</td>
+          <td class="col-compact-class"><span class="badge badge-gray" style="padding: 2px 6px;">${escapeHtml(row.className)}</span></td>
+          <td class="col-compact-course"><span class="badge badge-purple" style="padding: 2px 6px;">${escapeHtml(row.course || '4科')}</span></td>
           <td class="col-status">${statusBadge}</td>
           <td class="col-compact-class">${enrollmentBadge}</td>
           <td class="col-compact-course">${enrollmentCourseBadge}</td>
-          <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${row.inputMethod}</span>` : '-'}</td>
-          <td class="col-approver">${row.approvedBy || '-'}</td>
+          <td class="col-method">${row.inputMethod ? `<span class="badge badge-gray" style="padding: 2px 5px;">${escapeHtml(row.inputMethod)}</span>` : '-'}</td>
+          <td class="col-approver">${escapeHtml(row.approvedBy || '-')}</td>
           <td class="col-date">${UI.formatDate(row.approvedAt || row.submittedAt)}</td>
-          <td class="col-remarks" title="${row.remarks || ''}">
+          <td class="col-remarks" title="${escapeHtml(row.remarks || '')}">
             ${row.customChecks && Object.values(row.customChecks).some(c => c.isChecked) ? `
               <div style="display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 2px;">
                 ${Object.values(row.customChecks).filter(c => c.isChecked).map(c => `
                   <span class="badge badge-purple" style="font-size: 0.72rem; padding: 1px 5px; font-weight: bold; background: #8b5cf6; color: #fff;">
-                    🟪 ${c.label}
+                    🟪 ${escapeHtml(c.label)}
                   </span>
                 `).join('')}
               </div>
             ` : ''}
-            <span>${row.remarks || (row.customChecks && Object.values(row.customChecks).some(c => c.isChecked) ? '' : '-')}</span>
+            <span>${escapeHtml(row.remarks || (row.customChecks && Object.values(row.customChecks).some(c => c.isChecked) ? '' : '-'))}</span>
           </td>
           <td class="col-history" style="text-align: center;">
-            <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${row.studentId}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
+            <button class="btn btn-secondary btn-sm btn-view-history" data-student-id="${escapeHtml(row.studentId)}" style="padding: 3px 8px; font-size: 0.76rem;" title="スキャン画像や過去の変更履歴を確認">
               📜 履歴 <span class="badge ${historyCount > 0 ? 'badge-info' : 'badge-gray'}" style="padding: 1px 4px; font-size: 0.7rem; margin-left: 2px;">${historyCount}</span>
               ${hasScanImg ? '<span title="スキャン原本画像あり" style="font-size: 0.8rem; margin-left: 1px;">📷</span>' : ''}
             </button>
@@ -1027,7 +1028,7 @@ export const ListPage = {
             <div>
               <h3 class="modal-title font-bold">受講確認・変更履歴</h3>
               <div style="font-size: 0.8rem; color: var(--gray-500);">
-                対象: ${studentData.name} 様 (${studentData.nichinokenId})
+                対象: ${escapeHtml(studentData.name)} 様 (${escapeHtml(studentData.nichinokenId)})
               </div>
             </div>
           </div>
@@ -1041,19 +1042,19 @@ export const ListPage = {
               <div class="history-student-avatar">👤</div>
               <div>
                 <div class="history-student-name">
-                  ${studentData.name}
+                  ${escapeHtml(studentData.name)}
                   <span class="text-mono" style="font-size: 0.85rem; font-weight: normal; color: var(--primary-700); margin-left: 4px;">
-                    (${studentData.nichinokenId})
+                    (${escapeHtml(studentData.nichinokenId)})
                   </span>
                 </div>
-                <div class="history-student-kana">${studentData.nameKana || 'カナ登録なし'}</div>
+                <div class="history-student-kana">${escapeHtml(studentData.nameKana || 'カナ登録なし')}</div>
               </div>
             </div>
 
             <div style="display: flex; align-items: center; gap: 10px;">
               <div>
                 <div style="font-size: 0.72rem; color: var(--gray-500); text-align: right;">所属</div>
-                <div class="font-bold" style="text-align: right;"><span class="badge badge-gray">${studentData.className}</span> <span class="badge badge-purple">${studentData.course || '4科'}</span></div>
+                <div class="font-bold" style="text-align: right;"><span class="badge badge-gray">${escapeHtml(studentData.className)}</span> <span class="badge badge-purple">${escapeHtml(studentData.course || '4科')}</span></div>
               </div>
               <div style="border-left: 1px solid var(--gray-300); height: 28px;"></div>
               <div>
@@ -1094,11 +1095,11 @@ export const ListPage = {
                   if (item.enrollmentClass === '非受講' || itemCourse === '非受講') {
                     enrollmentDisp = '<strong style="color: var(--danger-solid);">🚫 非受講（受講しない）</strong>';
                   } else if (item.enrollmentClass === '他教室で受講') {
-                    enrollmentDisp = `<span class="badge" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 0.88rem; font-weight: bold;">🏫 他教室で受講 (${itemCourse})</span>`;
+                    enrollmentDisp = `<span class="badge" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 0.88rem; font-weight: bold;">🏫 他教室で受講 (${escapeHtml(itemCourse)})</span>`;
                   } else if (item.hasChange) {
-                    enrollmentDisp = `<span class="badge badge-warning" style="font-size: 0.88rem; font-weight: bold;">🔄 ${item.enrollmentClass} (${itemCourse})</span>`;
+                    enrollmentDisp = `<span class="badge badge-warning" style="font-size: 0.88rem; font-weight: bold;">🔄 ${escapeHtml(item.enrollmentClass)} (${escapeHtml(itemCourse)})</span>`;
                   } else {
-                    enrollmentDisp = `<span class="badge badge-success" style="font-size: 0.88rem;">✅ ${item.enrollmentClass || studentData.className} (${itemCourse})</span>`;
+                    enrollmentDisp = `<span class="badge badge-success" style="font-size: 0.88rem;">✅ ${escapeHtml(item.enrollmentClass || studentData.className)} (${escapeHtml(itemCourse)})</span>`;
                   }
 
                   return `
@@ -1107,12 +1108,12 @@ export const ListPage = {
                       <div class="history-card">
                         <div class="history-card-header">
                           <div class="history-meta-left">
-                            <span class="badge ${isLatest ? 'badge-primary' : 'badge-gray'}">${item.inputMethod || '手動'}</span>
+                            <span class="badge ${isLatest ? 'badge-primary' : 'badge-gray'}">${escapeHtml(item.inputMethod || '手動')}</span>
                             <span class="history-time">${UI.formatDate(item.timestamp || item.approvedAt)}</span>
                             ${isLatest ? '<span class="badge badge-success" style="font-size: 0.72rem;">最新の確定内容</span>' : ''}
                           </div>
                           <div class="history-staff">
-                            担当・承認者: <strong style="color: var(--gray-800);">${item.approvedBy || '-'}</strong>
+                            担当・承認者: <strong style="color: var(--gray-800);">${escapeHtml(item.approvedBy || '-')}</strong>
                           </div>
                         </div>
 
@@ -1135,7 +1136,7 @@ export const ListPage = {
                             <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                               ${Object.values(item.customChecks).filter(c => c.isChecked).map(c => `
                                 <span class="badge badge-purple font-bold" style="background:#8b5cf6; color:#fff; font-size: 0.74rem;">
-                                  ✅ ${c.label}
+                                  ✅ ${escapeHtml(c.label)}
                                 </span>
                               `).join('')}
                             </div>
@@ -1145,7 +1146,7 @@ export const ListPage = {
                         ${item.remarks ? `
                           <div class="history-remarks-box">
                             <div style="font-size: 0.72rem; font-weight: bold; color: var(--gray-600); margin-bottom: 2px;">💬 特記事項・メモ:</div>
-                            <div>${item.remarks}</div>
+                            <div>${escapeHtml(item.remarks)}</div>
                           </div>
                         ` : ''}
 
@@ -1154,7 +1155,7 @@ export const ListPage = {
                             <div class="history-scan-label">
                               <span>📷 スキャン確認票（原本プレビュー）</span>
                             </div>
-                            <div class="history-scan-thumb-wrap" data-img-src="${item.scanImageBlob}" data-title="${studentData.name} 様 (${UI.formatDate(item.timestamp)}) スキャン確認票">
+                            <div class="history-scan-thumb-wrap" data-img-src="${item.scanImageBlob}" data-title="${escapeHtml(studentData.name)} 様 (${UI.formatDate(item.timestamp)}) スキャン確認票">
                               <img src="${item.scanImageBlob}" class="history-scan-thumb" alt="スキャン確認票">
                               <div class="history-scan-overlay">
                                 🔍 クリックして拡大表示

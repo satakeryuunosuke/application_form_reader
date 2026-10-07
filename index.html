@@ -22,12 +22,16 @@
     window.addEventListener('error', function(e) {
       const c = document.getElementById('app-content');
       if (c && c.innerHTML.includes('アプリケーションを読み込み中')) {
+        const safeMsg = (e.message || 'スクリプトの実行中にエラーが発生しました')
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const safeFile = ((e.filename ? e.filename.split('/').pop() : '') + ':' + (e.lineno || 0))
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         c.innerHTML = `
           <div class="card" style="margin: 40px auto; max-width: 600px; text-align: center; border-color: var(--danger-solid);">
             <h3 style="color: var(--danger-solid); margin-bottom: 8px;">⚠️ アプリケーション起動エラー</h3>
-            <p style="color: var(--gray-700); font-size: 0.9rem; margin-bottom: 12px;">${e.message || 'スクリプトの実行中にエラーが発生しました'}</p>
+            <p style="color: var(--gray-700); font-size: 0.9rem; margin-bottom: 12px;">${safeMsg}</p>
             <div style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--gray-500); background: var(--gray-100); padding: 8px; border-radius: var(--radius-sm); word-break: break-all;">
-              ${e.filename ? e.filename.split('/').pop() : ''}:${e.lineno || 0}
+              ${safeFile}
             </div>
             <button class="btn btn-primary btn-sm" style="margin-top: 16px;" onclick="location.reload(true);">ページの再読み込み（キャッシュ更新）</button>
           </div>
@@ -52,7 +56,7 @@
       <span class="brand-icon">📑</span>
       <div style="display: flex; align-items: center; gap: 8px;">
         <div class="brand-title">受講確認票 集計管理</div>
-        <span class="brand-version" id="header-app-version">v1.27.1</span>
+        <span class="brand-version" id="header-app-version">v1.27.2</span>
         <span id="header-sync-indicator" class="badge badge-gray" style="font-size: 0.72rem; padding: 2px 6px; cursor: pointer;" title="共有フォルダ接続状態（クリックで設定へ）">⚪ ローカル</span>
       </div>
     </a>

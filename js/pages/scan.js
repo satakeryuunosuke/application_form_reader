@@ -1,5 +1,5 @@
 import { DB } from '../db.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 import { ScannerEngine } from '../scanner.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { Validator } from '../utils/validator.js';
@@ -430,7 +430,7 @@ export const ScanPage = {
               <label class="form-label" style="font-size: 0.82rem; margin-bottom: 4px;">作業者（承認者） <span class="required">*</span></label>
               <select id="sel-staff" class="form-control font-bold" style="background: var(--gray-50); padding: 7px 10px; font-size: 0.9rem; ${!this.selectedStaff ? 'border-color: var(--warning-solid);' : ''}">
                 <option value="" ${!this.selectedStaff ? 'selected' : ''}>-- 選択してください --</option>
-                ${this.staffList.map(s => `<option value="${s}" ${s === this.selectedStaff ? 'selected' : ''}>${s}</option>`).join('')}
+                ${this.staffList.map(s => `<option value="${escapeHtml(s)}" ${s === this.selectedStaff ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
               </select>
             </div>
 
@@ -450,24 +450,24 @@ export const ScanPage = {
               <div class="form-group" style="margin-bottom: 6px;">
                 <label class="form-label" style="font-size: 0.76rem; margin-bottom: 3px;">日能研番号（誤読時は手動修正）</label>
                 <div style="display: flex; gap: 6px;">
-                  <input type="text" id="inp-nichinoken-id" class="form-control text-mono font-bold" value="${currentItem.validatedId || ''}" placeholder="例: TDN60013" style="padding: 6px 10px; font-size: 0.92rem;">
+                  <input type="text" id="inp-nichinoken-id" class="form-control text-mono font-bold" value="${escapeHtml(currentItem.validatedId || '')}" placeholder="例: TDN60013" style="padding: 6px 10px; font-size: 0.92rem;">
                   <button id="btn-re-search" class="btn btn-secondary btn-sm" title="生徒再検索" style="padding: 6px 10px; font-size: 0.8rem; white-space: nowrap;">再検索</button>
                 </div>
                 <div id="id-error-msg" class="text-muted" style="font-size: 0.72rem; color: var(--danger-solid); margin-top: 2px; min-height: 14px;">
-                  ${!currentItem.isIdValid && currentItem.idValidationReason ? currentItem.idValidationReason : ''}
+                  ${!currentItem.isIdValid && currentItem.idValidationReason ? escapeHtml(currentItem.idValidationReason) : ''}
                 </div>
               </div>
 
               <div class="student-info-grid">
                 <div class="info-box">
                   <div class="info-label">氏名</div>
-                  <div id="disp-student-name" class="info-value">${student ? student.name : '<span class="text-muted">（未登録）</span>'}</div>
-                  <div id="disp-student-kana" style="font-size: 0.72rem; color: var(--gray-500);">${student ? student.nameKana : ''}</div>
+                  <div id="disp-student-name" class="info-value">${student ? escapeHtml(student.name) : '<span class="text-muted">（未登録）</span>'}</div>
+                  <div id="disp-student-kana" style="font-size: 0.72rem; color: var(--gray-500);">${student ? escapeHtml(student.nameKana) : ''}</div>
                 </div>
                 <div class="info-box">
                   <div class="info-label">所属</div>
                   <div id="disp-student-class" class="info-value" style="display: flex; gap: 4px; align-items: center;">
-                    ${student ? `<span class="badge badge-info" style="font-size: 0.88rem; padding: 3px 8px;">${student.className}</span> <span class="badge badge-purple" style="font-size: 0.88rem; padding: 3px 8px;">${student.course || '4科'}</span>` : '<span class="text-muted">-</span>'}
+                    ${student ? `<span class="badge badge-info" style="font-size: 0.88rem; padding: 3px 8px;">${escapeHtml(student.className)}</span> <span class="badge badge-purple" style="font-size: 0.88rem; padding: 3px 8px;">${escapeHtml(student.course || '4科')}</span>` : '<span class="text-muted">-</span>'}
                   </div>
                 </div>
               </div>
@@ -567,12 +567,12 @@ export const ScanPage = {
                           return `
                             <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 6px 10px;">
                               <div style="font-size: 0.78rem; font-weight: 700; color: var(--gray-800); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-                                <div>
-                                  ${field.name}${isNittoku ? ' <span style="font-size: 0.72rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}:
-                                  ${detectedVal ? (isNittokuChange 
-                                    ? `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; margin-left: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">⚠️ 判定: ${detectedVal}</span>` 
-                                    : `<span class="badge badge-purple" style="font-size: 0.72rem; margin-left: 4px;">判定: ${detectedVal}</span>`) : ''}
-                                </div>
+                                 <div>
+                                   ${escapeHtml(field.name)}${isNittoku ? ' <span style="font-size: 0.72rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}:
+                                   ${detectedVal ? (isNittokuChange 
+                                     ? `<span class="badge badge-warning font-bold" style="font-size: 0.72rem; margin-left: 4px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">⚠️ 判定: ${escapeHtml(detectedVal)}</span>` 
+                                     : `<span class="badge badge-purple" style="font-size: 0.72rem; margin-left: 4px;">判定: ${escapeHtml(detectedVal)}</span>`) : ''}
+                                 </div>
                               </div>
                               <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
                                 ${(field.options || []).map(opt => {
@@ -580,13 +580,13 @@ export const ScanPage = {
                                   const isChecked = (curVal === optLabel);
                                   return `
                                     <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem;">
-                                      <input type="radio" class="scan-cont-field-input" data-field-name="${field.name}" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="${optLabel}" ${isChecked ? 'checked' : ''}>
-                                      ${optLabel}
+                                      <input type="radio" class="scan-cont-field-input" data-field-name="${escapeHtml(field.name)}" name="cont-field-${escapeHtml(field.id)}" data-cont-field-id="${escapeHtml(field.id)}" value="${escapeHtml(optLabel)}" ${isChecked ? 'checked' : ''}>
+                                      ${escapeHtml(optLabel)}
                                     </label>
                                   `;
                                 }).join('')}
                                 <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82rem; color: var(--gray-500);">
-                                  <input type="radio" class="scan-cont-field-input" data-field-name="${field.name}" name="cont-field-${field.id}" data-cont-field-id="${field.id}" value="" ${!curVal ? 'checked' : ''}>
+                                  <input type="radio" class="scan-cont-field-input" data-field-name="${escapeHtml(field.name)}" name="cont-field-${escapeHtml(field.id)}" data-cont-field-id="${escapeHtml(field.id)}" value="" ${!curVal ? 'checked' : ''}>
                                   なし
                                 </label>
                               </div>
@@ -605,7 +605,7 @@ export const ScanPage = {
                                       <span>🏫 他校舎受講</span>
                                     </label>
                                     <div style="display: inline-flex; align-items: center; gap: 4px;">
-                                      <input type="text" id="scan-inp-nittoku-campus" class="form-control form-control-sm" placeholder="他校舎コード（自由記述）" value="${campusCodeVal}" style="width: 170px; font-size: 0.78rem; padding: 2px 6px; background: #fff;" ${!campusCodeVal ? 'disabled' : ''}>
+                                      <input type="text" id="scan-inp-nittoku-campus" class="form-control form-control-sm" placeholder="他校舎コード（自由記述）" value="${escapeHtml(campusCodeVal)}" style="width: 170px; font-size: 0.78rem; padding: 2px 6px; background: #fff;" ${!campusCodeVal ? 'disabled' : ''}>
                                     </div>
                                   </div>
                                 </div>
@@ -643,8 +643,8 @@ export const ScanPage = {
                         <div style="flex: 1; min-width: 140px;">
                           <select id="sel-change-class" class="form-control font-bold" style="padding: 5px 8px; font-size: 0.84rem; width: 100%;" ${!currentItem.detectedHasChange ? 'disabled' : ''}>
                             <option value="">-- 変更先クラス / 選択肢を選択 --</option>
-                            ${student ? `<option value="${student.className}">${student.className} クラス（クラス変更なし）</option>` : ''}
-                            ${this.classList.filter(c => !student || c !== student.className).map(c => `<option value="${c}">${c} クラスへ変更</option>`).join('')}
+                            ${student ? `<option value="${escapeHtml(student.className)}">${escapeHtml(student.className)} クラス（クラス変更なし）</option>` : ''}
+                            ${this.classList.filter(c => !student || c !== student.className).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)} クラスへ変更</option>`).join('')}
                             ${DB.getProjectChangeOptions(this.project).map(opt => {
                               let icon = '📝';
                               let style = '';
@@ -655,7 +655,7 @@ export const ScanPage = {
                                 icon = '🏫';
                                 style = 'color: #2563eb; font-weight: bold;';
                               }
-                              return `<option value="${opt}" style="${style}">${icon} ${opt}${opt === '非受講' ? '（受講しない）' : ''}</option>`;
+                              return `<option value="${escapeHtml(opt)}" style="${style}">${icon} ${escapeHtml(opt)}${opt === '非受講' ? '（受講しない）' : ''}</option>`;
                             }).join('')}
                           </select>
                         </div>
@@ -693,10 +693,10 @@ export const ScanPage = {
                         const isChecked = det ? det.isChecked : false;
                         const pct = det ? Math.round(det.darkRatio * 100) : 0;
                         return `
-                          <label class="custom-box-check-row" data-id="${box.id}" style="display: flex; align-items: center; justify-content: space-between; background: ${isChecked ? '#f5f3ff' : '#fff'}; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#c4b5fd' : 'var(--gray-200)'}; cursor: pointer; user-select: none;">
+                          <label class="custom-box-check-row" data-id="${escapeHtml(box.id)}" style="display: flex; align-items: center; justify-content: space-between; background: ${isChecked ? '#f5f3ff' : '#fff'}; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#c4b5fd' : 'var(--gray-200)'}; cursor: pointer; user-select: none;">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                              <input type="checkbox" class="chk-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isChecked ? 'checked' : ''}>
-                              <span style="font-weight: 700; font-size: 0.84rem; color: ${isChecked ? '#6d28d9' : 'var(--gray-800)'};">${box.label}</span>
+                              <input type="checkbox" class="chk-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isChecked ? 'checked' : ''}>
+                              <span style="font-weight: 700; font-size: 0.84rem; color: ${isChecked ? '#6d28d9' : 'var(--gray-800)'};">${escapeHtml(box.label)}</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                               <span class="badge ${isChecked ? 'badge-purple' : 'badge-gray'}" style="font-size: 0.72rem;">
@@ -757,28 +757,28 @@ export const ScanPage = {
       const isOther = (existingSub.enrollmentStatus === 'その他');
       const cCourse = existingSub.enrollmentCourse || '4科';
       const cFields = existingSub.customFields || {};
-      const cFieldBadges = Object.entries(cFields).map(([k, v]) => `🏷️ ${v}`).join(' ');
+      const cFieldBadges = Object.entries(cFields).map(([k, v]) => `🏷️ ${escapeHtml(v)}`).join(' ');
       statusText = `
-        受講: <strong>${isOther ? '📝 その他' : '⭕ 受講する'} (${cCourse})</strong>
+        受講: <strong>${isOther ? '📝 その他' : '⭕ 受講する'} (${escapeHtml(cCourse)})</strong>
         ${cFieldBadges ? `<div style="margin-top: 2px; font-size: 0.74rem; color: #4338ca;">${cFieldBadges}</div>` : ''}
       `;
     } else {
       const courseDisp = existingSub.enrollmentCourse || (existingSub.enrollmentClass === '非受講' ? '' : (student.course || '4科'));
       statusText = `
-        受講: <strong>${existingSub.enrollmentClass || (existingSub.hasChange ? '変更あり' : student.className)}${courseDisp && courseDisp !== '非受講' ? ' (' + courseDisp + ')' : ''}</strong>
+        受講: <strong>${escapeHtml(existingSub.enrollmentClass || (existingSub.hasChange ? '変更あり' : student.className))}${courseDisp && courseDisp !== '非受講' ? ' (' + escapeHtml(courseDisp) + ')' : ''}</strong>
         ${existingSub.hasChange ? '<span class="badge badge-warning" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更あり</span>' : '<span class="badge badge-success" style="font-size: 0.7rem; padding: 1px 4px; margin-left: 4px;">変更なし</span>'}
       `;
     }
     return `
       <div style="background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: var(--radius-md); padding: 8px 10px; font-size: 0.78rem;">
         <div style="font-weight: 700; color: var(--warning-text); display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;">
-          <span>📋 前回の登録情報 (${existingSub.inputMethod || '登録済'})</span>
+          <span>📋 前回の登録情報 (${escapeHtml(existingSub.inputMethod || '登録済')})</span>
           <span style="font-weight: normal; font-size: 0.74rem;">${UI.formatDate(existingSub.approvedAt || existingSub.submittedAt)}</span>
         </div>
         <div style="color: var(--gray-700); line-height: 1.4;">
           ${statusText}
-          ${existingSub.approvedBy ? ` | 担当: <strong>${existingSub.approvedBy}</strong>` : ''}
-          ${existingSub.remarks ? `<div style="color: var(--gray-600); margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">備考: ${existingSub.remarks}</div>` : ''}
+          ${existingSub.approvedBy ? ` | 担当: <strong>${escapeHtml(existingSub.approvedBy)}</strong>` : ''}
+          ${existingSub.remarks ? `<div style="color: var(--gray-600); margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">備考: ${escapeHtml(existingSub.remarks)}</div>` : ''}
         </div>
       </div>
     `;
@@ -1510,7 +1510,7 @@ export const ScanPage = {
 
         nameDisp.textContent = foundStudent.name;
         kanaDisp.textContent = foundStudent.nameKana;
-        classDisp.innerHTML = `<span class="badge badge-info" style="font-size: 0.9rem;">${foundStudent.className}</span> <span class="badge badge-purple" style="font-size: 0.9rem;">${foundStudent.course || '4科'}</span>`;
+        classDisp.innerHTML = `<span class="badge badge-info" style="font-size: 0.9rem;">${escapeHtml(foundStudent.className)}</span> <span class="badge badge-purple" style="font-size: 0.9rem;">${escapeHtml(foundStudent.course || '4科')}</span>`;
 
         if (changeCourseSelect && !currentItem.detectedHasChange) {
           changeCourseSelect.value = foundStudent.course || '4科';

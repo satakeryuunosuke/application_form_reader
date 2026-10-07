@@ -552,7 +552,8 @@ export const ScannerEngine = {
       arrayBuffer = pdfSource;
     }
 
-    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    // CVE-2024-4367 対策: 動的コード評価（isEvalSupported）を無効化して安全にフォント・PDFをパース
+    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
     const numPages = pdfDoc.numPages;
     const results = [];
 

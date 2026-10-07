@@ -3,7 +3,7 @@
  */
 
 import { DB } from '../db.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 import { CsvUtil } from '../utils/csv.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
@@ -1204,15 +1204,15 @@ export const SettingsPage = {
       return `
         <div class="custom-box-item-card ${this.calibrator && this.calibrator.activeTab === box.id ? 'is-active' : ''}">
           <div style="display: flex; align-items: center; gap: 4px;">
-            <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${box.label}</span>
+            <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${escapeHtml(box.label)}</span>
           </div>
           <div style="display: flex; align-items: center; gap: 3px;">
-            <button type="button" class="custom-box-order-btn btn-settings-move-box" data-id="${box.id}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
-            <button type="button" class="custom-box-order-btn btn-settings-move-box" data-id="${box.id}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
-            <button type="button" class="btn btn-secondary btn-sm btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+            <button type="button" class="custom-box-order-btn btn-settings-move-box" data-id="${escapeHtml(box.id)}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
+            <button type="button" class="custom-box-order-btn btn-settings-move-box" data-id="${escapeHtml(box.id)}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
+            <button type="button" class="btn btn-secondary btn-sm btn-focus-box" data-id="${escapeHtml(box.id)}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
               🎯 調整
             </button>
-            <button type="button" class="btn-ghost btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+            <button type="button" class="btn-ghost btn-del-box" data-id="${escapeHtml(box.id)}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
               ✕
             </button>
           </div>

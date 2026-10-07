@@ -2,8 +2,8 @@
  * アプリケーション バージョン & システム情報定義
  */
 
-export const APP_VERSION = 'v1.27.1';
-export const APP_BUILD_DATE = '2026-10-06';
+export const APP_VERSION = 'v1.27.2';
+export const APP_BUILD_DATE = '2026-10-07';
 export const APP_NAME = '受講確認票 処理システム';
 
 export const SYSTEM_INFO = {
@@ -14,6 +14,7 @@ export const SYSTEM_INFO = {
   retentionPeriod: '無期限（ユーザー手動管理）',
   security: '完全クライアントサイド（外部通信ゼロ・個人情報保護）',
   features: [
+    'セキュリティ脆弱性対策（P1：全画面における動的HTML出力のサニタイズ・escapeHtml導入によるDOM-based/Stored XSS防御、およびPDF.jsフォント描画時コード実行脆弱性CVE-2024-4367の防御設定 isEvalSupported: false を適用）',
     'スキャン読み取り画面における「承認して次へ」処理の不具合修正（イベントバインド時のスコープ外未定義変数 isContinuationMode による ReferenceError 例外を解消し、全運用モードでのEnterキー／承認ボタンによる保存・次ページ遷移を正常復旧）',
     '継続確認モード6年の日特エクセル出力・受講形態連動（自校舎受講時は「TD」、変更あり時は「非受講」または自由記述の「他校舎コード」としてExcel/CSVに出力。手動登録・照合レビュー・スキャン承認の各画面で他校舎コード入力UIを配備し、一覧でのバッジ識別・詳細フィルターに対応）',
     '継続確認モード6年の日特受講・変更あり（他校舎受講・非受講）対応（日特項目の選択肢を「受講／変更あり」に刷新し、手動登録・照合レビュー・スキャン照合での「他校舎受講／非受講」クイックメモ入力補助、提出状況一覧での注意バッジ表示・日特専用フィルター追加、CSV/Excel出力連動に完全対応）',

@@ -3,7 +3,7 @@
  */
 
 import { DB } from '../db.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { ProjectPage } from './project.js';
 import { FolderConnector } from '../sync/folder-connector.js';
@@ -165,9 +165,9 @@ export const ManualPage = {
                     return `
                       <label class="custom-box-check-row" style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--gray-200); cursor: pointer; user-select: none;">
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                          <input type="checkbox" class="chk-man-custom-box-item" data-id="${box.id}" data-label="${box.label}" ${isCompleted ? 'disabled' : ''}>
-                          <span style="font-weight: 700; font-size: 0.88rem; color: var(--gray-800);">${box.label}</span>
-                          ${tag ? `<span class="badge ${tag === 'Zoom' ? 'badge-info' : (tag === '動画' ? 'badge-purple' : 'badge-gray')}" style="font-size: 0.7rem; padding: 1px 5px;">${tag}</span>` : ''}
+                          <input type="checkbox" class="chk-man-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isCompleted ? 'disabled' : ''}>
+                          <span style="font-weight: 700; font-size: 0.88rem; color: var(--gray-800);">${escapeHtml(box.label)}</span>
+                          ${tag ? `<span class="badge ${tag === 'Zoom' ? 'badge-info' : (tag === '動画' ? 'badge-purple' : 'badge-gray')}" style="font-size: 0.7rem; padding: 1px 5px;">${escapeHtml(tag)}</span>` : ''}
                         </div>
                         <span class="badge badge-gray" style="font-size: 0.75rem;">⬜ なし</span>
                       </label>
@@ -230,15 +230,15 @@ export const ManualPage = {
                     return `
                       <div>
                         <label style="font-size: 0.82rem; font-weight: 700; color: var(--gray-700); display: block; margin-bottom: 4px;">
-                          ${field.name}${isNittoku ? ' <span style="font-size: 0.74rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}
+                          ${escapeHtml(field.name)}${isNittoku ? ' <span style="font-size: 0.74rem; font-weight: normal; color: var(--gray-500);">（※他校舎受講・非受講の場合は「変更あり」）</span>' : ''}
                         </label>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                           ${(field.options || []).map((opt, optIdx) => {
                             const optLabel = typeof opt === 'object' ? opt.label : opt;
                             return `
                               <label style="display: flex; align-items: center; gap: 5px; font-size: 0.82rem; background: #fff; border: 1px solid var(--gray-300); padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer;">
-                                <input type="radio" class="man-cont-field-input" data-field-name="${field.name}" name="man-continuation-field-${field.id}" value="${optLabel}" ${optIdx === 0 ? 'checked' : ''} ${isCompleted ? 'disabled' : ''}>
-                                <span>${optLabel}</span>
+                                <input type="radio" class="man-cont-field-input" data-field-name="${escapeHtml(field.name)}" name="man-continuation-field-${escapeHtml(field.id)}" value="${escapeHtml(optLabel)}" ${optIdx === 0 ? 'checked' : ''} ${isCompleted ? 'disabled' : ''}>
+                                <span>${escapeHtml(optLabel)}</span>
                               </label>
                             `;
                           }).join('')}
@@ -405,15 +405,15 @@ export const ManualPage = {
       }
 
       resultsBox.innerHTML = matches.map(s => `
-        <div class="student-search-item" data-id="${s.studentId}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--gray-100); font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center;">
+        <div class="student-search-item" data-id="${escapeHtml(s.studentId)}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--gray-100); font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <span class="font-bold">${s.name}</span>
-            <span class="text-muted" style="font-size: 0.78rem; margin-left: 4px;">(${s.nameKana || ''})</span>
-            <span class="text-mono" style="font-size: 0.82rem; margin-left: 6px; color: var(--primary-600);">${s.nichinokenId}</span>
+            <span class="font-bold">${escapeHtml(s.name)}</span>
+            <span class="text-muted" style="font-size: 0.78rem; margin-left: 4px;">(${escapeHtml(s.nameKana || '')})</span>
+            <span class="text-mono" style="font-size: 0.82rem; margin-left: 6px; color: var(--primary-600);">${escapeHtml(s.nichinokenId)}</span>
           </div>
           <div>
-            <span class="badge badge-gray">${s.className}</span>
-            <span class="badge ${s.status === '承認済' ? 'badge-success' : 'badge-gray'}">${s.status}</span>
+            <span class="badge badge-gray">${escapeHtml(s.className)}</span>
+            <span class="badge ${s.status === '承認済' ? 'badge-success' : 'badge-gray'}">${escapeHtml(s.status)}</span>
           </div>
         </div>
       `).join('');
@@ -630,8 +630,8 @@ export const ManualPage = {
 
       if (methods.size > 0) {
         quickMethodContainer.innerHTML = Array.from(methods).map(m => `
-          <button type="button" class="btn btn-ghost btn-sm btn-quick-man-method" data-method="${m}" style="font-size: 0.75rem; padding: 2px 7px; border: 1px solid var(--purple-300, #c4b5fd); color: #6d28d9; background: rgba(139, 92, 246, 0.05);">
-            ${m}のみ
+          <button type="button" class="btn btn-ghost btn-sm btn-quick-man-method" data-method="${escapeHtml(m)}" style="font-size: 0.75rem; padding: 2px 7px; border: 1px solid var(--purple-300, #c4b5fd); color: #6d28d9; background: rgba(139, 92, 246, 0.05);">
+            ${escapeHtml(m)}のみ
           </button>
         `).join('');
 
@@ -791,11 +791,11 @@ export const ManualPage = {
     const changeOptions = DB.getProjectChangeOptions(this.project);
     let html = `<option value="">-- 変更先クラス / 選択肢を選択 --</option>`;
     if (currentStuClass) {
-      html += `<option value="${currentStuClass}">${currentStuClass} クラス（クラス変更なし）</option>`;
+      html += `<option value="${escapeHtml(currentStuClass)}">${escapeHtml(currentStuClass)} クラス（クラス変更なし）</option>`;
     }
     this.classList.forEach(c => {
       if (c !== currentStuClass) {
-        html += `<option value="${c}">${c} クラスへ変更</option>`;
+        html += `<option value="${escapeHtml(c)}">${escapeHtml(c)} クラスへ変更</option>`;
       }
     });
 
@@ -809,7 +809,7 @@ export const ManualPage = {
         icon = '🏫';
         style = 'color: #2563eb; font-weight: bold;';
       }
-      html += `<option value="${opt}" style="${style}">${icon} ${opt}${opt === '非受講' ? '（受講しない）' : ''}</option>`;
+      html += `<option value="${escapeHtml(opt)}" style="${style}">${icon} ${escapeHtml(opt)}${opt === '非受講' ? '（受講しない）' : ''}</option>`;
     });
     return html;
   },

@@ -7,7 +7,7 @@
 import { CheckboxEngine } from '../checkbox.js';
 import { ScannerEngine } from '../scanner.js';
 import { DB } from '../db.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 
 export class TemplateCalibrator {
   /**
@@ -1355,7 +1355,8 @@ export class TemplateCalibrator {
         }
 
         const arrayBuffer = await file.arrayBuffer();
-        const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        // CVE-2024-4367 対策: 動的コード評価（isEvalSupported）を無効化して安全にパース
+        const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
         const numPages = pdfDoc.numPages;
 
         this.loadedPages = [];
@@ -2023,8 +2024,8 @@ export class TemplateCalibrator {
             : `<span class="badge badge-gray">⬜ なし</span>`;
           return `
             <div class="eval-row" style="${item.isActive ? 'background: rgba(139, 92, 246, 0.08); border-radius: 4px; padding: 2px 4px;' : ''}">
-              <span class="eval-label" style="max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.label}">
-                ${item.icon || '🟪'} ${item.label}:
+              <span class="eval-label" style="max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(item.label)}">
+                ${item.icon || '🟪'} ${escapeHtml(item.label)}:
               </span>
               ${statusBadge}
               <span class="text-mono eval-ratio">黒画素: ${pct}%</span>

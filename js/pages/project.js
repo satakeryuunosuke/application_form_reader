@@ -3,7 +3,7 @@
  */
 
 import { DB, db } from '../db.js';
-import { UI } from '../utils/ui.js';
+import { UI, escapeHtml } from '../utils/ui.js';
 import { CsvUtil } from '../utils/csv.js';
 import { Validator } from '../utils/validator.js';
 import { CheckboxEngine } from '../checkbox.js';
@@ -75,7 +75,7 @@ export const ProjectPage = {
             <div style="min-width: 0;">
               <!-- 1行目: プロジェクトタイトル + 主要ステータスバッジ -->
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
-                <h1 style="font-size: 1.35rem; font-weight: 800; color: var(--gray-900); margin: 0; line-height: 1.2; white-space: nowrap;">${UI.formatProjectTitle(project.title)}</h1>
+                <h1 style="font-size: 1.35rem; font-weight: 800; color: var(--gray-900); margin: 0; line-height: 1.2; white-space: nowrap;">${escapeHtml(UI.formatProjectTitle(project.title))}</h1>
                 ${isSelectionMode 
                   ? '<span class="badge" style="background: #ede7f6; color: #512da8; border: 1px solid #d1c4e9; font-weight: 700; white-space: nowrap;">🎯 講座選択モード</span>' 
                   : (isContinuationMode 
@@ -90,9 +90,9 @@ export const ProjectPage = {
               </div>
               <!-- 2行目: 属性バッジ + 生徒数・講座数集計サマリー -->
               <div style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--gray-500); flex-wrap: wrap; white-space: nowrap;">
-                <span class="badge badge-info" style="font-size: 0.75rem;">${project.year}年度</span>
-                <span class="badge badge-purple" style="font-size: 0.75rem;">${project.grade}年生</span>
-                <span class="badge badge-success" style="font-size: 0.75rem;">${UI.formatSession(project.sessionName)}</span>
+                <span class="badge badge-info" style="font-size: 0.75rem;">${escapeHtml(project.year)}年度</span>
+                <span class="badge badge-purple" style="font-size: 0.75rem;">${escapeHtml(project.grade)}年生</span>
+                <span class="badge badge-success" style="font-size: 0.75rem;">${escapeHtml(UI.formatSession(project.sessionName))}</span>
                 <span style="color: var(--gray-300); margin: 0 2px;">|</span>
                 <span>登録生徒数: <span id="header-stat-total" class="font-bold text-mono">${stats.total}</span> 名</span>
                 <span style="color: var(--gray-300);">|</span>
@@ -1183,7 +1183,7 @@ export const ProjectPage = {
             <div>
               <h3 class="modal-title font-bold">受講確認票 書式・読取位置調整</h3>
               <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
-                対象: ${UI.formatProjectTitle(project.title)}
+                対象: ${escapeHtml(UI.formatProjectTitle(project.title))}
               </div>
             </div>
           </div>
@@ -1622,7 +1622,7 @@ export const ProjectPage = {
               <div>
                 <h3 class="modal-title font-bold">受講確認「変更有」の選択肢設定</h3>
                 <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
-                  対象: ${UI.formatProjectTitle(project.title)}
+                  対象: ${escapeHtml(UI.formatProjectTitle(project.title))}
                 </div>
               </div>
             </div>
@@ -1665,7 +1665,7 @@ export const ProjectPage = {
                     <div class="change-option-row" data-index="${idx}" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--gray-100); background: ${idx % 2 === 0 ? '#fff' : 'var(--gray-50)'};">
                       <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 1.1rem;">${icon}</span>
-                        <span class="font-bold" style="font-size: 0.92rem; color: var(--gray-900);">${opt}</span>
+                        <span class="font-bold" style="font-size: 0.92rem; color: var(--gray-900);">${escapeHtml(opt)}</span>
                         ${opt === '非受講' ? '<span class="badge badge-danger" style="font-size: 0.7rem;">基本</span>' : ''}
                         ${opt === '他教室で受講' ? '<span class="badge badge-primary" style="font-size: 0.7rem;">標準</span>' : ''}
                       </div>
@@ -1860,7 +1860,7 @@ export const ProjectPage = {
               <div>
                 <h3 class="modal-title font-bold">生徒管理</h3>
                 <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
-                  対象: ${UI.formatProjectTitle(project.title)} | 現在の登録生徒数: <span class="text-mono font-bold" id="modal-student-count">${students.length}</span> 名
+                  対象: ${escapeHtml(UI.formatProjectTitle(project.title))} | 現在の登録生徒数: <span class="text-mono font-bold" id="modal-student-count">${students.length}</span> 名
                 </div>
               </div>
             </div>
@@ -1886,11 +1886,11 @@ export const ProjectPage = {
               </div>
 
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md); gap: 12px; flex-wrap: wrap;">
-                <div style="display: flex; gap: 8px; flex: 1; max-width: 500px;">
-                  <input type="text" id="modal-inp-search" class="form-control" placeholder="🔍 日能研番号・氏名・カナ・科目で絞り込み..." value="${studentSearchQuery}">
+                <div style="display: flex; gap: 8px; flex-1; max-width: 500px;">
+                  <input type="text" id="modal-inp-search" class="form-control" placeholder="🔍 日能研番号・氏名・カナ・科目で絞り込み..." value="${escapeHtml(studentSearchQuery)}">
                   <select id="modal-sel-class-filter" class="form-control" style="width: 140px;">
                     <option value="all" ${selectedClassFilter === 'all' ? 'selected' : ''}>全クラス</option>
-                    ${classes.map(c => `<option value="${c}" ${selectedClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    ${classes.map(c => `<option value="${escapeHtml(c)}" ${selectedClassFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
                   </select>
                 </div>
                 <div style="font-size: 0.85rem; color: var(--gray-500);">
@@ -1923,20 +1923,20 @@ export const ProjectPage = {
                       const badgeClass = isSubmitted ? 'badge-success' : 'badge-danger';
                       return `
                         <tr>
-                          <td class="text-mono font-bold">${s.nichinokenId}</td>
+                          <td class="text-mono font-bold">${escapeHtml(s.nichinokenId)}</td>
                           <td class="font-bold">
-                            ${s.name}
+                            ${escapeHtml(s.name)}
                             ${(!/[\u4e00-\u9faf]/.test(s.name) && s.name) ? '<span class="badge badge-warning" style="font-size: 0.68rem; margin-left: 4px; padding: 1px 4px;">カナ氏名</span>' : ''}
                           </td>
-                          <td class="text-muted" style="font-size: 0.8rem;">${s.nameKana || '-'}</td>
-                          <td><span class="badge badge-info">${s.className}</span></td>
-                          <td><span class="badge badge-purple">${s.course || '4科'}</span></td>
+                          <td class="text-muted" style="font-size: 0.8rem;">${escapeHtml(s.nameKana || '-')}</td>
+                          <td><span class="badge badge-info">${escapeHtml(s.className)}</span></td>
+                          <td><span class="badge badge-purple">${escapeHtml(s.course || '4科')}</span></td>
                           <td>
-                            <span class="badge ${badgeClass}">${s.status}</span>
+                            <span class="badge ${badgeClass}">${escapeHtml(s.status)}</span>
                             ${s.hasChange ? '<span class="badge badge-purple" style="font-size: 0.7rem; margin-left: 2px;">変更有</span>' : ''}
                           </td>
                           <td style="text-align: center; white-space: nowrap;">
-                            <button class="btn btn-ghost btn-sm btn-edit-student" data-id="${s.studentId}" data-name="${s.name}" data-kana="${s.nameKana || ''}" data-class="${s.className}" data-course="${s.course || '4科'}" data-nid="${s.nichinokenId}" style="color: var(--primary-700); padding: 2px 8px; font-weight: 600;" title="生徒情報を編集">
+                            <button class="btn btn-ghost btn-sm btn-edit-student" data-id="${escapeHtml(s.studentId)}" data-name="${escapeHtml(s.name)}" data-kana="${escapeHtml(s.nameKana || '')}" data-class="${escapeHtml(s.className)}" data-course="${escapeHtml(s.course || '4科')}" data-nid="${escapeHtml(s.nichinokenId)}" style="color: var(--primary-700); padding: 2px 8px; font-weight: 600;" title="生徒情報を編集">
                               ✏️ 編集
                             </button>
                           </td>
@@ -2096,20 +2096,20 @@ export const ProjectPage = {
                 </div>
                 <div class="modal-body">
                   <div style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 12px;">
-                    日能研番号: <strong class="text-mono font-bold" style="color: var(--gray-900);">${stuNid}</strong>
+                    日能研番号: <strong class="text-mono font-bold" style="color: var(--gray-900);">${escapeHtml(stuNid)}</strong>
                   </div>
                   <div class="form-group" style="margin-bottom: 10px;">
                     <label class="form-label required">氏名（漢字）</label>
-                    <input type="text" id="edit-inp-name" class="form-control" value="${stuName}" placeholder="例: 日能研太郎" required>
+                    <input type="text" id="edit-inp-name" class="form-control" value="${escapeHtml(stuName)}" placeholder="例: 日能研太郎" required>
                   </div>
                   <div class="form-group" style="margin-bottom: 10px;">
                     <label class="form-label">氏名カナ</label>
-                    <input type="text" id="edit-inp-kana" class="form-control" value="${stuKana}" placeholder="例: ニチノウケンタロウ">
+                    <input type="text" id="edit-inp-kana" class="form-control" value="${escapeHtml(stuKana)}" placeholder="例: ニチノウケンタロウ">
                   </div>
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
                     <div class="form-group">
                       <label class="form-label required">所属クラス</label>
-                      <input type="text" id="edit-inp-class" class="form-control text-uppercase" value="${stuClass}" placeholder="例: W1" required>
+                      <input type="text" id="edit-inp-class" class="form-control text-uppercase" value="${escapeHtml(stuClass)}" placeholder="例: W1" required>
                     </div>
                     <div class="form-group">
                       <label class="form-label required">所属科目</label>
