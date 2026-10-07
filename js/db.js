@@ -1166,11 +1166,35 @@ export const DB = {
    * JSONバックアップから復元（既存データを置き換え）
    */
   async importFullBackup(backupJson) {
-    if (!backupJson || !backupJson.data) {
-      throw new Error('無効なバックアップファイルです');
+    if (!backupJson || typeof backupJson !== 'object' || !backupJson.data || typeof backupJson.data !== 'object') {
+      throw new Error('無効なバックアップファイルです（データ構造が不正です）');
     }
 
     const { projects, students, submissions, settings, syncEvents, pendingEvents, appState } = backupJson.data;
+
+    // テーブル配列の検証と安全化ヘルパー（prototype汚染キー除外 & オブジェクト構造確認）
+    const sanitizeRecordArray = (arr, tableName) => {
+      if (!Array.isArray(arr)) return [];
+      const cleanArr = [];
+      for (const item of arr) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+        const cleanObj = {};
+        for (const [k, v] of Object.entries(item)) {
+          if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+          cleanObj[k] = v;
+        }
+        cleanArr.push(cleanObj);
+      }
+      return cleanArr;
+    };
+
+    const cleanProjects = sanitizeRecordArray(projects, 'projects');
+    const cleanStudents = sanitizeRecordArray(students, 'students');
+    const cleanSubmissions = sanitizeRecordArray(submissions, 'submissions');
+    const cleanSettings = sanitizeRecordArray(settings, 'settings');
+    const cleanSyncEvents = sanitizeRecordArray(syncEvents, 'syncEvents');
+    const cleanPendingEvents = sanitizeRecordArray(pendingEvents, 'pendingEvents');
+    const cleanAppState = sanitizeRecordArray(appState, 'appState');
 
     await db.transaction('rw', db.projects, db.students, db.submissions, db.settings, db.syncEvents, db.pendingEvents, db.appState, async () => {
       await db.projects.clear();
@@ -1181,13 +1205,13 @@ export const DB = {
       await db.pendingEvents.clear();
       await db.appState.clear();
 
-      if (projects?.length) await db.projects.bulkAdd(projects);
-      if (students?.length) await db.students.bulkAdd(students);
-      if (submissions?.length) await db.submissions.bulkAdd(submissions);
-      if (settings?.length) await db.settings.bulkAdd(settings);
-      if (syncEvents?.length) await db.syncEvents.bulkAdd(syncEvents);
-      if (pendingEvents?.length) await db.pendingEvents.bulkAdd(pendingEvents);
-      if (appState?.length) await db.appState.bulkAdd(appState);
+      if (cleanProjects.length) await db.projects.bulkAdd(cleanProjects);
+      if (cleanStudents.length) await db.students.bulkAdd(cleanStudents);
+      if (cleanSubmissions.length) await db.submissions.bulkAdd(cleanSubmissions);
+      if (cleanSettings.length) await db.settings.bulkAdd(cleanSettings);
+      if (cleanSyncEvents.length) await db.syncEvents.bulkAdd(cleanSyncEvents);
+      if (cleanPendingEvents.length) await db.pendingEvents.bulkAdd(cleanPendingEvents);
+      if (cleanAppState.length) await db.appState.bulkAdd(cleanAppState);
     });
   }
 };
