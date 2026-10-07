@@ -748,7 +748,8 @@ export const SyncManager = {
             try {
               const file = await handle.getFile();
               const text = await file.text();
-              const event = JSON.parse(text);
+              const rawEvent = JSON.parse(text);
+              const event = this.sanitizeSyncEvent(rawEvent);
 
               if (event && event.eventId && !existingEventIds.has(event.eventId)) {
                 await db.syncEvents.put({
@@ -950,13 +951,17 @@ export const SyncManager = {
             id: histId,
             eventId: ev.eventId,
             timestamp: new Date(ev.timestamp).toISOString(),
-            approvedAt: data.approvedAt || new Date(ev.timestamp).toISOString(),
+            approvedAt: ev.data?.approvedAt || new Date(ev.timestamp).toISOString(),
             inputMethod: ev.data?.inputMethod || '手動',
             approvedBy: ev.data?.approvedBy || ev.clientInfo?.recordedBy || '',
             status: ev.data?.status || '承認済',
             hasChange: ev.data?.hasChange || false,
             enrollmentClass: ev.data?.enrollmentClass || '',
             enrollmentCourse: ev.data?.enrollmentCourse || '',
+            enrollmentStatus: ev.data?.enrollmentStatus || '',
+            customChecks: ev.data?.customChecks || {},
+            customFields: ev.data?.customFields || {},
+            selectedCourses: ev.data?.selectedCourses || [],
             remarks: ev.data?.remarks || '',
             scanImageBlob: null // 共有イベントからは画像は渡されない
           });
@@ -970,7 +975,7 @@ export const SyncManager = {
       const reviewNote = sub.reviewNote || data.reviewNote || '';
 
       // submissions レコード更新（scanImageBlob はローカルキャッシュをそのまま保持）
-      await db.submissions.update(sub.id, {
+      const updates = {
         status: data.status || sub.status || '承認済',
         hasChange: data.hasChange !== undefined ? data.hasChange : sub.hasChange,
         enrollmentClass: data.enrollmentClass || sub.enrollmentClass,
@@ -985,7 +990,13 @@ export const SyncManager = {
         reviewedAt,
         reviewedBy,
         reviewNote
-      });
+      };
+      if (data.enrollmentStatus !== undefined) updates.enrollmentStatus = data.enrollmentStatus;
+      if (data.customChecks !== undefined) updates.customChecks = data.customChecks;
+      if (data.customFields !== undefined) updates.customFields = data.customFields;
+      if (data.selectedCourses !== undefined) updates.selectedCourses = data.selectedCourses;
+
+      await db.submissions.update(sub.id, updates);
     }
   },
 
@@ -1360,6 +1371,69 @@ export const SyncManager = {
 
     this.invalidateSyncCache();
     return results;
+  },
+
+  /**
+   * 共有フォルダから受信したイベントオブジェクトの構造・型・プロパティ検証（汚染・不正データ遮断）
+   * @param {Object} event
+   * @returns {Object|null}
+   */
+  sanitizeSyncEvent(event) {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+
+    // 必須属性の存在および型チェック
+    if (typeof event.eventId !== 'string' || !event.eventId.trim()) return null;
+    if (typeof event.studentId !== 'string') return null;
+
+    // 許可された action のみ受容
+    const allowedActions = ['APPROVE', 'UPDATE', 'STATUS_CHANGE'];
+    if (event.action && !allowedActions.includes(event.action)) {
+      console.warn(`[SyncManager] 不明なアクションのイベントを無視: ${event.action} (${event.eventId})`);
+      return null;
+    }
+
+    // タイムスタンプの検証（数値かつ妥当な範囲 2020年〜2100年）
+    let ts = Number(event.timestamp);
+    if (isNaN(ts) || ts < 1577836800000 || ts > 4102444800000) {
+      ts = Date.now();
+    }
+
+    // data オブジェクトのサニタイズ（prototype汚染防止・重要フィールドの型正規化）
+    const rawData = (event.data && typeof event.data === 'object' && !Array.isArray(event.data)) ? event.data : {};
+    const cleanData = {};
+
+    for (const [key, val] of Object.entries(rawData)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      // 文字列フィールドのトリムと安全化
+      if (typeof val === 'string') {
+        cleanData[key] = val.trim();
+      } else if (typeof val === 'boolean' || typeof val === 'number') {
+        cleanData[key] = val;
+      } else if (val && typeof val === 'object') {
+        // customChecks や customFields などのネストオブジェクト
+        const subObj = {};
+        for (const [subK, subV] of Object.entries(val)) {
+          if (subK === '__proto__' || subK === 'constructor' || subK === 'prototype') continue;
+          subObj[subK] = (typeof subV === 'string') ? subV.trim() : subV;
+        }
+        cleanData[key] = subObj;
+      } else {
+        cleanData[key] = val;
+      }
+    }
+
+    return {
+      eventId: event.eventId.trim().replace(/[^a-zA-Z0-9_-]/g, '_'),
+      action: event.action || 'UPDATE',
+      studentId: event.studentId.trim(),
+      nichinokenId: typeof event.nichinokenId === 'string' ? event.nichinokenId.trim().toUpperCase() : '',
+      timestamp: ts,
+      data: cleanData,
+      clientInfo: {
+        clientId: (typeof event.clientInfo?.clientId === 'string') ? event.clientInfo.clientId.trim() : '',
+        recordedBy: (typeof event.clientInfo?.recordedBy === 'string') ? event.clientInfo.recordedBy.trim() : ''
+      }
+    };
   },
 
   /**

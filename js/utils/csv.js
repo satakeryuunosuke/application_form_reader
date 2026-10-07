@@ -6,6 +6,22 @@ import { Validator } from './validator.js';
 
 export const CsvUtil = {
   /**
+   * CSV / Excel 数式インジェクション（CSV Injection）対策
+   * =, +, -, @, \t, \r で始まる値はExcel等で数式として実行される危険があるため
+   * 先頭にシングルクォート (') を付与してプレーンテキストとして扱わせる
+   * @param {*} val
+   * @returns {string}
+   */
+  sanitizeFormula(val) {
+    if (val === null || val === undefined) return '';
+    const str = val.toString();
+    if (/^[=+\-@\t\r]/.test(str)) {
+      return `'${str}`;
+    }
+    return str;
+  },
+
+  /**
    * CSV文字列をパースして生徒オブジェクトの配列を返す
    * 先頭列: 日能研番号, 氏名, 氏名カナ, クラス, 科目(4科/2科)
    * ヘッダー名による動的列判定および位置指定に対応
@@ -211,7 +227,7 @@ export const CsvUtil = {
     const csvRows = [headers.join(',')];
 
     for (const r of rows) {
-      const escape = val => `"${(val || '').toString().replace(/"/g, '""')}"`;
+      const escape = val => `"${this.sanitizeFormula(val).replace(/"/g, '""')}"`;
       csvRows.push([
         escape(r.nichinokenId),
         escape(r.name),
@@ -248,18 +264,18 @@ export const CsvUtil = {
 
     for (const r of rows) {
       data.push([
-        r.nichinokenId || '',
-        r.name || '',
-        r.nameKana || '',
-        r.className || '',
-        r.course || '4科',
-        r.status || '',
-        r.enrollmentClass || '-',
-        r.enrollmentCourse || (r.status === '承認済' ? (r.enrollmentClass === '非受講' ? '非受講' : (r.course || '4科')) : '-'),
-        r.inputMethod || '-',
-        r.approvedBy || '-',
-        r.approvedAt || r.submittedAt || '-',
-        r.remarks || ''
+        this.sanitizeFormula(r.nichinokenId || ''),
+        this.sanitizeFormula(r.name || ''),
+        this.sanitizeFormula(r.nameKana || ''),
+        this.sanitizeFormula(r.className || ''),
+        this.sanitizeFormula(r.course || '4科'),
+        this.sanitizeFormula(r.status || ''),
+        this.sanitizeFormula(r.enrollmentClass || '-'),
+        this.sanitizeFormula(r.enrollmentCourse || (r.status === '承認済' ? (r.enrollmentClass === '非受講' ? '非受講' : (r.course || '4科')) : '-')),
+        this.sanitizeFormula(r.inputMethod || '-'),
+        this.sanitizeFormula(r.approvedBy || '-'),
+        this.sanitizeFormula(r.approvedAt || r.submittedAt || '-'),
+        this.sanitizeFormula(r.remarks || '')
       ]);
     }
 
@@ -290,7 +306,7 @@ export const CsvUtil = {
     const csvRows = [headers.join(',')];
 
     for (const r of rows) {
-      const escape = val => `"${(val || '').toString().replace(/"/g, '""')}"`;
+      const escape = val => `"${this.sanitizeFormula(val).replace(/"/g, '""')}"`;
       const selectedCoursesStr = (r.selectedCourses && r.selectedCourses.length > 0)
         ? r.selectedCourses.join(' / ')
         : (r.status === '承認済' ? '申込なし(0講座)' : '-');
@@ -336,17 +352,17 @@ export const CsvUtil = {
         : (r.status === '承認済' ? '申込なし(0講座)' : '-');
 
       listData.push([
-        r.nichinokenId || '',
-        r.name || '',
-        r.nameKana || '',
-        r.className || '',
-        r.status || '',
-        r.status === '承認済' ? (r.totalCourseCount || 0) : '-',
-        selectedCoursesStr,
-        r.inputMethod || '-',
-        r.approvedBy || '-',
-        r.approvedAt || r.submittedAt || '-',
-        r.remarks || ''
+        this.sanitizeFormula(r.nichinokenId || ''),
+        this.sanitizeFormula(r.name || ''),
+        this.sanitizeFormula(r.nameKana || ''),
+        this.sanitizeFormula(r.className || ''),
+        this.sanitizeFormula(r.status || ''),
+        this.sanitizeFormula(r.status === '承認済' ? (r.totalCourseCount || 0) : '-'),
+        this.sanitizeFormula(selectedCoursesStr),
+        this.sanitizeFormula(r.inputMethod || '-'),
+        this.sanitizeFormula(r.approvedBy || '-'),
+        this.sanitizeFormula(r.approvedAt || r.submittedAt || '-'),
+        this.sanitizeFormula(r.remarks || '')
       ]);
     }
     const wsList = XLSX.utils.aoa_to_sheet(listData);
@@ -355,7 +371,7 @@ export const CsvUtil = {
     // シート2: 講座別クロス集計マトリクス（生徒 × 全講座）
     const courseBoxes = (customBoxes || []).filter(b => b && b.label);
     if (courseBoxes.length > 0) {
-      const matrixHeaders = ['日能研番号', '氏名', 'クラス', '提出状況', '合計講座数', ...courseBoxes.map(b => b.label)];
+      const matrixHeaders = ['日能研番号', '氏名', 'クラス', '提出状況', '合計講座数', ...courseBoxes.map(b => this.sanitizeFormula(b.label))];
       const matrixData = [matrixHeaders];
 
       for (const r of rows) {
@@ -364,11 +380,11 @@ export const CsvUtil = {
         );
 
         const row = [
-          r.nichinokenId || '',
-          r.name || '',
-          r.className || '',
-          r.status || '',
-          r.status === '承認済' ? (r.totalCourseCount || 0) : '-',
+          this.sanitizeFormula(r.nichinokenId || ''),
+          this.sanitizeFormula(r.name || ''),
+          this.sanitizeFormula(r.className || ''),
+          this.sanitizeFormula(r.status || ''),
+          this.sanitizeFormula(r.status === '承認済' ? (r.totalCourseCount || 0) : '-'),
         ];
 
         for (const box of courseBoxes) {
@@ -419,7 +435,7 @@ export const CsvUtil = {
     const csvRows = [headers.join(',')];
 
     for (const r of rows) {
-      const escape = val => `"${(val || '').toString().replace(/"/g, '""')}"`;
+      const escape = val => `"${this.sanitizeFormula(val).replace(/"/g, '""')}"`;
       const isApproved = (r.status === '承認済');
       const enrollStatus = isApproved ? (r.enrollmentStatus || (r.hasChange ? 'その他' : '受講する')) : '-';
       const enrollCourse = isApproved ? (r.enrollmentCourse || '4科') : '-';
@@ -499,22 +515,22 @@ export const CsvUtil = {
             val = '非受講';
           }
         }
-        return val;
+        return this.sanitizeFormula(val);
       });
 
       data.push([
-        r.nichinokenId || '',
-        r.name || '',
-        r.nameKana || '',
-        r.className || '',
-        r.status || '',
-        enrollStatus,
-        enrollCourse,
+        this.sanitizeFormula(r.nichinokenId || ''),
+        this.sanitizeFormula(r.name || ''),
+        this.sanitizeFormula(r.nameKana || ''),
+        this.sanitizeFormula(r.className || ''),
+        this.sanitizeFormula(r.status || ''),
+        this.sanitizeFormula(enrollStatus),
+        this.sanitizeFormula(enrollCourse),
         ...customColValues,
-        r.inputMethod || '-',
-        r.approvedBy || '-',
-        r.approvedAt || r.submittedAt || '-',
-        r.remarks || ''
+        this.sanitizeFormula(r.inputMethod || '-'),
+        this.sanitizeFormula(r.approvedBy || '-'),
+        this.sanitizeFormula(r.approvedAt || r.submittedAt || '-'),
+        this.sanitizeFormula(r.remarks || '')
       ]);
     }
 
