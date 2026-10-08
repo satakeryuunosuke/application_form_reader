@@ -375,5 +375,229 @@ export const CheckboxEngine = {
       scaleY,
       angle
     };
+  },
+
+  /**
+   * 複数チェックボックス群（講座選択モード等）の適応的動的2グループ判定
+   * 
+   * 1. 各項目の黒画素率（darkRatio）をサンプリング
+   * 2. 突出した外れ値（塗りつぶしによる取消訂正枠）を検知し、非受講（isChecked: false）として除外
+   * 3. 残りの項目群に対して大津の判別分析法（1次元2クラスタリング）を適用し、用紙の明暗（全体的に白／黒）に適応した動的しきい値を決定
+   * 4. セーフティガード（最小分離度・最小ギャップ検証）により、全件未記入・全件受講時の誤判定を防止
+   * 
+   * @param {HTMLCanvasElement} canvas
+   * @param {Array<{ id: string, label: string, rect: object, eval?: object }>} items
+   * @param {number} baseThreshold 基準フォールバック閾値 (デフォルト: 0.25)
+   * @returns {{
+   *   results: Object<string, { id: string, label: string, isChecked: boolean, darkRatio: number, isFilledCancellation: boolean, dynamicThreshold: number, isDynamicApplied: boolean }>,
+   *   dynamicThreshold: number,
+   *   isDynamicApplied: boolean,
+   *   cancelledOutliers: Array<string>
+   * }}
+   */
+  evaluateGroupCheckboxes(canvas, items, baseThreshold = 0.25) {
+    if (!items || items.length === 0) {
+      return { results: {}, dynamicThreshold: baseThreshold, isDynamicApplied: false, cancelledOutliers: [] };
+    }
+
+    // 1. 各項目の単体黒画素率を評価
+    const evals = items.map(item => {
+      const ev = (item.eval && item.eval.darkRatio !== undefined)
+        ? item.eval
+        : this.evaluateCheckbox(canvas, item.rect, baseThreshold);
+      return {
+        id: item.id,
+        label: item.label,
+        rect: item.rect,
+        eval: ev,
+        darkRatio: ev.darkRatio || 0
+      };
+    });
+
+    const results = {};
+    const n = evals.length;
+
+    // 項目数が1個の場合は単体しきい値で判定
+    if (n === 1) {
+      const it = evals[0];
+      const isChk = it.darkRatio >= baseThreshold;
+      results[it.id] = {
+        id: it.id,
+        label: it.label,
+        isChecked: isChk,
+        darkRatio: it.darkRatio,
+        isFilledCancellation: false,
+        dynamicThreshold: baseThreshold,
+        isDynamicApplied: false
+      };
+      return { results, dynamicThreshold: baseThreshold, isDynamicApplied: false, cancelledOutliers: [] };
+    }
+
+    // 2. 突出した外れ値（塗りつぶしによる取消訂正枠）の検知
+    // ※「すべて塗りつぶし」なら普通に判定できるため、特定少数（1〜2個かつ25%以下）が突出して黒い場合のみ外れ値（取消）と判定
+    const sortedDesc = [...evals].sort((a, b) => b.darkRatio - a.darkRatio);
+    const sortedRatios = sortedDesc.map(e => e.darkRatio);
+    
+    // 中央値の計算
+    const sortedAscRatios = [...sortedRatios].reverse();
+    const midIdx = Math.floor(n / 2);
+    const medianRatio = (n % 2 !== 0)
+      ? sortedAscRatios[midIdx]
+      : (sortedAscRatios[midIdx - 1] + sortedAscRatios[midIdx]) / 2;
+
+    const cancelledOutliers = [];
+    const outlierIds = new Set();
+
+    // 外れ値の候補走査（黒画素率が 0.55 以上かつ中央値や他項目から大きく突出しているか）
+    for (let i = 0; i < sortedDesc.length; i++) {
+      const cur = sortedDesc[i];
+      // 0.55 未満は通常のチェックマークの範囲内（外れ値ではない）
+      if (cur.darkRatio < 0.55) break;
+
+      // 塗りつぶしが全体の過半数を占める場合は「全体塗りつぶしスタイル」なので外れ値扱いにしない
+      if (i >= Math.max(1, Math.floor(n * 0.35))) break;
+
+      // 次の値（または直近の非外れ値候補）との差を検証
+      const nextRatio = (i + 1 < sortedDesc.length) ? sortedDesc[i + 1].darkRatio : 0;
+      const gapToNext = cur.darkRatio - nextRatio;
+      const gapToMedian = cur.darkRatio - medianRatio;
+
+      // 突出判定:
+      // (A) 次の項目との間に 0.14 以上の大きな段差がある
+      // または (B) 中央値から 0.30 以上乖離し、かつ次の項目との間に 0.08 以上のギャップがある
+      if ((gapToNext >= 0.14) || (gapToMedian >= 0.30 && gapToNext >= 0.08)) {
+        outlierIds.add(cur.id);
+        cancelledOutliers.push(cur.id);
+      } else {
+        // 連番で同水準の黒さがある場合は「複数受講の塗りつぶし」の可能性が高いため、以降は外れ値としない
+        break;
+      }
+    }
+
+    // 外れ値として判定された項目は「非受講（isChecked: false）」として登録
+    cancelledOutliers.forEach(id => {
+      const it = evals.find(e => e.id === id);
+      results[id] = {
+        id: it.id,
+        label: it.label,
+        isChecked: false, // 訂正塗りつぶしのため非受講
+        darkRatio: it.darkRatio,
+        isFilledCancellation: true,
+        dynamicThreshold: baseThreshold,
+        isDynamicApplied: true
+      };
+    });
+
+    // 3. 残りの項目群で大津の2グループ動的しきい値判定（クラスタリング）
+    const validItems = evals.filter(e => !outlierIds.has(e.id));
+    const validCount = validItems.length;
+
+    if (validCount === 0) {
+      return { results, dynamicThreshold: baseThreshold, isDynamicApplied: true, cancelledOutliers };
+    }
+
+    if (validCount === 1) {
+      const it = validItems[0];
+      const isChk = it.darkRatio >= baseThreshold;
+      results[it.id] = {
+        id: it.id,
+        label: it.label,
+        isChecked: isChk,
+        darkRatio: it.darkRatio,
+        isFilledCancellation: false,
+        dynamicThreshold: baseThreshold,
+        isDynamicApplied: false
+      };
+      return { results, dynamicThreshold: baseThreshold, isDynamicApplied: false, cancelledOutliers };
+    }
+
+    // 昇順ソート
+    const sortedValid = [...validItems].sort((a, b) => a.darkRatio - b.darkRatio);
+    const vals = sortedValid.map(v => v.darkRatio);
+
+    const totalSum = vals.reduce((s, v) => s + v, 0);
+    const meanTotal = totalSum / validCount;
+    const totalVar = vals.reduce((s, v) => s + Math.pow(v - meanTotal, 2), 0) / validCount;
+
+    let bestK = -1;
+    let maxBetweenVar = -1;
+    let sum0 = 0;
+
+    // 境界 k の探索（クラス0: 0..k, クラス1: k+1..validCount-1）
+    for (let k = 0; k < validCount - 1; k++) {
+      sum0 += vals[k];
+      const count0 = k + 1;
+      const count1 = validCount - count0;
+
+      const m0 = sum0 / count0;
+      const m1 = (totalSum - sum0) / count1;
+
+      const betweenVar = (count0 * count1 / (validCount * validCount)) * Math.pow(m1 - m0, 2);
+      if (betweenVar > maxBetweenVar) {
+        maxBetweenVar = betweenVar;
+        bestK = k;
+      }
+    }
+
+    // セーフティガードの検証
+    let isDynamicApplied = false;
+    let dynamicThreshold = baseThreshold;
+
+    if (bestK >= 0) {
+      const count0 = bestK + 1;
+      const count1 = validCount - count0;
+      const sumClass0 = vals.slice(0, count0).reduce((s, v) => s + v, 0);
+      const sumClass1 = vals.slice(count0).reduce((s, v) => s + v, 0);
+
+      const m0 = sumClass0 / count0;
+      const m1 = sumClass1 / count1;
+
+      const deltaMean = m1 - m0;
+      const borderGap = vals[bestK + 1] - vals[bestK];
+      const separability = totalVar > 0 ? (maxBetweenVar / totalVar) : 0;
+
+      // セーフティ条件:
+      // 1. クラス間平均差 ≧ 5%
+      // 2. 境界ギャップ ≧ 2.5%
+      // 3. 分離度 ≧ 0.45
+      if (deltaMean >= 0.05 && borderGap >= 0.025 && separability >= 0.45) {
+        // 動的境界しきい値を決定（境界2値の中間点）
+        dynamicThreshold = Math.round(((vals[bestK] + vals[bestK + 1]) / 2) * 1000) / 1000;
+        isDynamicApplied = true;
+      }
+    }
+
+    // 各アイテムの判定
+    for (const item of validItems) {
+      let isChecked = false;
+      if (isDynamicApplied) {
+        isChecked = item.darkRatio > dynamicThreshold;
+      } else {
+        // セーフティガード不成立（全件未記入または全件受講などの均一状態）
+        // 全体平均が 0.35 未満であれば安全に全件未受講（チェックなし）
+        if (meanTotal < 0.35) {
+          isChecked = false;
+        } else {
+          isChecked = item.darkRatio >= baseThreshold;
+        }
+      }
+
+      results[item.id] = {
+        id: item.id,
+        label: item.label,
+        isChecked,
+        darkRatio: item.darkRatio,
+        isFilledCancellation: false,
+        dynamicThreshold,
+        isDynamicApplied
+      };
+    }
+
+    return {
+      results,
+      dynamicThreshold,
+      isDynamicApplied,
+      cancelledOutliers
+    };
   }
 };

@@ -350,13 +350,15 @@ export const ReviewPage = {
                               return boxes.map(box => {
                                 const cur = item.customChecks?.[box.id];
                                 const isChk = cur ? cur.isChecked : false;
+                                const isCancelled = cur ? cur.isFilledCancellation : false;
                                 return `
-                                  <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; background: ${isChk ? '#f5f3ff' : 'transparent'}; border: 1px solid ${isChk ? '#c4b5fd' : 'transparent'}; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='${isChk ? '#f5f3ff' : 'transparent'}'">
+                                  <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; background: ${isChk ? '#f5f3ff' : (isCancelled ? '#fef2f2' : 'transparent')}; border: 1px solid ${isChk ? '#c4b5fd' : (isCancelled ? '#fca5a5' : 'transparent')}; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='${isChk ? '#f5f3ff' : (isCancelled ? '#fef2f2' : 'transparent')}'">
                                     <div style="display: flex; align-items: center; gap: 8px;">
                                       <input type="checkbox" class="chk-rev-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isChk ? 'checked' : ''} style="width: 16px; height: 16px;">
-                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : 'var(--gray-800)'};">${escapeHtml(box.label)}</span>
+                                      <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : (isCancelled ? '#b91c1c' : 'var(--gray-800)')};">${escapeHtml(box.label)}</span>
+                                      ${isCancelled ? '<span style="font-size: 0.72rem; color: #dc2626; font-weight: bold;">(⚠️ 訂正塗りつぶし検知)</span>' : ''}
                                     </div>
-                                    ${isChk ? '<span class="badge badge-purple" style="font-size: 0.68rem; padding: 2px 6px;">✅ 選択中</span>' : '<span class="badge badge-gray" style="font-size: 0.68rem; padding: 2px 6px;">⬜ 未選択</span>'}
+                                    ${isCancelled ? '<span class="badge" style="font-size: 0.68rem; padding: 2px 6px; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">⚠️ 訂正取消</span>' : (isChk ? '<span class="badge badge-purple" style="font-size: 0.68rem; padding: 2px 6px;">✅ 選択中</span>' : '<span class="badge badge-gray" style="font-size: 0.68rem; padding: 2px 6px;">⬜ 未選択</span>')}
                                   </label>
                                 `;
                               }).join('');

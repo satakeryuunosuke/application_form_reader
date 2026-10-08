@@ -1015,17 +1015,17 @@ export const ScannerEngine = {
       ? CheckboxEngine.evaluateCheckbox(canvas, targetRects.hasChangeRect, threshold)
       : { isChecked: false, darkRatio: 0 };
 
-    const customChecks = {};
+    let customChecks = {};
+    let customDynamicThreshold = threshold;
+    let isCustomDynamicApplied = false;
+    let customCancelledOutliers = [];
+
     if (targetRects.customRects && targetRects.customRects.length > 0) {
-      for (const item of targetRects.customRects) {
-        const ev = CheckboxEngine.evaluateCheckbox(canvas, item.rect, threshold);
-        customChecks[item.id] = {
-          id: item.id,
-          label: item.label,
-          isChecked: ev.isChecked,
-          darkRatio: ev.darkRatio
-        };
-      }
+      const groupEval = CheckboxEngine.evaluateGroupCheckboxes(canvas, targetRects.customRects, threshold);
+      customChecks = groupEval.results;
+      customDynamicThreshold = groupEval.dynamicThreshold;
+      isCustomDynamicApplied = groupEval.isDynamicApplied;
+      customCancelledOutliers = groupEval.cancelledOutliers;
     }
 
     let hasChange = false;
@@ -1050,6 +1050,9 @@ export const ScannerEngine = {
     } else if (targetRects.noChangeRect) {
       hasChange = !noChangeEval.isChecked;
       noChangeChecked = noChangeEval.isChecked;
+    } else if (targetRects.customRects && targetRects.customRects.length > 0) {
+      // 講座選択モード等: 1講座以上選択されていれば変更（受講申込）あり
+      hasChange = Object.values(customChecks).some(c => c.isChecked);
     }
 
     return {
@@ -1060,7 +1063,10 @@ export const ScannerEngine = {
       noChangeDarkRatio: noChangeEval.darkRatio,
       hasChangeDarkRatio: hasChangeEval.darkRatio,
       customChecks,
-      customFields: {}
+      customFields: {},
+      customDynamicThreshold,
+      isCustomDynamicApplied,
+      customCancelledOutliers
     };
   },
 
@@ -1144,12 +1150,24 @@ export const ScannerEngine = {
     if (targetRects.customRects && targetRects.customRects.length > 0) {
       targetRects.customRects.forEach(item => {
         const r = item.rect;
-        const isChk = checkResult.customChecks?.[item.id]?.isChecked;
-        pctx.strokeStyle = isChk ? '#8b5cf6' : '#64748b';
-        pctx.lineWidth = Math.max(2, Math.round(canvasWidth * 0.0028));
-        pctx.strokeRect(r.x, r.y, r.w, r.h);
-        pctx.fillStyle = isChk ? 'rgba(139, 92, 246, 0.28)' : 'rgba(100, 116, 139, 0.08)';
-        pctx.fillRect(r.x, r.y, r.w, r.h);
+        const curData = checkResult.customChecks?.[item.id];
+        const isChk = curData?.isChecked;
+        const isCancelled = curData?.isFilledCancellation;
+
+        if (isCancelled) {
+          // 訂正塗りつぶし（外れ値・非受講）
+          pctx.strokeStyle = '#ef4444';
+          pctx.lineWidth = Math.max(2, Math.round(canvasWidth * 0.0028));
+          pctx.strokeRect(r.x, r.y, r.w, r.h);
+          pctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+          pctx.fillRect(r.x, r.y, r.w, r.h);
+        } else {
+          pctx.strokeStyle = isChk ? '#8b5cf6' : '#64748b';
+          pctx.lineWidth = Math.max(2, Math.round(canvasWidth * 0.0028));
+          pctx.strokeRect(r.x, r.y, r.w, r.h);
+          pctx.fillStyle = isChk ? 'rgba(139, 92, 246, 0.28)' : 'rgba(100, 116, 139, 0.08)';
+          pctx.fillRect(r.x, r.y, r.w, r.h);
+        }
       });
     }
   },

@@ -304,7 +304,7 @@ export class TemplateCalibrator {
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="0.01">➕</button>
                   </div>
                   <div style="font-size: 0.72rem; color: var(--gray-500); margin-top: 2px;">
-                    ※ 枠線全体の黒画素を含むため、通常は 25%〜30% が推奨です
+                    ※ 枠線全体の黒画素を含むため通常 25%〜30% が推奨です（講座選択モードでは用紙の濃淡に応じて2群自動適応され、訂正塗りつぶしは非受講として自動判定されます）。
                   </div>
                 </div>
 
@@ -1676,16 +1676,32 @@ export class TemplateCalibrator {
 
     // 7. カスタム追加枠（紫）
     const customEvals = [];
+    let customGroupData = null;
     if (rects.customRects && rects.customRects.length > 0) {
+      customGroupData = CheckboxEngine.evaluateGroupCheckboxes(this.sourceCanvas, rects.customRects, threshold);
       for (const item of rects.customRects) {
-        const ev = CheckboxEngine.evaluateCheckbox(this.sourceCanvas, item.rect, threshold);
+        const res = customGroupData.results[item.id] || {};
         const isCustomActive = this.activeTab === item.id;
-        this.drawTargetBox(ctx, item.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${item.label} (正方形)`, isCustomActive);
+        const isCancelled = !!res.isFilledCancellation;
+        const isChk = !!res.isChecked;
+
+        if (isCancelled) {
+          this.drawTargetBox(ctx, item.rect, '#ef4444', 'rgba(239, 68, 68, 0.22)', `${item.label} (⚠️訂正取消)`, isCustomActive);
+        } else {
+          this.drawTargetBox(ctx, item.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${item.label} (正方形)`, isCustomActive);
+        }
+
         customEvals.push({
           id: item.id,
           label: item.label,
-          eval: ev,
-          isActive: isCustomActive
+          eval: {
+            darkRatio: res.darkRatio || 0,
+            isChecked: isChk,
+            isFilledCancellation: isCancelled
+          },
+          isActive: isCustomActive,
+          dynamicThreshold: customGroupData.dynamicThreshold,
+          isDynamicApplied: customGroupData.isDynamicApplied
         });
       }
     }
@@ -1697,7 +1713,8 @@ export class TemplateCalibrator {
       subject4Eval,
       subject2Eval,
       customFieldRects: rects.customFieldRects,
-      evaluatedCustomFields
+      evaluatedCustomFields,
+      customGroupData
     });
 
     // トランスフォーム（ズーム・パン）の再適用
@@ -1952,7 +1969,9 @@ export class TemplateCalibrator {
           label: `${c.label}枠`,
           eval: c.eval,
           isActive: c.isActive,
-          badgeClass: 'badge-purple'
+          badgeClass: 'badge-purple',
+          dynamicThreshold: c.dynamicThreshold,
+          isDynamicApplied: c.isDynamicApplied
         });
       });
     }
@@ -1966,6 +1985,9 @@ export class TemplateCalibrator {
       let activeLabel = '未選択';
       let activePct = 0;
       let isChk = false;
+      let isCancelled = false;
+      let isDyn = false;
+      let dynTh = this.template.threshold || 0.25;
       let activeBadgeClass = 'badge-purple';
 
       if (this.activeTab === 'noChange' && noChangeEval) {
@@ -1984,6 +2006,9 @@ export class TemplateCalibrator {
           activeLabel = `${found.icon} ${found.label}`;
           activePct = Math.round((found.eval.darkRatio || 0) * 100);
           isChk = found.eval.isChecked;
+          isCancelled = !!found.eval.isFilledCancellation;
+          isDyn = !!found.isDynamicApplied;
+          dynTh = found.dynamicThreshold || dynTh;
           activeBadgeClass = found.badgeClass || 'badge-purple';
         } else {
           activeLabel = this.getActiveBoxLabel() || '選択中の枠';
@@ -1993,10 +2018,20 @@ export class TemplateCalibrator {
       }
 
       activeTitleEl.textContent = activeLabel;
-      activeRatioEl.textContent = `黒画素率: ${activePct}%（判定閾値: ${Math.round((this.template.threshold || 0.25) * 100)}%）`;
-      activeBadgeEl.innerHTML = isChk
-        ? `<span class="badge ${activeBadgeClass} font-bold" style="font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
-        : `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 4px 8px;">⬜ なし</span>`;
+      if (isCancelled) {
+        activeRatioEl.textContent = `黒画素率: ${activePct}%（⚠️突出外れ値: 訂正塗りつぶしのため非受講）`;
+        activeBadgeEl.innerHTML = `<span class="badge font-bold" style="font-size: 0.8rem; padding: 4px 8px; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">⚠️ 訂正取消 (なし)</span>`;
+      } else if (isDyn) {
+        activeRatioEl.textContent = `黒画素率: ${activePct}%（動的判定閾値: ${Math.round(dynTh * 100)}% 自動適応）`;
+        activeBadgeEl.innerHTML = isChk
+          ? `<span class="badge ${activeBadgeClass} font-bold" style="font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
+          : `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 4px 8px;">⬜ なし</span>`;
+      } else {
+        activeRatioEl.textContent = `黒画素率: ${activePct}%（判定閾値: ${Math.round((this.template.threshold || 0.25) * 100)}%）`;
+        activeBadgeEl.innerHTML = isChk
+          ? `<span class="badge ${activeBadgeClass} font-bold" style="font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
+          : `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 4px 8px;">⬜ なし</span>`;
+      }
     } else if (activeFocusContainer) {
       activeFocusContainer.style.display = 'none';
     }
@@ -2006,7 +2041,15 @@ export class TemplateCalibrator {
       if (displayList.length > 0) {
         summaryBar.style.display = 'flex';
         const checkedCount = displayList.filter(c => c.eval?.isChecked).length;
-        summaryText.innerHTML = `全 <strong>${displayList.length}</strong> 枠（✅ あり: <strong style="color: #6d28d9;">${checkedCount}</strong> 件）`;
+        const customGroupData = continuationData.customGroupData;
+        const dynTag = (customGroupData && customGroupData.isDynamicApplied)
+          ? `<span class="badge badge-purple" style="font-size: 0.72rem; margin-left: 6px;">🎯 動的適応: 閾値 ${Math.round(customGroupData.dynamicThreshold * 100)}%</span>`
+          : '';
+        const cancelCount = displayList.filter(c => c.eval?.isFilledCancellation).length;
+        const cancelTag = (cancelCount > 0)
+          ? `<span class="badge" style="font-size: 0.72rem; margin-left: 6px; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">⚠️ 訂正取消: ${cancelCount}件</span>`
+          : '';
+        summaryText.innerHTML = `全 <strong>${displayList.length}</strong> 枠（✅ あり: <strong style="color: #6d28d9;">${checkedCount}</strong> 件）${dynTag}${cancelTag}`;
       } else {
         summaryBar.style.display = 'none';
       }
@@ -2018,10 +2061,16 @@ export class TemplateCalibrator {
       } else {
         customRowsEl.innerHTML = displayList.map(item => {
           const pct = Math.round(((item.eval?.darkRatio) || 0) * 100);
+          const isCancelled = !!item.eval?.isFilledCancellation;
           const isChk = !!item.eval?.isChecked;
-          const statusBadge = isChk
-            ? `<span class="badge ${item.badgeClass || 'badge-purple'} font-bold">✅ あり</span>`
-            : `<span class="badge badge-gray">⬜ なし</span>`;
+          let statusBadge = '';
+          if (isCancelled) {
+            statusBadge = `<span class="badge font-bold" style="background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">⚠️ 訂正取消</span>`;
+          } else if (isChk) {
+            statusBadge = `<span class="badge ${item.badgeClass || 'badge-purple'} font-bold">✅ あり</span>`;
+          } else {
+            statusBadge = `<span class="badge badge-gray">⬜ なし</span>`;
+          }
           return `
             <div class="eval-row" style="${item.isActive ? 'background: rgba(139, 92, 246, 0.08); border-radius: 4px; padding: 2px 4px;' : ''}">
               <span class="eval-label" style="max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(item.label)}">

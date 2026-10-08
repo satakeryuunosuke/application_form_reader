@@ -2,8 +2,8 @@
  * アプリケーション バージョン & システム情報定義
  */
 
-export const APP_VERSION = 'v1.27.6';
-export const APP_BUILD_DATE = '2026-10-08';
+export const APP_VERSION = 'v1.28.0';
+export const APP_BUILD_DATE = '2026-10-09';
 export const APP_NAME = '受講確認票 処理システム';
 
 export const SYSTEM_INFO = {
@@ -14,6 +14,7 @@ export const SYSTEM_INFO = {
   retentionPeriod: '無期限（ユーザー手動管理）',
   security: '完全クライアントサイド（外部通信ゼロ・個人情報保護）',
   features: [
+    '講座選択モードの動的2グループ適応判定 ＆ 訂正塗りつぶし外れ値の非受講処理（全体的に白／黒いスキャン用紙に対する大津の判別分析法による適応的動的しきい値算出、誤記入取消のための突出過剰黒画素（塗りつぶし外れ値）の自動検知・非受講化、全件未記入セーフティガード、キャリブレーターおよび照合レビューでの動的適応・取消バッジ表示）',
     'セキュリティ強化（P3：Content Security Policy (CSP) 導入による外部通信・悪意あるスクリプト注入の強制遮断、およびバックアップJSONインポート時のスキーマ検証・プロトタイプ汚染防御サニタイズ）',
     'ローカル検証サーバー（server.py）のGit追跡解除・.gitignore登録（外部公開リポジトリからの完全除外によるセキュリティリスク低減）',
     'セキュリティ強化（P2：CSV/Excel出力時の数式インジェクション（CSV Injection / Formula Injection）対策、および共有フォルダ同期時のリモートイベントオブジェクト検証・サニタイズ・リプレイ時フィールド完全同期）',

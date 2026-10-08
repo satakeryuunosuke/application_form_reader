@@ -673,42 +673,48 @@ export const ScanPage = {
 
               ${(this.project.scanTemplate?.customBoxes || []).length > 0 ? `
                 <div class="custom-checks-review-box" style="margin-top: ${isSelectionMode ? '0' : '10px'}; background: rgba(139, 92, 246, 0.06); border: 1px solid #c4b5fd; border-radius: var(--radius-md); padding: 10px 12px;">
-                  <div style="font-size: 0.82rem; font-weight: bold; color: #6d28d9; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>🎯 ${isSelectionMode ? '希望講座一覧（クリックで選択・解除）' : '志望校別対策講座・追加チェック項目'}</span>
-                    <span style="font-size: 0.72rem; color: var(--gray-500); font-weight: normal;">クリックで手動変更可能</span>
-                  </div>
-                  <div id="scan-custom-boxes-container" style="display: flex; flex-direction: column; gap: 6px; ${isSelectionMode ? 'max-height: 240px; overflow-y: auto;' : ''}">
-                    ${(() => {
-                      let boxes = [...(this.project.scanTemplate.customBoxes || [])];
-                      if (isSelectionMode) {
-                        boxes.sort((a, b) => {
-                          const isA = !!(currentItem.checkResult?.customChecks?.[a.id]?.isChecked);
-                          const isB = !!(currentItem.checkResult?.customChecks?.[b.id]?.isChecked);
-                          if (isA !== isB) return isB ? 1 : -1;
-                          return 0;
-                        });
-                      }
-                      return boxes.map(box => {
-                        const det = currentItem.checkResult?.customChecks?.[box.id];
-                        const isChecked = det ? det.isChecked : false;
-                        const pct = det ? Math.round(det.darkRatio * 100) : 0;
-                        return `
-                          <label class="custom-box-check-row" data-id="${escapeHtml(box.id)}" style="display: flex; align-items: center; justify-content: space-between; background: ${isChecked ? '#f5f3ff' : '#fff'}; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#c4b5fd' : 'var(--gray-200)'}; cursor: pointer; user-select: none;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                              <input type="checkbox" class="chk-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isChecked ? 'checked' : ''}>
-                              <span style="font-weight: 700; font-size: 0.84rem; color: ${isChecked ? '#6d28d9' : 'var(--gray-800)'};">${escapeHtml(box.label)}</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 6px;">
-                              <span class="badge ${isChecked ? 'badge-purple' : 'badge-gray'}" style="font-size: 0.72rem;">
-                                ${isChecked ? '✅ マーク検出' : '⬜ 未選択'}
-                              </span>
-                              <span class="text-mono" style="font-size: 0.72rem; color: var(--gray-500);">黒画素: ${pct}%</span>
-                            </div>
-                          </label>
-                        `;
-                      }).join('');
-                    })()}
-                  </div>
+                    <div style="font-size: 0.82rem; font-weight: bold; color: #6d28d9; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                      <div style="display: flex; align-items: center; gap: 6px;">
+                        <span>🎯 ${isSelectionMode ? '希望講座一覧（クリックで選択・解除）' : '志望校別対策講座・追加チェック項目'}</span>
+                        ${currentItem.checkResult?.isCustomDynamicApplied ? `<span class="badge badge-purple" style="font-size: 0.70rem;">🎯 動的適応: 閾値 ${Math.round(currentItem.checkResult.customDynamicThreshold * 100)}%</span>` : ''}
+                      </div>
+                      <span style="font-size: 0.72rem; color: var(--gray-500); font-weight: normal;">クリックで手動変更可能</span>
+                    </div>
+                    <div id="scan-custom-boxes-container" style="display: flex; flex-direction: column; gap: 6px; ${isSelectionMode ? 'max-height: 240px; overflow-y: auto;' : ''}">
+                      ${(() => {
+                        let boxes = [...(this.project.scanTemplate.customBoxes || [])];
+                        if (isSelectionMode) {
+                          boxes.sort((a, b) => {
+                            const isA = !!(currentItem.checkResult?.customChecks?.[a.id]?.isChecked);
+                            const isB = !!(currentItem.checkResult?.customChecks?.[b.id]?.isChecked);
+                            if (isA !== isB) return isB ? 1 : -1;
+                            return 0;
+                          });
+                        }
+                        return boxes.map(box => {
+                          const det = currentItem.checkResult?.customChecks?.[box.id];
+                          const isChecked = det ? det.isChecked : false;
+                          const isCancelled = det ? det.isFilledCancellation : false;
+                          const pct = det ? Math.round(det.darkRatio * 100) : 0;
+                          return `
+                            <label class="custom-box-check-row" data-id="${escapeHtml(box.id)}" style="display: flex; align-items: center; justify-content: space-between; background: ${isChecked ? '#f5f3ff' : (isCancelled ? '#fef2f2' : '#fff')}; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#c4b5fd' : (isCancelled ? '#fca5a5' : 'var(--gray-200)')}; cursor: pointer; user-select: none;">
+                              <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" class="chk-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isChecked ? 'checked' : ''}>
+                                <span style="font-weight: 700; font-size: 0.84rem; color: ${isChecked ? '#6d28d9' : (isCancelled ? '#b91c1c' : 'var(--gray-800)')};">${escapeHtml(box.label)}</span>
+                                ${isCancelled ? '<span style="font-size: 0.72rem; color: #dc2626; font-weight: bold;">(⚠️ 訂正塗りつぶし検知: 非受講)</span>' : ''}
+                              </div>
+                              <div style="display: flex; align-items: center; gap: 6px;">
+                                ${isCancelled ? '<span class="badge" style="font-size: 0.72rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">⚠️ 訂正取消</span>' : `
+                                <span class="badge ${isChecked ? 'badge-purple' : 'badge-gray'}" style="font-size: 0.72rem;">
+                                  ${isChecked ? '✅ マーク検出' : '⬜ 未選択'}
+                                </span>`}
+                                <span class="text-mono" style="font-size: 0.72rem; color: var(--gray-500);">黒画素: ${pct}%</span>
+                              </div>
+                            </label>
+                          `;
+                        }).join('');
+                      })()}
+                    </div>
                 </div>
               ` : (isSelectionMode ? `
                 <div style="padding: 12px; background: var(--gray-50); border: 1px dashed var(--gray-300); border-radius: var(--radius-md); text-align: center; color: var(--gray-500); font-size: 0.82rem;">
