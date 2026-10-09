@@ -137,7 +137,7 @@ export const CsvUtil = {
         continue;
       }
 
-      // バリデーション警告（チェックデジットの確認）
+      // バリデーション警告（フォーマット形式の確認）
       const validation = Validator.validateNichinokenId(nichinokenId);
       if (!validation.isValid) {
         errors.push({ row: rowNum, message: `${nichinokenId}: ${validation.reason}` });

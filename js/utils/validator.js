@@ -9,7 +9,7 @@ export const Validator = {
    * - TD: 校舎コード（アルファベット2文字）
    * - N: 生徒区分（N: 室生, A: 外部生）
    * - 6: 学年（1〜6）
-   * - 0013: 個人固有番号（4桁, 13の倍数）
+   * - 0013: 個人固有番号（4桁）
    * 
    * @param {string} rawId
    * @returns {{ isValid: boolean, campus: string, type: string, grade: number, personalNum: number, reason?: string }}
@@ -35,19 +35,6 @@ export const Validator = {
     const [_, campus, type, gradeStr, numStr] = match;
     const grade = parseInt(gradeStr, 10);
     const personalNum = parseInt(numStr, 10);
-
-    // チェックデジット（13の倍数）の検証
-    if (personalNum % 13 !== 0) {
-      return {
-        isValid: false,
-        cleaned,
-        campus,
-        type,
-        grade,
-        personalNum,
-        reason: 'チェックデジットエラー: 下4桁が13の倍数ではありません'
-      };
-    }
 
     return {
       isValid: true,
