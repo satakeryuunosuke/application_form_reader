@@ -17,7 +17,7 @@ export const ScanPage = {
   selectedStaff: '',
   classList: [],
   zoomLevel: 1.0,
-  isDebugMode: (localStorage.getItem('app_scan_debug_mode') !== 'false'),
+  isDebugMode: false,
 
   resetQueue() {
     if (this._currentKeyHandler) {
@@ -30,6 +30,7 @@ export const ScanPage = {
     this.pendingQueue = [];
     this.currentIndex = 0;
     this.zoomLevel = 1.0;
+    this.isDebugMode = false;
   },
 
   async render(container, project) {
