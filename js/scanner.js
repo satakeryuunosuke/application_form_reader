@@ -722,64 +722,14 @@ export const ScannerEngine = {
       templateApplied = true;
     }
 
-    // 3. ページ画像データURL（生画像 & 枠線オーバーレイ画像）
+    // 3. ページ画像データURL（生画像 & 枠線オーバーレイ画像 & デバッグ用オーバーレイ画像）
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
     let overlayDataUrl = dataUrl;
+    let debugOverlayDataUrl = dataUrl;
     try {
-      const previewCanvas = document.createElement('canvas');
-      previewCanvas.width = canvas.width;
-      previewCanvas.height = canvas.height;
-      const pctx = previewCanvas.getContext('2d');
-      pctx.drawImage(canvas, 0, 0);
-
-      // コード検出枠の描画（緑）
-      if (barcodeResult.found && barcodeResult.box) {
-        const b = barcodeResult.box;
-        const bx = b.x !== undefined ? b.x : (b.centerX - b.width / 2);
-        const by = b.y !== undefined ? b.y : (b.centerY - b.height / 2);
-        pctx.save();
-        if (b.angle) {
-          pctx.translate(b.centerX, b.centerY);
-          pctx.rotate(b.angle);
-          pctx.strokeStyle = '#22c55e';
-          pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
-          pctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
-          pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
-          pctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
-        } else {
-          pctx.strokeStyle = '#22c55e';
-          pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
-          pctx.strokeRect(bx, by, b.width, b.height);
-          pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
-          pctx.fillRect(bx, by, b.width, b.height);
-        }
-        pctx.restore();
-      }
-
-      // チェックボックス枠の描画
-      if (targetRects) {
-        this.drawOverlayBoxes(pctx, canvas.width, targetRects, checkResult);
-      }
-
-      // パターンA: 検出された外枠下端線の描画（水色ライン）
-      if (bottomBorder && bottomBorder.found) {
-        pctx.save();
-        pctx.strokeStyle = '#06b6d4';
-        pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
-        pctx.setLineDash([8, 4]);
-        pctx.beginPath();
-        const x1 = canvas.width * 0.08;
-        const y1 = bottomBorder.slope * x1 + bottomBorder.intercept;
-        const x2 = canvas.width * 0.92;
-        const y2 = bottomBorder.slope * x2 + bottomBorder.intercept;
-        pctx.moveTo(x1, y1);
-        pctx.lineTo(x2, y2);
-        pctx.stroke();
-        pctx.restore();
-      }
-
-      overlayDataUrl = previewCanvas.toDataURL('image/jpeg', 0.85);
+      overlayDataUrl = this.generateOverlayDataUrl(canvas, barcodeResult, targetRects, checkResult, bottomBorder, false);
+      debugOverlayDataUrl = this.generateOverlayDataUrl(canvas, barcodeResult, targetRects, checkResult, bottomBorder, true);
     } catch (e) {
       console.warn('Overlay preview generation failed:', e);
     }
@@ -802,6 +752,7 @@ export const ScannerEngine = {
       templateApplied,
       imageDataUrl: dataUrl,
       overlayDataUrl: overlayDataUrl,
+      debugOverlayDataUrl: debugOverlayDataUrl,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height
     };
@@ -832,56 +783,11 @@ export const ScannerEngine = {
           item.checkResult = checkResult;
           item.detectedHasChange = checkResult.hasChange;
 
-          // 枠線オーバーレイ画像の再生成
+          // 枠線オーバーレイ画像の再生成（通常 ＆ デバッグ用）
           try {
-            const previewCanvas = document.createElement('canvas');
-            previewCanvas.width = canvas.width;
-            previewCanvas.height = canvas.height;
-            const pctx = previewCanvas.getContext('2d');
-            pctx.drawImage(canvas, 0, 0);
-
-            // コード枠
-            const b = item.barcodeBox;
-            pctx.save();
-            if (b.angle) {
-              pctx.translate(b.centerX, b.centerY);
-              pctx.rotate(b.angle);
-              pctx.strokeStyle = '#22c55e';
-              pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
-              pctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
-              pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
-              pctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
-            } else {
-              const bx = b.x !== undefined ? b.x : (b.centerX - b.width / 2);
-              const by = b.y !== undefined ? b.y : (b.centerY - b.height / 2);
-              pctx.strokeStyle = '#22c55e';
-              pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
-              pctx.strokeRect(bx, by, b.width, b.height);
-              pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
-              pctx.fillRect(bx, by, b.width, b.height);
-            }
-            pctx.restore();
-
-            // チェックボックス枠
-            this.drawOverlayBoxes(pctx, canvas.width, targetRects, checkResult);
-
-            if (item.bottomBorder && item.bottomBorder.found) {
-              pctx.save();
-              pctx.strokeStyle = '#06b6d4';
-              pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
-              pctx.setLineDash([8, 4]);
-              pctx.beginPath();
-              const x1 = canvas.width * 0.08;
-              const y1 = item.bottomBorder.slope * x1 + item.bottomBorder.intercept;
-              const x2 = canvas.width * 0.92;
-              const y2 = item.bottomBorder.slope * x2 + item.bottomBorder.intercept;
-              pctx.moveTo(x1, y1);
-              pctx.lineTo(x2, y2);
-              pctx.stroke();
-              pctx.restore();
-            }
-
-            item.overlayDataUrl = previewCanvas.toDataURL('image/jpeg', 0.85);
+            const barcodeDummy = { found: true, box: item.barcodeBox };
+            item.overlayDataUrl = this.generateOverlayDataUrl(canvas, barcodeDummy, targetRects, checkResult, item.bottomBorder, false);
+            item.debugOverlayDataUrl = this.generateOverlayDataUrl(canvas, barcodeDummy, targetRects, checkResult, item.bottomBorder, true);
           } catch (e) {
             console.warn('Overlay preview update failed:', e);
           }
@@ -1071,9 +977,78 @@ export const ScannerEngine = {
   },
 
   /**
-   * チェックボックス枠のオーバーレイ描画
+   * チェックボックス枠のデバッグ用テキストラベル描画ヘルパー
    */
-  drawOverlayBoxes(pctx, canvasWidth, targetRects, checkResult) {
+  drawBoxLabel(pctx, r, text, isChk, canvasWidth, theme = 'default') {
+    if (!r || !text) return;
+    pctx.save();
+    const fontSize = Math.max(12, Math.round(canvasWidth * 0.0125));
+    pctx.font = `bold ${fontSize}px "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif`;
+    const paddingX = Math.max(4, Math.round(fontSize * 0.4));
+    const paddingY = Math.max(2, Math.round(fontSize * 0.22));
+    const textMetrics = pctx.measureText(text);
+    const boxW = textMetrics.width + paddingX * 2;
+    const boxH = fontSize + paddingY * 2;
+
+    // 枠の上、もし上部マージンが不足する場合は枠の下に配置
+    const boxX = Math.max(4, Math.min(pctx.canvas.width - boxW - 4, r.x));
+    const boxY = (r.y - boxH - 4 >= 0) ? (r.y - boxH - 4) : (r.y + r.h + 4);
+
+    let bgColor = 'rgba(15, 23, 42, 0.9)';
+    let textColor = '#ffffff';
+    let borderColor = 'rgba(255, 255, 255, 0.45)';
+
+    if (isChk) {
+      if (theme === 'green') {
+        bgColor = 'rgba(21, 128, 61, 0.96)';
+        borderColor = '#86efac';
+      } else if (theme === 'orange') {
+        bgColor = 'rgba(194, 65, 12, 0.96)';
+        borderColor = '#fdba74';
+      } else if (theme === 'blue') {
+        bgColor = 'rgba(3, 105, 161, 0.96)';
+        borderColor = '#7dd3fc';
+      } else if (theme === 'purple') {
+        bgColor = 'rgba(109, 40, 217, 0.96)';
+        borderColor = '#c4b5fd';
+      } else if (theme === 'red') {
+        bgColor = 'rgba(185, 28, 28, 0.96)';
+        borderColor = '#fca5a5';
+      }
+    } else {
+      bgColor = 'rgba(30, 41, 59, 0.88)';
+      textColor = '#cbd5e1';
+      borderColor = 'rgba(148, 163, 184, 0.5)';
+    }
+
+    pctx.fillStyle = bgColor;
+    pctx.beginPath();
+    if (typeof pctx.roundRect === 'function') {
+      pctx.roundRect(boxX, boxY, boxW, boxH, 4);
+    } else {
+      pctx.rect(boxX, boxY, boxW, boxH);
+    }
+    pctx.fill();
+
+    pctx.lineWidth = Math.max(1, Math.round(fontSize * 0.08));
+    pctx.strokeStyle = borderColor;
+    pctx.stroke();
+
+    pctx.fillStyle = textColor;
+    pctx.textBaseline = 'middle';
+    pctx.fillText(text, boxX + paddingX, boxY + boxH / 2);
+    pctx.restore();
+  },
+
+  /**
+   * チェックボックス枠のオーバーレイ描画
+   * @param {CanvasRenderingContext2D} pctx
+   * @param {number} canvasWidth
+   * @param {object} targetRects
+   * @param {object} checkResult
+   * @param {boolean} [showDebug=false] 各枠の黒画素率ラベルを描画するかどうか
+   */
+  drawOverlayBoxes(pctx, canvasWidth, targetRects, checkResult, showDebug = false) {
     if (!targetRects) return;
 
     // 継続確認モード枠
@@ -1085,6 +1060,10 @@ export const ScannerEngine = {
       pctx.strokeRect(r.x, r.y, r.w, r.h);
       pctx.fillStyle = isChk ? 'rgba(34, 197, 94, 0.25)' : 'rgba(148, 163, 184, 0.1)';
       pctx.fillRect(r.x, r.y, r.w, r.h);
+      if (showDebug) {
+        const val = ((checkResult.participateDarkRatio || 0) * 100).toFixed(1);
+        this.drawBoxLabel(pctx, r, `受講: ${val}%`, isChk, canvasWidth, 'green');
+      }
     }
     if (targetRects.otherRect) {
       const r = targetRects.otherRect;
@@ -1094,6 +1073,10 @@ export const ScannerEngine = {
       pctx.strokeRect(r.x, r.y, r.w, r.h);
       pctx.fillStyle = isChk ? 'rgba(234, 88, 12, 0.25)' : 'rgba(148, 163, 184, 0.1)';
       pctx.fillRect(r.x, r.y, r.w, r.h);
+      if (showDebug) {
+        const val = ((checkResult.otherDarkRatio || 0) * 100).toFixed(1);
+        this.drawBoxLabel(pctx, r, `その他: ${val}%`, isChk, canvasWidth, 'orange');
+      }
     }
     if (targetRects.subject4Rect) {
       const r = targetRects.subject4Rect;
@@ -1103,6 +1086,10 @@ export const ScannerEngine = {
       pctx.strokeRect(r.x, r.y, r.w, r.h);
       pctx.fillStyle = isChk ? 'rgba(2, 132, 199, 0.25)' : 'rgba(148, 163, 184, 0.1)';
       pctx.fillRect(r.x, r.y, r.w, r.h);
+      if (showDebug) {
+        const val = ((checkResult.subject4DarkRatio || 0) * 100).toFixed(1);
+        this.drawBoxLabel(pctx, r, `4科: ${val}%`, isChk, canvasWidth, 'blue');
+      }
     }
     if (targetRects.subject2Rect) {
       const r = targetRects.subject2Rect;
@@ -1112,6 +1099,10 @@ export const ScannerEngine = {
       pctx.strokeRect(r.x, r.y, r.w, r.h);
       pctx.fillStyle = isChk ? 'rgba(2, 132, 199, 0.25)' : 'rgba(148, 163, 184, 0.1)';
       pctx.fillRect(r.x, r.y, r.w, r.h);
+      if (showDebug) {
+        const val = ((checkResult.subject2DarkRatio || 0) * 100).toFixed(1);
+        this.drawBoxLabel(pctx, r, `2科: ${val}%`, isChk, canvasWidth, 'blue');
+      }
     }
     if (targetRects.customFieldRects && targetRects.customFieldRects.length > 0) {
       targetRects.customFieldRects.forEach(field => {
@@ -1124,6 +1115,11 @@ export const ScannerEngine = {
           pctx.strokeRect(r.x, r.y, r.w, r.h);
           pctx.fillStyle = isChk ? 'rgba(139, 92, 246, 0.28)' : 'rgba(100, 116, 139, 0.08)';
           pctx.fillRect(r.x, r.y, r.w, r.h);
+          if (showDebug) {
+            const optDark = checkResult.customChecks?.[opt.id]?.darkRatio || 0;
+            const val = (optDark * 100).toFixed(1);
+            this.drawBoxLabel(pctx, r, `${opt.label}: ${val}%`, isChk, canvasWidth, 'purple');
+          }
         });
       });
     }
@@ -1137,6 +1133,10 @@ export const ScannerEngine = {
       pctx.strokeRect(r.x, r.y, r.w, r.h);
       pctx.fillStyle = isChk ? 'rgba(34, 197, 94, 0.25)' : 'rgba(148, 163, 184, 0.1)';
       pctx.fillRect(r.x, r.y, r.w, r.h);
+      if (showDebug) {
+        const val = ((checkResult.noChangeDarkRatio || 0) * 100).toFixed(1);
+        this.drawBoxLabel(pctx, r, `変更無: ${val}%`, isChk, canvasWidth, 'green');
+      }
     }
     if (targetRects.hasChangeRect) {
       const r = targetRects.hasChangeRect;
@@ -1146,6 +1146,10 @@ export const ScannerEngine = {
       pctx.strokeRect(r.x, r.y, r.w, r.h);
       pctx.fillStyle = isChk ? 'rgba(234, 179, 8, 0.25)' : 'rgba(148, 163, 184, 0.1)';
       pctx.fillRect(r.x, r.y, r.w, r.h);
+      if (showDebug) {
+        const val = ((checkResult.hasChangeDarkRatio || 0) * 100).toFixed(1);
+        this.drawBoxLabel(pctx, r, `変更有: ${val}%`, isChk, canvasWidth, 'orange');
+      }
     }
     if (targetRects.customRects && targetRects.customRects.length > 0) {
       targetRects.customRects.forEach(item => {
@@ -1161,15 +1165,82 @@ export const ScannerEngine = {
           pctx.strokeRect(r.x, r.y, r.w, r.h);
           pctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
           pctx.fillRect(r.x, r.y, r.w, r.h);
+          if (showDebug) {
+            const val = ((curData?.darkRatio || 0) * 100).toFixed(1);
+            this.drawBoxLabel(pctx, r, `${item.label || '講座'}: 取消(${val}%)`, false, canvasWidth, 'red');
+          }
         } else {
           pctx.strokeStyle = isChk ? '#8b5cf6' : '#64748b';
           pctx.lineWidth = Math.max(2, Math.round(canvasWidth * 0.0028));
           pctx.strokeRect(r.x, r.y, r.w, r.h);
           pctx.fillStyle = isChk ? 'rgba(139, 92, 246, 0.28)' : 'rgba(100, 116, 139, 0.08)';
           pctx.fillRect(r.x, r.y, r.w, r.h);
+          if (showDebug) {
+            const val = ((curData?.darkRatio || 0) * 100).toFixed(1);
+            this.drawBoxLabel(pctx, r, `${item.label || '講座'}: ${val}%`, isChk, canvasWidth, 'purple');
+          }
         }
       });
     }
+  },
+
+  /**
+   * 枠線および検出結果のオーバーレイDataURL生成共通ヘルパー
+   */
+  generateOverlayDataUrl(canvas, barcodeResult, targetRects, checkResult, bottomBorder, showDebug = false) {
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = canvas.width;
+    previewCanvas.height = canvas.height;
+    const pctx = previewCanvas.getContext('2d');
+    pctx.drawImage(canvas, 0, 0);
+
+    // コード検出枠の描画（緑）
+    if (barcodeResult && barcodeResult.found && barcodeResult.box) {
+      const b = barcodeResult.box;
+      const bx = b.x !== undefined ? b.x : (b.centerX - b.width / 2);
+      const by = b.y !== undefined ? b.y : (b.centerY - b.height / 2);
+      pctx.save();
+      if (b.angle) {
+        pctx.translate(b.centerX, b.centerY);
+        pctx.rotate(b.angle);
+        pctx.strokeStyle = '#22c55e';
+        pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
+        pctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
+        pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+        pctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+      } else {
+        pctx.strokeStyle = '#22c55e';
+        pctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.0035));
+        pctx.strokeRect(bx, by, b.width, b.height);
+        pctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+        pctx.fillRect(bx, by, b.width, b.height);
+      }
+      pctx.restore();
+    }
+
+    // チェックボックス枠の描画
+    if (targetRects) {
+      this.drawOverlayBoxes(pctx, canvas.width, targetRects, checkResult, showDebug);
+    }
+
+    // パターンA: 検出された外枠下端線の描画（水色ライン）
+    if (bottomBorder && bottomBorder.found) {
+      pctx.save();
+      pctx.strokeStyle = '#06b6d4';
+      pctx.lineWidth = Math.max(2, Math.round(canvas.width * 0.0025));
+      pctx.setLineDash([8, 4]);
+      pctx.beginPath();
+      const x1 = canvas.width * 0.08;
+      const y1 = bottomBorder.slope * x1 + bottomBorder.intercept;
+      const x2 = canvas.width * 0.92;
+      const y2 = bottomBorder.slope * x2 + bottomBorder.intercept;
+      pctx.moveTo(x1, y1);
+      pctx.lineTo(x2, y2);
+      pctx.stroke();
+      pctx.restore();
+    }
+
+    return previewCanvas.toDataURL('image/jpeg', 0.85);
   },
 
   /**

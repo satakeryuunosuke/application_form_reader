@@ -17,6 +17,7 @@ export const ScanPage = {
   selectedStaff: '',
   classList: [],
   zoomLevel: 1.0,
+  isDebugMode: (localStorage.getItem('app_scan_debug_mode') !== 'false'),
 
   resetQueue() {
     if (this._currentKeyHandler) {
@@ -404,6 +405,9 @@ export const ScanPage = {
               ${currentItem.barcodeFound ? '<span class="badge badge-success">バーコード検知済</span>' : '<span class="badge badge-danger">バーコード未検知</span>'}
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
+              <button id="btn-scan-debug-toggle" class="btn btn-sm ${this.isDebugMode ? 'btn-warning font-bold' : 'btn-ghost'}" style="${this.isDebugMode ? 'background: #f59e0b; color: #fff; border: 1px solid #d97706;' : 'color: #fff; border: 1px solid rgba(255,255,255,0.3);'}" title="黒画素率（%）と判定詳細デバッグ表示を切り替え">
+                🐞 デバッグ: ${this.isDebugMode ? 'ON' : 'OFF'}
+              </button>
               <button id="btn-scan-calib" class="btn btn-ghost btn-sm" style="color:#fff; border: 1px solid rgba(255,255,255,0.25);" title="このプロジェクトの書式・読取位置を調整">
                 📐 書式調整
               </button>
@@ -417,7 +421,7 @@ export const ScanPage = {
             </div>
           </div>
           <div class="viewer-canvas-wrap" id="image-viewer-wrap" title="ホイールでズーム / クリックで全画面拡大">
-            <img id="scanned-image-preview" src="${currentItem.overlayDataUrl || currentItem.imageDataUrl}" style="transform: scale(${this.zoomLevel}); cursor: pointer;" alt="スキャン確認票" title="クリックして全画面拡大">
+            <img id="scanned-image-preview" src="${(this.isDebugMode ? (currentItem.debugOverlayDataUrl || currentItem.overlayDataUrl) : currentItem.overlayDataUrl) || currentItem.imageDataUrl}" style="transform: scale(${this.zoomLevel}); cursor: pointer;" alt="スキャン確認票" title="クリックして全画面拡大">
           </div>
         </div>
 
@@ -478,6 +482,9 @@ export const ScanPage = {
               </div>
             </div>
 
+            <!-- 🔬 判定デバッグ情報カード（黒画素率・詳細測定値） -->
+            ${this.renderDebugPanelHtml(currentItem)}
+
             <!-- 受講変更 / 講座選択セクション -->
             <div class="approval-section" style="margin-bottom: 0;">
               ${isSelectionMode ? `
@@ -501,11 +508,16 @@ export const ScanPage = {
                 </div>
               ` : (isContinuationMode ? `
                 <!-- 継続確認モードUI -->
-                <div class="approval-section-title">
+                <div class="approval-section-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px;">
                   <span>📋 継続確認判定</span>
-                  <span class="badge ${currentItem.checkResult?.otherChecked ? 'badge-warning' : 'badge-success'}">
-                    自動判定: ${currentItem.checkResult?.otherChecked ? '⚠️ その他（要特記）' : '✅ 受講する'}
-                  </span>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <span class="scan-debug-badge badge" style="${this.isDebugMode ? 'display: inline-block;' : 'display: none;'} background: #16a34a; color: #fff; font-family: var(--font-mono); font-size: 0.72rem;">
+                      受講: ${((currentItem.checkResult?.participateDarkRatio || 0) * 100).toFixed(1)}% / 他: ${((currentItem.checkResult?.otherDarkRatio || 0) * 100).toFixed(1)}%
+                    </span>
+                    <span class="badge ${currentItem.checkResult?.otherChecked ? 'badge-warning' : 'badge-success'}">
+                      自動判定: ${currentItem.checkResult?.otherChecked ? '⚠️ その他（要特記）' : '✅ 受講する'}
+                    </span>
+                  </div>
                 </div>
 
                 <!-- 1. 受講可否ラジオカード -->
@@ -529,10 +541,15 @@ export const ScanPage = {
 
                 <!-- 2. 科目数選択 -->
                 <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px;">
-                  <div style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700); margin-bottom: 6px;">
-                    📚 受講科目数
-                    <span class="badge badge-info" style="font-size: 0.72rem; margin-left: 4px;">
-                      ${currentItem.checkResult?.subject2Checked ? '自動判定: 2科' : (currentItem.checkResult?.subject4Checked ? '自動判定: 4科' : '既定: ' + (student?.course || '4科'))}
+                  <div style="font-size: 0.8rem; font-weight: 700; color: var(--gray-700); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                    <div>
+                      📚 受講科目数
+                      <span class="badge badge-info" style="font-size: 0.72rem; margin-left: 4px;">
+                        ${currentItem.checkResult?.subject2Checked ? '自動判定: 2科' : (currentItem.checkResult?.subject4Checked ? '自動判定: 4科' : '既定: ' + (student?.course || '4科'))}
+                      </span>
+                    </div>
+                    <span class="scan-debug-badge badge" style="${this.isDebugMode ? 'display: inline-block;' : 'display: none;'} background: #0284c7; color: #fff; font-family: var(--font-mono); font-size: 0.72rem;">
+                      4科: ${((currentItem.checkResult?.subject4DarkRatio || 0) * 100).toFixed(1)}% / 2科: ${((currentItem.checkResult?.subject2DarkRatio || 0) * 100).toFixed(1)}%
                     </span>
                   </div>
                   <div style="display: flex; gap: 16px;">
@@ -753,6 +770,125 @@ export const ScanPage = {
   },
 
   /**
+   * 判定デバッグ情報カードのHTML生成
+   */
+  renderDebugPanelHtml(currentItem) {
+    if (!currentItem || !currentItem.checkResult) return '';
+    const res = currentItem.checkResult;
+    const isCont = (this.project?.projectType === 'continuation');
+
+    let metricsHtml = '';
+
+    if (isCont) {
+      const sub4 = ((res.subject4DarkRatio || 0) * 100).toFixed(1);
+      const sub2 = ((res.subject2DarkRatio || 0) * 100).toFixed(1);
+      const part = ((res.participateDarkRatio || 0) * 100).toFixed(1);
+      const other = ((res.otherDarkRatio || 0) * 100).toFixed(1);
+      const subDiff = (Math.abs((res.subject4DarkRatio || 0) - (res.subject2DarkRatio || 0)) * 100).toFixed(1);
+      const subWinner = (res.subject2DarkRatio || 0) > (res.subject4DarkRatio || 0) ? '2科優位' : '4科優位';
+
+      metricsHtml = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div style="background: rgba(255,255,255,0.06); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
+            <div style="color: #94a3b8; font-size: 0.72rem; margin-bottom: 2px;">
+              📚 科目数 (差: <strong style="color: #facc15;">${subDiff}%</strong> / ${subWinner})
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+              <span style="color: ${res.subject4Checked ? '#38bdf8' : '#e2e8f0'}; font-weight: ${res.subject4Checked ? 'bold' : 'normal'};">
+                4科: <strong>${sub4}%</strong> ${res.subject4Checked ? '✅' : ''}
+              </span>
+              <span style="color: ${res.subject2Checked ? '#38bdf8' : '#e2e8f0'}; font-weight: ${res.subject2Checked ? 'bold' : 'normal'};">
+                2科: <strong>${sub2}%</strong> ${res.subject2Checked ? '✅' : ''}
+              </span>
+            </div>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.06); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12);">
+            <div style="color: #94a3b8; font-size: 0.72rem; margin-bottom: 2px;">
+              📋 継続受講判定
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+              <span style="color: ${res.participateChecked ? '#4ade80' : '#e2e8f0'}; font-weight: ${res.participateChecked ? 'bold' : 'normal'};">
+                受講: <strong>${part}%</strong> ${res.participateChecked ? '✅' : ''}
+              </span>
+              <span style="color: ${res.otherChecked ? '#fb923c' : '#e2e8f0'}; font-weight: ${res.otherChecked ? 'bold' : 'normal'};">
+                他: <strong>${other}%</strong> ${res.otherChecked ? '✅' : ''}
+              </span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 学年別カスタム項目の測定値
+      const customChecks = res.customChecks || {};
+      const customEntries = Object.values(customChecks);
+      if (customEntries.length > 0) {
+        metricsHtml += `
+          <div style="background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; font-size: 0.72rem;">
+            <div style="color: #c4b5fd; margin-bottom: 3px; font-weight: bold;">🏷️ 学年別カスタム項目 黒画素率:</div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              ${customEntries.map(c => `
+                <span style="color: ${c.isChecked ? '#c084fc' : '#94a3b8'};">
+                  ${escapeHtml(c.label)}: <strong style="color: ${c.isChecked ? '#f8fafc' : '#cbd5e1'};">${((c.darkRatio || 0) * 100).toFixed(1)}%</strong> ${c.isChecked ? '✅' : ''}
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+    } else {
+      // 従来モード / 講座選択モード
+      const noVal = ((res.noChangeDarkRatio || 0) * 100).toFixed(1);
+      const hasVal = ((res.hasChangeDarkRatio || 0) * 100).toFixed(1);
+      metricsHtml = `
+        <div style="background: rgba(255,255,255,0.06); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); margin-bottom: 8px;">
+          <div style="color: #94a3b8; font-size: 0.72rem; margin-bottom: 2px;">標準枠 黒画素率</div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+            <span style="color: ${res.noChangeChecked ? '#4ade80' : '#e2e8f0'};">変更無: <strong>${noVal}%</strong> ${res.noChangeChecked ? '✅' : ''}</span>
+            <span style="color: ${res.hasChangeChecked ? '#fb923c' : '#e2e8f0'};">変更有: <strong>${hasVal}%</strong> ${res.hasChangeChecked ? '✅' : ''}</span>
+          </div>
+        </div>
+      `;
+      const customChecks = res.customChecks || {};
+      const customEntries = Object.values(customChecks);
+      if (customEntries.length > 0) {
+        metricsHtml += `
+          <div style="background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; font-size: 0.72rem; max-height: 80px; overflow-y: auto;">
+            <div style="color: #c4b5fd; margin-bottom: 3px; font-weight: bold;">🎯 講座枠 黒画素率:</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              ${customEntries.map(c => `
+                <span style="color: ${c.isChecked ? '#c084fc' : '#94a3b8'};">
+                  ${escapeHtml(c.label)}: <strong style="color: #f8fafc;">${((c.darkRatio || 0) * 100).toFixed(1)}%</strong> ${c.isChecked ? '✅' : ''}
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    const codeType = currentItem.codeType || (currentItem.barcodeFound ? '検出済' : '未検知');
+    const borderAngle = currentItem.bottomBorder?.found ? (currentItem.bottomBorder.angleDeg || 0).toFixed(2) + '°' : '未検出';
+
+    return `
+      <div id="scan-debug-info-box" style="${this.isDebugMode ? 'display: block;' : 'display: none;'} background: #0f172a; border: 1px solid #334155; border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px; font-family: var(--font-mono); font-size: 0.74rem; color: #e2e8f0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px;">
+          <span style="font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 4px;">
+            <span>🔬</span> 読取判定デバッグ（黒画素率・詳細測定値）
+          </span>
+          <span style="font-size: 0.68rem; color: #94a3b8;">
+            コード: ${escapeHtml(codeType)} / 下端罫線補正: ${escapeHtml(borderAngle)}
+          </span>
+        </div>
+        ${metricsHtml}
+        <div style="font-size: 0.68rem; color: #94a3b8; line-height: 1.3;">
+          💡 <strong>左画像上にも各枠の黒画素率が印字されています。</strong>この画面または全画面拡大（⛶）を撮影していただくと状況が把握できます。
+        </div>
+      </div>
+    `;
+  },
+
+  /**
    * 既存登録情報のスニペットHTML生成
    */
   renderExistingInfoSnippet(student, existingSub) {
@@ -817,13 +953,59 @@ export const ScanPage = {
       };
     }
 
+    // デバッグ表示トグルイベント
+    const debugBtn = this.container.querySelector('#btn-scan-debug-toggle');
+    if (debugBtn) {
+      debugBtn.onclick = () => {
+        this.isDebugMode = !this.isDebugMode;
+        localStorage.setItem('app_scan_debug_mode', this.isDebugMode ? 'true' : 'false');
+
+        // ボタンの文言・スタイル更新
+        debugBtn.textContent = `🐞 デバッグ: ${this.isDebugMode ? 'ON' : 'OFF'}`;
+        if (this.isDebugMode) {
+          debugBtn.className = 'btn btn-sm btn-warning font-bold';
+          debugBtn.style.background = '#f59e0b';
+          debugBtn.style.color = '#fff';
+          debugBtn.style.border = '1px solid #d97706';
+        } else {
+          debugBtn.className = 'btn btn-sm btn-ghost';
+          debugBtn.style.background = '';
+          debugBtn.style.color = '#fff';
+          debugBtn.style.border = '1px solid rgba(255,255,255,0.3)';
+        }
+
+        // 画像の切り替え
+        if (img) {
+          const targetSrc = this.isDebugMode
+            ? (currentItem.debugOverlayDataUrl || currentItem.overlayDataUrl || currentItem.imageDataUrl)
+            : (currentItem.overlayDataUrl || currentItem.imageDataUrl);
+          img.src = targetSrc;
+        }
+
+        // デバッグ詳細パネルの表示切替
+        const debugPanel = this.container.querySelector('#scan-debug-info-box');
+        if (debugPanel) {
+          debugPanel.style.display = this.isDebugMode ? 'block' : 'none';
+        }
+
+        // インラインバッジの表示切替
+        const badges = this.container.querySelectorAll('.scan-debug-badge');
+        badges.forEach(b => {
+          b.style.display = this.isDebugMode ? 'inline-block' : 'none';
+        });
+      };
+    }
+
     // 全画面ライトボックス拡大表示
     const openLightbox = () => {
       const student = currentItem.matchedStudent;
       const title = student 
         ? `${student.name} 様 (${student.nichinokenId}) スキャン確認票`
         : `受講確認票 (ページ ${currentItem.pageNum})`;
-      UI.showImageLightbox(currentItem.imageDataUrl, title);
+      const targetSrc = this.isDebugMode
+        ? (currentItem.debugOverlayDataUrl || currentItem.overlayDataUrl || currentItem.imageDataUrl)
+        : (currentItem.overlayDataUrl || currentItem.imageDataUrl);
+      UI.showImageLightbox(targetSrc, title);
     };
 
     const fullscreenBtn = this.container.querySelector('#btn-fullscreen-img');
@@ -1696,6 +1878,7 @@ export const ScanPage = {
           customChecks,
           selectedCourses,
           scanImageBlob: currentItem.imageDataUrl,
+          scanCheckResult: currentItem.checkResult || null,
           submittedAt: new Date().toISOString(),
           approvedAt: new Date().toISOString()
         };
