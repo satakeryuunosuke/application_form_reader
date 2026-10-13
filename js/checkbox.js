@@ -196,14 +196,19 @@ export const CheckboxEngine = {
   /**
    * 指定Canvas内のROI領域における黒画素率（ダークピクセル割合）を計算
    * 角度（rect.angle）がある場合は回転アフィン変換により傾き補正してサンプリング
+   * 枠内ピクセル内の上位パーセンタイル（明るい画素群）から用紙の地色（白地輝度）を動的に推定し、
+   * 薄い鉛筆・水性ボールペンの筆跡や暗いスキャン用紙に適応した動的2値化（Adaptive Preprocessing）を実行
    * 
    * @param {HTMLCanvasElement} canvas
    * @param {{ x: number, y: number, w: number, h: number, cx?: number, cy?: number, angle?: number }} rect ピクセル座標
    * @param {number} checkThreshold 判定閾値 (デフォルト: 0.25)
-   * @param {number} darknessThreshold 輝度閾値 (0~255, 140以下を黒とみなす)
-   * @returns {{ darkRatio: number, isChecked: boolean, totalPixels: number, darkPixels: number }}
+   * @param {number} darknessThreshold 基準輝度閾値 (0~255, デフォルト: 140)
+   * @param {object} [options]
+   * @param {boolean} [options.adaptive=true] 上位パーセンタイルによる動的白地適応を有効化
+   * @param {number} [options.adaptiveFactor=0.72] 白地輝度に対する黒画素判定比率 (0.72 = 薄ペン・薄鉛筆を適応捕捉)
+   * @returns {{ darkRatio: number, isChecked: boolean, totalPixels: number, darkPixels: number, whiteBrightness: number, effectiveDarknessThreshold: number, rect: object }}
    */
-  evaluateCheckbox(canvas, rect, checkThreshold = 0.25, darknessThreshold = 140) {
+  evaluateCheckbox(canvas, rect, checkThreshold = 0.25, darknessThreshold = 140, options = {}) {
     const width = canvas.width;
     const height = canvas.height;
     const w = Math.max(1, Math.round(rect.w));
@@ -212,10 +217,14 @@ export const CheckboxEngine = {
     const cy = rect.cy !== undefined ? rect.cy : (rect.y + rect.h / 2);
     const angle = rect.angle || 0;
 
+    const useAdaptive = options.adaptive !== false;
+    const adaptiveFactor = (typeof options.adaptiveFactor === 'number' && options.adaptiveFactor > 0)
+      ? options.adaptiveFactor
+      : 0.72;
+
     try {
       let data;
       let totalPixels = w * h;
-      let darkPixels = 0;
 
       // 傾きがある場合（約0.2度以上）、一時Canvasで逆回転サンプリング
       if (Math.abs(angle) > 0.003) {
@@ -241,15 +250,67 @@ export const CheckboxEngine = {
         totalPixels = sampleW * sampleH;
       }
 
-      // チェックボックス領域内の黒画素数を集計
+      // 1. 輝度ヒストグラムの集計 (O(N))
+      const hist = new Uint32Array(256);
+      const pixelCount = Math.floor(data.length / 4);
+      totalPixels = pixelCount;
+
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
-        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (brightness < darknessThreshold) {
-          darkPixels++;
+        const brightness = Math.min(255, Math.max(0, Math.round(0.299 * r + 0.587 * g + 0.114 * b)));
+        hist[brightness]++;
+      }
+
+      // 2. 枠内ピクセル内の上位パーセンタイル（明るい画素群: 上位80%〜95%区間）から白地（背景紙色）を推定
+      // ※外枠線や周囲の印刷文字を一切参照せず、チェックボックス内部の余白のみから局所背景輝度を算出
+      let whiteBrightness = 220;
+      let effectiveDarknessThreshold = darknessThreshold;
+
+      if (pixelCount > 0 && useAdaptive) {
+        const pLowIdx = Math.floor(pixelCount * 0.80);
+        const pHighIdx = Math.floor(pixelCount * 0.95);
+        let cum = 0;
+        let sumBr = 0;
+        let countBr = 0;
+        let p85Brightness = 220;
+
+        for (let b = 0; b < 256; b++) {
+          const prevCum = cum;
+          cum += hist[b];
+          if (cum >= Math.floor(pixelCount * 0.85) && prevCum < Math.floor(pixelCount * 0.85)) {
+            p85Brightness = b;
+          }
+          // [pLowIdx, pHighIdx] 区間の画素の寄与を集計
+          const overlapStart = Math.max(prevCum, pLowIdx);
+          const overlapEnd = Math.min(cum, pHighIdx);
+          if (overlapEnd > overlapStart) {
+            const count = overlapEnd - overlapStart;
+            sumBr += b * count;
+            countBr += count;
+          }
         }
+
+        whiteBrightness = countBr > 0 ? Math.round(sumBr / countBr) : p85Brightness;
+
+        // 白地輝度に応じた動的ピクセル閾値 (Adaptive Darkness Threshold)
+        // 例: 白地が230なら 230 * 0.72 = 166 (薄い鉛筆・水性ボールペンの筆跡 150〜170 を確実に捕捉)
+        // 例: 暗いスキャンで白地が170なら 170 * 0.72 = 122 (背景の影やムラを誤検出しない)
+        if (whiteBrightness >= 110) {
+          const rawAdaptive = Math.round(whiteBrightness * adaptiveFactor);
+          // 安全ガード（クランプ）: 下限100（黒インク確実に検出）、上限178（極端に白い用紙でのノイズ誤検出防止）
+          effectiveDarknessThreshold = Math.min(178, Math.max(100, rawAdaptive));
+        } else {
+          // 枠全体が塗りつぶされている等の極端に暗いケースは安全に下限値または基準値を維持
+          effectiveDarknessThreshold = Math.max(darknessThreshold, 110);
+        }
+      }
+
+      // 3. 適応型閾値による黒画素数の集計 (ヒストグラム累積で O(256))
+      let darkPixels = 0;
+      for (let b = 0; b < effectiveDarknessThreshold; b++) {
+        darkPixels += hist[b];
       }
 
       const darkRatio = totalPixels > 0 ? darkPixels / totalPixels : 0;
@@ -260,11 +321,21 @@ export const CheckboxEngine = {
         isChecked,
         totalPixels,
         darkPixels,
+        whiteBrightness,
+        effectiveDarknessThreshold,
         rect: { x: cx - w / 2, y: cy - h / 2, w, h, cx, cy, angle }
       };
     } catch (e) {
       console.warn('Checkbox evaluation error:', e);
-      return { darkRatio: 0, isChecked: false, totalPixels: 0, darkPixels: 0, rect };
+      return {
+        darkRatio: 0,
+        isChecked: false,
+        totalPixels: 0,
+        darkPixels: 0,
+        whiteBrightness: 220,
+        effectiveDarknessThreshold: darknessThreshold,
+        rect
+      };
     }
   },
 

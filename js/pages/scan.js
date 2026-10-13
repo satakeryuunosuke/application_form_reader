@@ -870,15 +870,17 @@ export const ScanPage = {
 
     const codeType = currentItem.codeType || (currentItem.barcodeFound ? '検出済' : '未検知');
     const borderAngle = currentItem.bottomBorder?.found ? (currentItem.bottomBorder.angleDeg || 0).toFixed(2) + '°' : '未検出';
+    const whiteBr = res.whiteBrightness !== undefined ? res.whiteBrightness : '-';
+    const darkTh = res.adaptiveDarkThreshold !== undefined ? res.adaptiveDarkThreshold : '-';
 
     return `
       <div id="scan-debug-info-box" style="${this.isDebugMode ? 'display: block;' : 'display: none;'} background: #0f172a; border: 1px solid #334155; border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 10px; font-family: var(--font-mono); font-size: 0.74rem; color: #e2e8f0;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px; flex-wrap: wrap; gap: 4px;">
           <span style="font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 4px;">
-            <span>🔬</span> 読取判定デバッグ（黒画素率・詳細測定値）
+            <span>🔬</span> 読取判定デバッグ（黒画素率・地色適応測定値）
           </span>
           <span style="font-size: 0.68rem; color: #94a3b8;">
-            コード: ${escapeHtml(codeType)} / 下端罫線補正: ${escapeHtml(borderAngle)}
+            🎨 地色適応: <strong style="color: #f8fafc;">白地Y=${whiteBr}</strong> (閾値T=${darkTh}) | コード: ${escapeHtml(codeType)} / 下端罫線: ${escapeHtml(borderAngle)}
           </span>
         </div>
         ${metricsHtml}

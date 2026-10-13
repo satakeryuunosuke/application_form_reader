@@ -909,7 +909,9 @@ export const ScannerEngine = {
         subject4Checked: (enrollmentCourse === '4科'),
         subject2Checked: (enrollmentCourse === '2科'),
         subject4DarkRatio: sub4Dark,
-        subject2DarkRatio: sub2Dark
+        subject2DarkRatio: sub2Dark,
+        whiteBrightness: partEval?.whiteBrightness || otherEval?.whiteBrightness || 220,
+        adaptiveDarkThreshold: partEval?.effectiveDarknessThreshold || otherEval?.effectiveDarknessThreshold || 140
       };
     }
 
@@ -972,7 +974,9 @@ export const ScannerEngine = {
       customFields: {},
       customDynamicThreshold,
       isCustomDynamicApplied,
-      customCancelledOutliers
+      customCancelledOutliers,
+      whiteBrightness: noChangeEval?.whiteBrightness || hasChangeEval?.whiteBrightness || 220,
+      adaptiveDarkThreshold: noChangeEval?.effectiveDarknessThreshold || hasChangeEval?.effectiveDarknessThreshold || 140
     };
   },
 

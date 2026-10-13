@@ -2018,16 +2018,25 @@ export class TemplateCalibrator {
       }
 
       activeTitleEl.textContent = activeLabel;
+      const evObj = (this.activeTab === 'noChange')
+        ? noChangeEval
+        : ((this.activeTab === 'hasChange')
+          ? hasChangeEval
+          : displayList.find(c => c.id === this.activeTab)?.eval);
+      const adaptTag = (evObj && evObj.whiteBrightness !== undefined)
+        ? ` [白地Y=${evObj.whiteBrightness} / 閾値T=${evObj.effectiveDarknessThreshold}]`
+        : '';
+
       if (isCancelled) {
-        activeRatioEl.textContent = `黒画素率: ${activePct}%（⚠️突出外れ値: 訂正塗りつぶしのため非受講）`;
+        activeRatioEl.textContent = `黒画素率: ${activePct}%（⚠️突出外れ値: 訂正塗りつぶしのため非受講）${adaptTag}`;
         activeBadgeEl.innerHTML = `<span class="badge font-bold" style="font-size: 0.8rem; padding: 4px 8px; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;">⚠️ 訂正取消 (なし)</span>`;
       } else if (isDyn) {
-        activeRatioEl.textContent = `黒画素率: ${activePct}%（動的判定閾値: ${Math.round(dynTh * 100)}% 自動適応）`;
+        activeRatioEl.textContent = `黒画素率: ${activePct}%（動的判定閾値: ${Math.round(dynTh * 100)}% 自動適応）${adaptTag}`;
         activeBadgeEl.innerHTML = isChk
           ? `<span class="badge ${activeBadgeClass} font-bold" style="font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
           : `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 4px 8px;">⬜ なし</span>`;
       } else {
-        activeRatioEl.textContent = `黒画素率: ${activePct}%（判定閾値: ${Math.round((this.template.threshold || 0.25) * 100)}%）`;
+        activeRatioEl.textContent = `黒画素率: ${activePct}%（判定閾値: ${Math.round((this.template.threshold || 0.25) * 100)}%）${adaptTag}`;
         activeBadgeEl.innerHTML = isChk
           ? `<span class="badge ${activeBadgeClass} font-bold" style="font-size: 0.8rem; padding: 4px 8px;">✅ あり</span>`
           : `<span class="badge badge-gray" style="font-size: 0.8rem; padding: 4px 8px;">⬜ なし</span>`;
