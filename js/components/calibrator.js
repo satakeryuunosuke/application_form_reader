@@ -495,8 +495,8 @@ export class TemplateCalibrator {
           <div class="calib-smart-select-wrapper">
             <select id="calib-smart-box-select" class="calib-smart-select">
               ${allBoxes.map((b, idx) => `
-                <option value="${b.id}" ${b.id === this.activeTab ? 'selected' : ''}>
-                  ${idx + 1}. ${b.icon} ${b.label}
+                <option value="${escapeHtml(b.id)}" ${b.id === this.activeTab ? 'selected' : ''}>
+                  ${idx + 1}. ${b.icon} ${escapeHtml(b.label)}
                 </option>
               `).join('')}
             </select>
@@ -534,8 +534,8 @@ export class TemplateCalibrator {
     }
     tabsHtml += customBoxes.map(box => `
       <div class="calib-tab-item ${this.activeTab === box.id ? 'active' : ''}" style="${this.activeTab === box.id ? 'border-color: #8b5cf6;' : ''}">
-        <button type="button" class="calib-tab-btn" data-tab="${box.id}">🟪 ${box.label}</button>
-        <button type="button" class="calib-tab-del-btn" data-del="${box.id}" title="「${box.label}」読取枠を削除">✕</button>
+        <button type="button" class="calib-tab-btn" data-tab="${escapeHtml(box.id)}">🟪 ${escapeHtml(box.label)}</button>
+        <button type="button" class="calib-tab-del-btn" data-del="${escapeHtml(box.id)}" title="「${escapeHtml(box.label)}」読取枠を削除">✕</button>
       </div>
     `).join('');
 

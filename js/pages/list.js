@@ -119,7 +119,7 @@ export const ListPage = {
             <div class="filter-left-tools">
               <div class="search-input-wrap">
                 <span class="search-icon">🔍</span>
-                <input type="text" id="inp-search" class="form-control filter-search-input" placeholder="${isSelectionMode ? '氏名・カナ・日能研番号・講座名で検索...' : '氏名・カナ・日能研番号で検索...'}" value="${this.searchQuery}">
+                <input type="text" id="inp-search" class="form-control filter-search-input" placeholder="${isSelectionMode ? '氏名・カナ・日能研番号・講座名で検索...' : '氏名・カナ・日能研番号で検索...'}" value="${escapeHtml(this.searchQuery)}">
                 <button type="button" id="btn-search-clear" class="btn-search-clear ${this.searchQuery ? '' : 'hidden'}" title="検索をクリア">✕</button>
               </div>
 
@@ -175,7 +175,7 @@ export const ListPage = {
                 <div class="filter-single-select-wrap">
                   <select id="sel-filter-prev-class" class="filter-single-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="所属クラスで絞り込み">
                     <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>所属クラス: すべて</option>
-                    ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    ${prevClasses.map(c => `<option value="${escapeHtml(c)}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
                   </select>
                 </div>
 
@@ -183,7 +183,7 @@ export const ListPage = {
                 <div class="filter-single-select-wrap">
                   <select id="sel-filter-course" class="filter-single-select ${this.currentCourseFilter !== 'all' ? 'is-active' : ''}" title="申込講座で絞り込み">
                     <option value="all" ${this.currentCourseFilter === 'all' ? 'selected' : ''}>🎯 講座: すべて</option>
-                    ${courseBoxes.map(b => `<option value="${b.label}" ${this.currentCourseFilter === b.label ? 'selected' : ''}>${b.label}</option>`).join('')}
+                    ${courseBoxes.map(b => `<option value="${escapeHtml(b.label)}" ${this.currentCourseFilter === b.label ? 'selected' : ''}>${escapeHtml(b.label)}</option>`).join('')}
                   </select>
                 </div>
               ` : isContinuationMode ? `
@@ -191,7 +191,7 @@ export const ListPage = {
                 <div class="filter-single-select-wrap">
                   <select id="sel-filter-prev-class" class="filter-single-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="所属クラスで絞り込み">
                     <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>所属クラス: すべて</option>
-                    ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    ${prevClasses.map(c => `<option value="${escapeHtml(c)}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
                   </select>
                 </div>
 
@@ -220,7 +220,7 @@ export const ListPage = {
                   <span class="cluster-tag prev">変更前</span>
                   <select id="sel-filter-prev-class" class="cluster-select ${this.currentPrevClassFilter !== 'all' ? 'is-active' : ''}" title="変更前クラス">
                     <option value="all" ${this.currentPrevClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
-                    ${prevClasses.map(c => `<option value="${c}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    ${prevClasses.map(c => `<option value="${escapeHtml(c)}" ${this.currentPrevClassFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
                   </select>
                   <span class="cluster-divider">/</span>
                   <select id="sel-filter-prev-course" class="cluster-select ${this.currentPrevCourseFilter !== 'all' ? 'is-active' : ''}" title="変更前科目">
@@ -235,10 +235,10 @@ export const ListPage = {
                   <span class="cluster-tag post">確定後</span>
                   <select id="sel-filter-post-class" class="cluster-select ${this.currentPostClassFilter !== 'all' ? 'is-active' : ''}" title="確定後クラス">
                     <option value="all" ${this.currentPostClassFilter === 'all' ? 'selected' : ''}>クラス: すべて</option>
-                    ${postClasses.map(c => `<option value="${c}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    ${postClasses.map(c => `<option value="${escapeHtml(c)}" ${this.currentPostClassFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
                     ${changeOptions.map(opt => {
                       let icon = opt === '非受講' ? '🚫' : (opt === '他教室で受講' ? '🏫' : '📝');
-                      return `<option value="${opt}" ${this.currentPostClassFilter === opt ? 'selected' : ''}>${icon} ${opt}</option>`;
+                      return `<option value="${escapeHtml(opt)}" ${this.currentPostClassFilter === opt ? 'selected' : ''}>${icon} ${escapeHtml(opt)}</option>`;
                     }).join('')}
                     <option value="unsubmitted" ${this.currentPostClassFilter === 'unsubmitted' ? 'selected' : ''}>⏳ 未定</option>
                   </select>
@@ -1012,11 +1012,11 @@ export const ListPage = {
       if (studentData.enrollmentClass === '非受講' || studentData.enrollmentCourse === '非受講') {
         currentStatusBadge = '<span class="badge badge-purple font-bold">🚫 非受講（確定）</span>';
       } else if (studentData.enrollmentClass === '他教室で受講') {
-        currentStatusBadge = `<span class="badge font-bold" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;">🏫 他教室で受講 (${studentData.enrollmentCourse || studentData.course || '4科'})</span>`;
+        currentStatusBadge = `<span class="badge font-bold" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;">🏫 他教室で受講 (${escapeHtml(studentData.enrollmentCourse || studentData.course || '4科')})</span>`;
       } else if (studentData.hasChange) {
-        currentStatusBadge = `<span class="badge badge-warning font-bold">🔄 変更あり: ${studentData.enrollmentClass} (${studentData.enrollmentCourse || studentData.course || '4科'})</span>`;
+        currentStatusBadge = `<span class="badge badge-warning font-bold">🔄 変更あり: ${escapeHtml(studentData.enrollmentClass)} (${escapeHtml(studentData.enrollmentCourse || studentData.course || '4科')})</span>`;
       } else {
-        currentStatusBadge = `<span class="badge badge-success font-bold">✅ 変更なし: ${studentData.enrollmentClass} (${studentData.enrollmentCourse || studentData.course || '4科'})</span>`;
+        currentStatusBadge = `<span class="badge badge-success font-bold">✅ 変更なし: ${escapeHtml(studentData.enrollmentClass)} (${escapeHtml(studentData.enrollmentCourse || studentData.course || '4科')})</span>`;
       }
     }
 
@@ -1125,7 +1125,7 @@ export const ListPage = {
                           <div class="history-field">
                             <div class="history-field-label">ステータス</div>
                             <div class="history-field-value">
-                              <span class="badge ${item.status === '承認済' ? 'badge-success' : 'badge-gray'}">${item.status}</span>
+                              <span class="badge ${item.status === '承認済' ? 'badge-success' : 'badge-gray'}">${escapeHtml(item.status)}</span>
                             </div>
                           </div>
                         </div>
@@ -1136,7 +1136,7 @@ export const ListPage = {
                             <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                               ${Object.values(item.customChecks).filter(c => c.isChecked).map(c => `
                                 <span class="badge badge-purple font-bold" style="background:#8b5cf6; color:#fff; font-size: 0.74rem;">
-                                  ✅ ${escapeHtml(c.label)}
+                                   ${escapeHtml(c.label)}
                                 </span>
                               `).join('')}
                             </div>
@@ -1150,13 +1150,13 @@ export const ListPage = {
                           </div>
                         ` : ''}
 
-                        ${item.scanImageBlob ? `
+                        ${item.scanImageBlob && UI.isSafeSrc(item.scanImageBlob) ? `
                           <div class="history-scan-container">
                             <div class="history-scan-label">
                               <span>📷 スキャン確認票（原本プレビュー）</span>
                             </div>
-                            <div class="history-scan-thumb-wrap" data-img-src="${item.scanImageBlob}" data-title="${escapeHtml(studentData.name)} 様 (${UI.formatDate(item.timestamp)}) スキャン確認票">
-                              <img src="${item.scanImageBlob}" class="history-scan-thumb" alt="スキャン確認票">
+                            <div class="history-scan-thumb-wrap" data-img-src="${escapeHtml(item.scanImageBlob)}" data-title="${escapeHtml(studentData.name)} 様 (${UI.formatDate(item.timestamp)}) スキャン確認票">
+                              <img src="${escapeHtml(item.scanImageBlob)}" class="history-scan-thumb" alt="スキャン確認票">
                               <div class="history-scan-overlay">
                                 🔍 クリックして拡大表示
                               </div>

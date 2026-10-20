@@ -599,7 +599,7 @@ export const ProjectPage = {
             </div>
             <div class="folder-info-status-badges">
               <span class="badge ${isFolderConnected ? 'badge-success' : (FolderConnector.isPermissionPending() ? 'badge-warning' : 'badge-gray')}">
-                ${isFolderConnected ? `🟢 共有フォルダ: ${FolderConnector.getFolderName() || FolderConnector.folderName || '接続中'}` : (FolderConnector.isPermissionPending() ? '🟡 要再認可' : '⚪ 共有フォルダ未接続')}
+                ${isFolderConnected ? `🟢 共有フォルダ: ${escapeHtml(FolderConnector.getFolderName() || FolderConnector.folderName || '接続中')}` : (FolderConnector.isPermissionPending() ? '🟡 要再認可' : '⚪ 共有フォルダ未接続')}
               </span>
               <span class="badge ${isCompleted ? 'badge-gray' : 'badge-success'}">
                 ${isCompleted ? '🏁 完了 (archive/)' : '🟢 進行中'}
@@ -610,8 +610,8 @@ export const ProjectPage = {
             <div class="folder-info-row">
               <span class="folder-info-label">格納名 (ID):</span>
               <div class="folder-name-box">
-                <code class="folder-name-code text-mono" id="dash-project-folder-name" title="クリックして全選択">${projectId}</code>
-                <button type="button" id="btn-copy-folder-name" class="btn btn-secondary btn-xs btn-copy-folder" title="フォルダ名「${projectId}」をクリップボードにコピー">
+                <code class="folder-name-code text-mono" id="dash-project-folder-name" title="クリックして全選択">${escapeHtml(projectId)}</code>
+                <button type="button" id="btn-copy-folder-name" class="btn btn-secondary btn-xs btn-copy-folder" title="フォルダ名「${escapeHtml(projectId)}」をクリップボードにコピー">
                   📋 コピー
                 </button>
               </div>
@@ -619,9 +619,9 @@ export const ProjectPage = {
             <div class="folder-info-path-hint">
               ${isFolderConnected ? `
                 <span style="color: var(--gray-500);">エクスプローラー上の場所:</span>
-                <code class="text-mono">${FolderConnector.getFolderName() || FolderConnector.folderName || '共有フォルダ'}\\${isCompleted ? 'archive\\' : ''}${projectId}\\</code>
+                <code class="text-mono">${escapeHtml(FolderConnector.getFolderName() || FolderConnector.folderName || '共有フォルダ')}\\${isCompleted ? 'archive\\' : ''}${escapeHtml(projectId)}\\</code>
               ` : `
-                <span style="color: var(--gray-500);">※ 共有フォルダに接続すると、ルート直下に <code class="text-mono">${projectId}\\</code> として作成・同期されます</span>
+                <span style="color: var(--gray-500);">※ 共有フォルダに接続すると、ルート直下に <code class="text-mono">${escapeHtml(projectId)}\\</code> として作成・同期されます</span>
               `}
             </div>
           </div>
@@ -652,7 +652,7 @@ export const ProjectPage = {
                     <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md);">
                       <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
                         <span class="badge" style="background: ${badgeBg}; color: ${badgeColor}; font-weight: 700; font-size: 0.72rem; padding: 2px 6px;">${badgeText}</span>
-                        <span style="font-weight: 600; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${b.label}">${b.label}</span>
+                        <span style="font-weight: 600; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(b.label)}">${escapeHtml(b.label)}</span>
                       </div>
                       <div style="text-align: right; min-width: 65px;">
                         <span class="text-mono font-bold" style="font-size: 1.1rem; color: var(--primary-700);">${count}</span>
@@ -812,7 +812,7 @@ export const ProjectPage = {
                   <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
                     ${continuationCustomFields.map(f => `
                       <div style="font-size: 0.8rem; background: var(--gray-50); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--gray-200);">
-                        <strong>🏷️ ${f.name}:</strong> <span style="color: var(--gray-600);">${(f.options || []).map(opt => typeof opt === 'object' ? opt.label : opt).join(' / ')}</span>
+                        <strong>🏷️ ${escapeHtml(f.name)}:</strong> <span style="color: var(--gray-600);">${(f.options || []).map(opt => escapeHtml(typeof opt === 'object' ? opt.label : opt)).join(' / ')}</span>
                       </div>
                     `).join('')}
                     ${continuationCustomFields.length === 0 ? '<span style="font-size: 0.78rem; color: var(--gray-500);">学年別項目はありません（全学年共通項目のみ）</span>' : ''}
@@ -836,7 +836,7 @@ export const ProjectPage = {
                   <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">
                     ${changeOptions.map(opt => `
                       <span class="badge ${opt === '非受講' ? 'badge-danger' : (opt === '他教室で受講' ? 'badge-primary' : 'badge-gray')}" style="font-size: 0.75rem;">
-                        ${opt === '非受講' ? '🚫' : (opt === '他教室で受講' ? '🏫' : '📝')} ${opt}
+                        ${opt === '非受講' ? '🚫' : (opt === '他教室で受講' ? '🏫' : '📝')} ${escapeHtml(opt)}
                       </span>
                     `).join('')}
                   </div>
@@ -1211,14 +1211,14 @@ export const ProjectPage = {
                 <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
                 <select id="proj-sel-course" class="form-control" style="font-size: 0.85rem;">
                   <option value="">-- 講座名を選択 --</option>
-                  ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
+                  ${coursePresets.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
                 </select>
               </div>
               <div>
                 <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
                 <select id="proj-sel-method" class="form-control" style="font-size: 0.85rem;">
                   <option value="">-- 受講方法を選択 --</option>
-                  ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
+                  ${methodPresets.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}
                 </select>
               </div>
               <div>
@@ -1346,15 +1346,15 @@ export const ProjectPage = {
         return `
           <div class="custom-box-item-card ${calibrator && calibrator.activeTab === box.id ? 'is-active' : ''}">
             <div style="display: flex; align-items: center; gap: 4px;">
-              <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${box.label}</span>
+              <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${escapeHtml(box.label)}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 3px;">
-              <button type="button" class="custom-box-order-btn proj-btn-move-box" data-id="${box.id}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
-              <button type="button" class="custom-box-order-btn proj-btn-move-box" data-id="${box.id}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
-              <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+              <button type="button" class="custom-box-order-btn proj-btn-move-box" data-id="${escapeHtml(box.id)}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
+              <button type="button" class="custom-box-order-btn proj-btn-move-box" data-id="${escapeHtml(box.id)}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
+              <button type="button" class="btn btn-secondary btn-sm proj-btn-focus-box" data-id="${escapeHtml(box.id)}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
                 🎯 調整
               </button>
-              <button type="button" class="btn-ghost proj-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+              <button type="button" class="btn-ghost proj-btn-del-box" data-id="${escapeHtml(box.id)}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
                 ✕
               </button>
             </div>
@@ -1382,7 +1382,7 @@ export const ProjectPage = {
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
               ${allBoxes.length > 5 ? `
-                <input type="text" id="proj-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${projSearchFilter}">
+                <input type="text" id="proj-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${escapeHtml(projSearchFilter)}">
               ` : ''}
               ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
             </div>
@@ -1980,7 +1980,7 @@ export const ProjectPage = {
                         <label class="form-label" style="font-size: 0.85rem;">所属クラス <span class="required">*</span></label>
                         <input type="text" id="add-inp-class" class="form-control font-bold" placeholder="例: W1, M1, A1 など" list="exist-classes-list" required>
                         <datalist id="exist-classes-list">
-                          ${classes.map(c => `<option value="${c}">`).join('')}
+                          ${classes.map(c => `<option value="${escapeHtml(c)}">`).join('')}
                         </datalist>
                       </div>
 

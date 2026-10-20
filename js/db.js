@@ -1172,18 +1172,27 @@ export const DB = {
 
     const { projects, students, submissions, settings, syncEvents, pendingEvents, appState } = backupJson.data;
 
+    // 再帰的プロトタイプ汚染防御（ネスト構造もすべてサニタイズ）
+    const deepSanitize = (val, depth = 0) => {
+      if (depth > 20 || val === null || typeof val !== 'object') return val;
+      if (Array.isArray(val)) {
+        return val.map(item => deepSanitize(item, depth + 1));
+      }
+      const cleanObj = Object.create(null);
+      for (const [k, v] of Object.entries(val)) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        cleanObj[k] = deepSanitize(v, depth + 1);
+      }
+      return Object.assign({}, cleanObj);
+    };
+
     // テーブル配列の検証と安全化ヘルパー（prototype汚染キー除外 & オブジェクト構造確認）
     const sanitizeRecordArray = (arr, tableName) => {
       if (!Array.isArray(arr)) return [];
       const cleanArr = [];
       for (const item of arr) {
         if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-        const cleanObj = {};
-        for (const [k, v] of Object.entries(item)) {
-          if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
-          cleanObj[k] = v;
-        }
-        cleanArr.push(cleanObj);
+        cleanArr.push(deepSanitize(item));
       }
       return cleanArr;
     };

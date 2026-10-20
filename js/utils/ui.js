@@ -17,8 +17,29 @@ export function escapeHtml(val) {
     .replace(/'/g, '&#039;');
 }
 
+/**
+ * 画像Src/URLの安全性を検証（data:ラスター画像、blob:、安全な相対パスのみ許可し javascript: や svg+xml 等をブロック）
+ * @param {any} src
+ * @returns {boolean}
+ */
+export function isSafeSrc(src) {
+  if (typeof src !== 'string') return false;
+  const s = src.trim();
+  if (!s || s.toLowerCase().startsWith('javascript:')) return false;
+  if (s.startsWith('data:image/')) {
+    // ラスター画像のみ許可（SVGのスクリプト実行XSSを遮断）
+    return /^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(s);
+  }
+  if (s.startsWith('blob:')) return true;
+  if (s.startsWith('/') || s.startsWith('./')) {
+    return !/[<>"'\s]/.test(s);
+  }
+  return false;
+}
+
 export const UI = {
   escapeHtml,
+  isSafeSrc,
 
   /**
    * トースト通知を表示
@@ -98,7 +119,7 @@ export const UI = {
           <div class="loading-spinner-wrapper">
             <div class="loading-spinner-ring"></div>
             <div class="loading-spinner-inner"></div>
-            <div class="loading-spinner-icon" id="app-loading-icon">${icon}</div>
+            <div class="loading-spinner-icon" id="app-loading-icon">${escapeHtml(icon)}</div>
           </div>
           <div class="loading-title" id="app-loading-title">${escapeHtml(title)}</div>
           <div class="loading-msg" id="app-loading-msg">${escapeHtml(message)}</div>
@@ -226,7 +247,7 @@ export const UI = {
       if (!btn.dataset.origHtml) {
         btn.dataset.origHtml = btn.innerHTML;
       }
-      btn.innerHTML = `<span class="btn-spinner"></span> <span>${loadingText}</span>`;
+      btn.innerHTML = `<span class="btn-spinner"></span> <span>${escapeHtml(loadingText)}</span>`;
     } else {
       btn.classList.remove('is-loading');
       if (btn.dataset.origHtml) {
@@ -247,6 +268,7 @@ export const UI = {
    */
   confirm(title, message, confirmText = '実行する', confirmType = 'primary') {
     return new Promise(resolve => {
+      const safeConfirmType = ['danger', 'warning', 'secondary'].includes(confirmType) ? confirmType : 'primary';
       const modal = document.createElement('div');
       modal.className = 'modal-overlay modal-confirm-overlay';
       modal.style.zIndex = '3000';
@@ -260,7 +282,7 @@ export const UI = {
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary btn-cancel">キャンセル</button>
-            <button class="btn btn-${confirmType} btn-confirm">${confirmText}</button>
+            <button class="btn btn-${safeConfirmType} btn-confirm">${escapeHtml(confirmText)}</button>
           </div>
         </div>
       `;
@@ -359,15 +381,9 @@ export const UI = {
     const downloadName = (title || 'スキャン確認票').replace(/[\\\/:*?"<>|\s]+/g, '_') + '.png';
     const safeDownloadName = escapeHtml(downloadName);
 
-    // 画像URLの安全性検証（data:, blob:, 相対パスのみ許可し javascript: 等をブロック）
-    const isSafeSrc = typeof imgSrc === 'string' && (
-      imgSrc.startsWith('data:image/') ||
-      imgSrc.startsWith('blob:') ||
-      imgSrc.startsWith('./') ||
-      imgSrc.startsWith('/') ||
-      !imgSrc.includes(':')
-    ) && !imgSrc.trim().toLowerCase().startsWith('javascript:');
-    const validSrc = isSafeSrc ? imgSrc : '';
+    // 画像URLの安全性検証（data:ラスター画像、blob:、安全な相対パスのみ許可し javascript: や svg+xml 等をブロック）
+    const isSafe = isSafeSrc(imgSrc);
+    const validSrc = isSafe ? escapeHtml(imgSrc) : '';
 
     lightbox.innerHTML = `
       <div class="image-lightbox-header">

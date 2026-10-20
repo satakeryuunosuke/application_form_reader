@@ -9,7 +9,7 @@ import { ProjectPage } from './pages/project.js';
 import { SettingsPage } from './pages/settings.js';
 import { FolderConnector } from './sync/folder-connector.js';
 import { SyncManager } from './sync/sync-manager.js';
-import { UI } from './utils/ui.js';
+import { UI, escapeHtml } from './utils/ui.js';
 
 class App {
   constructor() {
@@ -91,7 +91,7 @@ class App {
         this.mainContainer.innerHTML = `
           <div class="card" style="margin-top: 40px; text-align: center; color: var(--danger-solid);">
             <h2>初期化エラー</h2>
-            <p>${err.message}</p>
+            <p>${escapeHtml(err.message)}</p>
           </div>
         `;
       }

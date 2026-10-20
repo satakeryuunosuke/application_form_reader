@@ -99,9 +99,9 @@ export const SettingsPage = {
                   <div style="font-size: 0.78rem; color: var(--gray-500);">接続先フォルダ</div>
                   <div style="font-size: 0.95rem; font-weight: 700; color: var(--gray-800); word-break: break-all;">
                     ${isConnected
-                      ? `📂 ${folderName}`
+                      ? `📂 ${escapeHtml(folderName)}`
                       : (isPending
-                          ? `📂 ${folderName} <span class="badge badge-warning" style="font-size: 0.72rem; margin-left: 6px;">権限停止中</span>`
+                          ? `📂 ${escapeHtml(folderName)} <span class="badge badge-warning" style="font-size: 0.72rem; margin-left: 6px;">権限停止中</span>`
                           : '未接続（ローカル IndexedDB のみで動作中）')}
                   </div>
                 </div>
@@ -124,7 +124,7 @@ export const SettingsPage = {
                 <div style="background: var(--bg-surface); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--gray-200);">
                   <div style="font-size: 0.78rem; color: var(--gray-500); margin-bottom: 4px;">このPCの識別名 (端末ID)</div>
                   <div style="display: flex; gap: 6px;">
-                    <input type="text" id="inp-client-id" class="form-control text-mono font-bold" value="${clientId}" style="font-size: 0.88rem; padding: 4px 8px;">
+                    <input type="text" id="inp-client-id" class="form-control text-mono font-bold" value="${escapeHtml(clientId)}" style="font-size: 0.88rem; padding: 4px 8px;">
                     <button id="btn-save-client-id" class="btn btn-secondary btn-sm" style="white-space: nowrap;">変更</button>
                   </div>
                   <div style="font-size: 0.72rem; color: var(--gray-400); margin-top: 3px;">イベントログの差分記録元として記録されます</div>
@@ -173,7 +173,7 @@ export const SettingsPage = {
           <div id="staff-tags-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
             ${staffList.map((name, index) => `
               <div class="badge badge-info" style="font-size: 0.92rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 8px;">
-                <span>${name}</span>
+                <span>${escapeHtml(name)}</span>
                 <button class="btn-ghost btn-del-staff" data-index="${index}" style="padding: 0; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">✕</button>
               </div>
             `).join('')}
@@ -222,7 +222,7 @@ export const SettingsPage = {
                       <button type="button" class="btn-ghost btn-move-course" data-index="${index}" data-dir="-1" ${index === 0 ? 'disabled style="opacity:0.3;"' : ''} style="padding:0; font-size:10px; cursor:pointer;" title="前へ">◀</button>
                       <button type="button" class="btn-ghost btn-move-course" data-index="${index}" data-dir="1" ${index === coursePresets.length - 1 ? 'disabled style="opacity:0.3;"' : ''} style="padding:0; font-size:10px; cursor:pointer;" title="次へ">▶</button>
                     </div>
-                    <span>${name}</span>
+                    <span>${escapeHtml(name)}</span>
                     <button class="btn-ghost btn-del-course" data-index="${index}" style="padding: 0; color: #dc2626; font-size: 13px; line-height: 1; cursor: pointer;" title="削除">✕</button>
                   </div>
                 `).join('')}
@@ -242,7 +242,7 @@ export const SettingsPage = {
               <div id="method-tags-list" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px;">
                 ${methodPresets.map((name, index) => `
                   <div class="badge badge-info" style="font-size: 0.84rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px;">
-                    <span>${name}</span>
+                    <span>${escapeHtml(name)}</span>
                     <button class="btn-ghost btn-del-method" data-index="${index}" style="padding: 0; color: #dc2626; font-size: 13px; line-height: 1; cursor: pointer;" title="削除">✕</button>
                   </div>
                 `).join('')}
@@ -320,14 +320,14 @@ export const SettingsPage = {
                 <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
                 <select id="sel-course-preset" class="form-control" style="font-size: 0.85rem;">
                   <option value="">-- 講座名を選択 --</option>
-                  ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
+                  ${coursePresets.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
                 </select>
               </div>
               <div>
                 <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
                 <select id="sel-method-preset" class="form-control" style="font-size: 0.85rem;">
                   <option value="">-- 受講方法を選択 --</option>
-                  ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
+                  ${methodPresets.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}
                 </select>
               </div>
               <div>
@@ -421,16 +421,16 @@ export const SettingsPage = {
                 </thead>
                 <tbody id="archived-projects-tbody">
                   ${archivedProjects.map(p => `
-                    <tr data-id="${p.id}" data-year="${p.meta.year}">
+                    <tr data-id="${escapeHtml(p.id)}" data-year="${escapeHtml(p.meta.year)}">
                       <td style="text-align: center;">
-                        <input type="checkbox" class="chk-archived-item" data-id="${p.id}" data-title="${UI.formatProjectTitle(p.meta.title)}" data-year="${p.meta.year}" data-info="${p.meta.year}年度 ${p.meta.grade}年 ${UI.formatSession(p.meta.sessionName)}">
+                        <input type="checkbox" class="chk-archived-item" data-id="${escapeHtml(p.id)}" data-title="${escapeHtml(UI.formatProjectTitle(p.meta.title))}" data-year="${escapeHtml(p.meta.year)}" data-info="${escapeHtml(p.meta.year)}年度 ${escapeHtml(p.meta.grade)}年 ${escapeHtml(UI.formatSession(p.meta.sessionName))}">
                       </td>
                       <td>
-                        <span class="badge badge-info">${p.meta.year}年度</span>
-                        <span class="badge badge-purple">${p.meta.grade}年</span>
-                        <span class="badge badge-success">${UI.formatSession(p.meta.sessionName)}</span>
+                        <span class="badge badge-info">${escapeHtml(p.meta.year)}年度</span>
+                        <span class="badge badge-purple">${escapeHtml(p.meta.grade)}年</span>
+                        <span class="badge badge-success">${escapeHtml(UI.formatSession(p.meta.sessionName))}</span>
                       </td>
-                      <td class="font-bold" style="color: var(--gray-800);">${UI.formatProjectTitle(p.meta.title)}</td>
+                      <td class="font-bold" style="color: var(--gray-800);">${escapeHtml(UI.formatProjectTitle(p.meta.title))}</td>
                       <td class="text-mono">${p.studentCount > 0 ? `${p.studentCount} 名` : '-'}</td>
                       <td class="text-mono" style="font-size: 0.8rem; color: var(--gray-600);">
                         ${p.meta.completedAt ? UI.formatDate(p.meta.completedAt) : (p.meta.archivedAt ? UI.formatDate(p.meta.archivedAt) : '-')}
@@ -964,8 +964,8 @@ export const SettingsPage = {
                 <ul style="margin: 0; padding-left: 18px; font-size: 0.84rem; color: var(--gray-800); line-height: 1.7;">
                   ${selectedList.map(item => `
                     <li>
-                      <span class="font-bold">${item.title}</span>
-                      <span style="color: var(--gray-500); font-size: 0.78rem; margin-left: 6px;">(${item.info})</span>
+                      <span class="font-bold">${escapeHtml(item.title)}</span>
+                      <span style="color: var(--gray-500); font-size: 0.78rem; margin-left: 6px;">(${escapeHtml(item.info)})</span>
                     </li>
                   `).join('')}
                 </ul>
@@ -1256,7 +1256,7 @@ export const SettingsPage = {
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             ${allCustomBoxes.length > 5 ? `
-              <input type="text" id="inp-settings-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${this.settingsSearchFilter}">
+              <input type="text" id="inp-settings-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${escapeHtml(this.settingsSearchFilter)}">
             ` : ''}
             ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
           </div>

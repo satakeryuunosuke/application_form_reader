@@ -48,7 +48,7 @@ export const ManualPage = {
           </button>
         </div>
         <div style="font-size: 0.82rem; color: var(--gray-600);">
-          ${UI.formatProjectTitle(this.project.title)}
+          ${escapeHtml(UI.formatProjectTitle(this.project.title))}
         </div>
       </div>
 
@@ -79,7 +79,7 @@ export const ManualPage = {
           <label class="form-label">受付担当者 <span class="required">*</span></label>
           <select id="man-sel-staff" class="form-control font-bold" style="max-width: 280px; background: var(--gray-50); ${!this.selectedStaff && !isCompleted ? 'border-color: var(--warning-solid);' : ''}" ${isCompleted ? 'disabled' : ''}>
             <option value="" ${!this.selectedStaff ? 'selected' : ''}>-- 選択してください --</option>
-            ${this.staffList.map(s => `<option value="${s}" ${s === this.selectedStaff ? 'selected' : ''}>${s}</option>`).join('')}
+            ${this.staffList.map(s => `<option value="${escapeHtml(s)}" ${s === this.selectedStaff ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
           </select>
         </div>
 
@@ -705,7 +705,7 @@ export const ManualPage = {
 
         const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
         customDefs.forEach(field => {
-          const checkedOpt = this.container.querySelector(`input[name="man-continuation-field-${field.id}"]:checked`);
+          const checkedOpt = this.container.querySelector(`input[name="man-continuation-field-${CSS.escape(field.id)}"]:checked`);
           if (field.name === '日特') {
             const rawVal = checkedOpt ? checkedOpt.value : '';
             if (rawVal === '受講' || rawVal === 'TD') {
@@ -907,7 +907,7 @@ export const ManualPage = {
           if (field.name === '日特') {
             const isTD = (val === 'TD' || val === '受講' || val === '日特受講');
             const targetVal = isTD ? '受講' : '変更あり';
-            const optRadio = this.container.querySelector(`input[name="man-continuation-field-${field.id}"][value="${targetVal}"]`);
+            const optRadio = Array.from(this.container.querySelectorAll(`input[name="man-continuation-field-${CSS.escape(field.id)}"]`)).find(r => r.value === targetVal);
             if (optRadio) optRadio.checked = true;
 
             const panel = this.container.querySelector('#man-nittoku-change-panel');
@@ -927,7 +927,7 @@ export const ManualPage = {
               if (panel) panel.style.display = 'none';
             }
           } else {
-            const optRadio = this.container.querySelector(`input[name="man-continuation-field-${field.id}"][value="${val}"]`);
+            const optRadio = Array.from(this.container.querySelectorAll(`input[name="man-continuation-field-${CSS.escape(field.id)}"]`)).find(r => r.value === val);
             if (optRadio) optRadio.checked = true;
           }
         }

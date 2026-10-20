@@ -99,7 +99,8 @@ export const NoteAssistant = {
     if (options.classList && Array.isArray(options.classList) && !classOption) {
       for (const cls of options.classList) {
         if (!cls) continue;
-        const clsRegex = new RegExp(`(?:${cls}|${cls}クラス)(?:へ変更|に変更|希望)?`, 'i');
+        const safeCls = String(cls).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const clsRegex = new RegExp(`(?:${safeCls}|${safeCls}クラス)(?:へ変更|に変更|希望)?`, 'i');
         if (clsRegex.test(normalized) && normalized.includes('変更')) {
           hasAction = true;
           enrollmentChoice = 'has-change';

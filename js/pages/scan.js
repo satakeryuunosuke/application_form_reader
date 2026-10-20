@@ -547,7 +547,7 @@ export const ScanPage = {
                     <div>
                       📚 受講科目数
                       <span class="badge badge-info" style="font-size: 0.72rem; margin-left: 4px;">
-                        ${currentItem.checkResult?.subject2Checked ? '自動判定: 2科' : (currentItem.checkResult?.subject4Checked ? '自動判定: 4科' : '既定: ' + (student?.course || '4科'))}
+                        ${currentItem.checkResult?.subject2Checked ? '自動判定: 2科' : (currentItem.checkResult?.subject4Checked ? '自動判定: 4科' : '既定: ' + escapeHtml(student?.course || '4科'))}
                       </span>
                     </div>
                     <span class="scan-debug-badge badge" style="${this.isDebugMode ? 'display: inline-block;' : 'display: none;'} background: #0284c7; color: #fff; font-family: var(--font-mono); font-size: 0.72rem;">
@@ -1061,7 +1061,7 @@ export const ScanPage = {
                 <div>
                   <h3 class="modal-title font-bold">受講確認票 書式・読取位置調整</h3>
                   <div style="font-size: 0.8rem; color: var(--gray-500); font-weight: normal;">
-                    対象: ${UI.formatProjectTitle(this.project.title)}
+                    対象: ${escapeHtml(UI.formatProjectTitle(this.project.title))}
                   </div>
                 </div>
               </div>
@@ -1089,14 +1089,14 @@ export const ScanPage = {
                     <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
                     <select id="scan-sel-course" class="form-control" style="font-size: 0.85rem;">
                       <option value="">-- 講座名を選択 --</option>
-                      ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
+                      ${coursePresets.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
                     </select>
                   </div>
                   <div>
                     <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
                     <select id="scan-sel-method" class="form-control" style="font-size: 0.85rem;">
                       <option value="">-- 受講方法を選択 --</option>
-                      ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
+                      ${methodPresets.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}
                     </select>
                   </div>
                   <div>
@@ -1223,15 +1223,15 @@ export const ScanPage = {
             return `
               <div class="custom-box-item-card ${calibrator && calibrator.activeTab === box.id ? 'is-active' : ''}">
                 <div style="display: flex; align-items: center; gap: 4px;">
-                  <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${box.label}</span>
+                  <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${escapeHtml(box.label)}</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 3px;">
-                  <button type="button" class="custom-box-order-btn scan-btn-move-box" data-id="${box.id}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
-                  <button type="button" class="custom-box-order-btn scan-btn-move-box" data-id="${box.id}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
-                  <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                  <button type="button" class="custom-box-order-btn scan-btn-move-box" data-id="${escapeHtml(box.id)}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
+                  <button type="button" class="custom-box-order-btn scan-btn-move-box" data-id="${escapeHtml(box.id)}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
+                  <button type="button" class="btn btn-secondary btn-sm scan-btn-focus-box" data-id="${escapeHtml(box.id)}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
                     🎯 調整
                   </button>
-                  <button type="button" class="btn-ghost scan-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+                  <button type="button" class="btn-ghost scan-btn-del-box" data-id="${escapeHtml(box.id)}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
                     ✕
                   </button>
                 </div>
@@ -1259,7 +1259,7 @@ export const ScanPage = {
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                   ${allBoxes.length > 5 ? `
-                    <input type="text" id="scan-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${scanSearchFilter}">
+                    <input type="text" id="scan-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${escapeHtml(scanSearchFilter)}">
                   ` : ''}
                   ${restoreButtonsHtml ? `<div style="display: flex; gap: 6px;">${restoreButtonsHtml}</div>` : ''}
                 </div>
@@ -1769,7 +1769,7 @@ export const ScanPage = {
       // 2. 継続確認モードへの連動
       if (isContinuationMode) {
         if (res.course) {
-          const courseRadio = this.container.querySelector(`input[name="continuation-course"][value="${res.course}"]`);
+          const courseRadio = Array.from(this.container.querySelectorAll('input[name="continuation-course"]')).find(r => r.value === res.course);
           if (courseRadio) courseRadio.checked = true;
         }
         if (res.classOption === '非受講') {
@@ -1894,7 +1894,7 @@ export const ScanPage = {
         const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
         if (customDefs.length > 0) {
           customDefs.forEach(field => {
-            const checkedRadio = this.container.querySelector(`input[name="cont-field-${field.id}"]:checked`);
+            const checkedRadio = this.container.querySelector(`input[name="cont-field-${CSS.escape(field.id)}"]:checked`);
             if (field.name === '日特') {
               const rawVal = checkedRadio ? checkedRadio.value : '';
               if (rawVal === '受講' || rawVal === 'TD') {
@@ -2140,12 +2140,12 @@ export const ScanPage = {
           <!-- 対象生徒概要 -->
           <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--gray-200); margin-bottom: 14px;">
             <div>
-              <span class="font-bold" style="font-size: 1.1rem; color: var(--gray-900);">${student.name}</span>
-              <span class="text-muted" style="font-size: 0.8rem; margin-left: 6px;">(${student.nameKana || ''})</span>
+              <span class="font-bold" style="font-size: 1.1rem; color: var(--gray-900);">${escapeHtml(student.name)}</span>
+              <span class="text-muted" style="font-size: 0.8rem; margin-left: 6px;">(${escapeHtml(student.nameKana || '')})</span>
             </div>
             <div>
-              <span class="text-mono font-bold" style="color: var(--primary-600); font-size: 0.95rem;">${student.nichinokenId}</span>
-              <span class="badge badge-gray" style="margin-left: 6px;">所属: ${student.className} (${student.course || '4科'})</span>
+              <span class="text-mono font-bold" style="color: var(--primary-600); font-size: 0.95rem;">${escapeHtml(student.nichinokenId)}</span>
+              <span class="badge badge-gray" style="margin-left: 6px;">所属: ${escapeHtml(student.className)} (${escapeHtml(student.course || '4科')})</span>
             </div>
           </div>
 
@@ -2155,18 +2155,18 @@ export const ScanPage = {
             <div style="background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-md); padding: 10px 12px;">
               <div style="font-size: 0.75rem; font-weight: 700; color: var(--gray-500); margin-bottom: 6px; display: flex; justify-content: space-between;">
                 <span>📋 現在の登録内容</span>
-                <span class="badge badge-gray" style="font-size: 0.68rem; padding: 1px 5px;">${target.inputMethod || '登録済'}</span>
+                <span class="badge badge-gray" style="font-size: 0.68rem; padding: 1px 5px;">${escapeHtml(target.inputMethod || '登録済')}</span>
               </div>
               <div style="font-size: 0.88rem; font-weight: 700; margin-bottom: 4px; color: var(--gray-800);">
-                ${target.enrollmentClass || (target.hasChange ? '変更あり' : student.className)}${target.enrollmentCourse && target.enrollmentCourse !== '非受講' ? ' (' + target.enrollmentCourse + ')' : ''}
+                ${escapeHtml(target.enrollmentClass || (target.hasChange ? '変更あり' : student.className))}${target.enrollmentCourse && target.enrollmentCourse !== '非受講' ? ' (' + escapeHtml(target.enrollmentCourse) + ')' : ''}
                 <span class="badge ${target.hasChange ? 'badge-warning' : 'badge-success'}" style="font-size: 0.68rem; padding: 1px 4px; margin-left: 2px;">
                   ${target.hasChange ? '変更あり' : '変更なし'}
                 </span>
               </div>
               <div style="font-size: 0.75rem; color: var(--gray-600); line-height: 1.45;">
-                <div>担当: <strong>${target.approvedBy || '-'}</strong></div>
+                <div>担当: <strong>${escapeHtml(target.approvedBy || '-')}</strong></div>
                 <div>日時: ${UI.formatDate(target.approvedAt || target.submittedAt)}</div>
-                ${target.remarks ? `<div style="margin-top: 3px; color: var(--gray-500); font-style: italic; word-break: break-all;">"${target.remarks}"</div>` : ''}
+                ${target.remarks ? `<div style="margin-top: 3px; color: var(--gray-500); font-style: italic; word-break: break-all;">"${escapeHtml(target.remarks)}"</div>` : ''}
               </div>
             </div>
 
@@ -2177,15 +2177,15 @@ export const ScanPage = {
                 <span class="badge badge-info" style="font-size: 0.68rem; padding: 1px 5px;">スキャン</span>
               </div>
               <div style="font-size: 0.88rem; font-weight: 700; margin-bottom: 4px; color: var(--primary-900);">
-                ${newData.enrollmentClass}${newData.enrollmentCourse && newData.enrollmentCourse !== '非受講' ? ' (' + newData.enrollmentCourse + ')' : ''}
+                ${escapeHtml(newData.enrollmentClass)}${newData.enrollmentCourse && newData.enrollmentCourse !== '非受講' ? ' (' + escapeHtml(newData.enrollmentCourse) + ')' : ''}
                 <span class="badge ${newData.hasChange ? 'badge-warning' : 'badge-success'}" style="font-size: 0.68rem; padding: 1px 4px; margin-left: 2px;">
                   ${newData.hasChange ? '変更あり' : '変更なし'}
                 </span>
               </div>
               <div style="font-size: 0.75rem; color: var(--primary-800); line-height: 1.45;">
-                <div>担当: <strong>${newData.staff}</strong></div>
+                <div>担当: <strong>${escapeHtml(newData.staff)}</strong></div>
                 <div>日時: いま上書き</div>
-                ${newData.remarks ? `<div style="margin-top: 3px; color: var(--primary-700); font-style: italic; word-break: break-all;">"${newData.remarks}"</div>` : ''}
+                ${newData.remarks ? `<div style="margin-top: 3px; color: var(--primary-700); font-style: italic; word-break: break-all;">"${escapeHtml(newData.remarks)}"</div>` : ''}
               </div>
             </div>
           </div>

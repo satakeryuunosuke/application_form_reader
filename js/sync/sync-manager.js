@@ -201,6 +201,9 @@ export const SyncManager = {
    * サブディレクトリを取得（なければ作成）
    */
   async getOrCreateSubdir(parentHandle, dirName) {
+    if (typeof dirName !== 'string' || !dirName || dirName.includes('..') || dirName.includes('/') || dirName.includes('\\')) {
+      throw new Error(`不正なディレクトリ名です: ${dirName}`);
+    }
     return await parentHandle.getDirectoryHandle(dirName, { create: true });
   },
 
@@ -208,6 +211,9 @@ export const SyncManager = {
    * サブディレクトリを取得（存在しない場合は null）
    */
   async getSubdir(parentHandle, dirName) {
+    if (typeof dirName !== 'string' || !dirName || dirName.includes('..') || dirName.includes('/') || dirName.includes('\\')) {
+      return null;
+    }
     try {
       return await parentHandle.getDirectoryHandle(dirName, { create: false });
     } catch (err) {
@@ -216,14 +222,19 @@ export const SyncManager = {
   },
 
   /**
-   * ファイル内容を JSON として読み込み
+   * ファイル内容を JSON として読み込み（プロトタイプ汚染防止 reviver 適用）
    */
   async readJsonFile(dirHandle, fileName) {
     try {
       const fileHandle = await dirHandle.getFileHandle(fileName);
       const file = await fileHandle.getFile();
       const text = await file.text();
-      return JSON.parse(text);
+      return JSON.parse(text, (key, value) => {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+          return undefined;
+        }
+        return value;
+      });
     } catch (err) {
       return null;
     }
@@ -516,10 +527,11 @@ export const SyncManager = {
       const projDir = await this.getOrCreateSubdir(rootHandle, projectId);
       const eventsDir = await this.getOrCreateSubdir(projDir, 'events');
 
-      const clientId = event.clientInfo?.clientId || (await this.getClientId());
+      const rawClientId = event.clientInfo?.clientId || (await this.getClientId());
+      const safeClientId = String(rawClientId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'client';
       const ts = event.timestamp || Date.now();
       const safeEventId = (event.eventId || `evt_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
-      const fileName = `evt_${ts}_${clientId}_${safeEventId}.json`;
+      const fileName = `evt_${ts}_${safeClientId}_${safeEventId}.json`;
 
       await this.writeJsonFile(eventsDir, fileName, event);
       return true;

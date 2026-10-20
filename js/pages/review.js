@@ -180,8 +180,8 @@ export const ReviewPage = {
               <span class="text-mono" style="color: var(--primary-600); font-size: 1.15rem;">${this.currentIndex + 1}</span> / ${totalCount} 件
               ${currentItem ? `
                 <span style="margin-left: 12px; color: var(--gray-800); font-weight: 700;">
-                  ${currentItem.name}
-                  <span class="badge badge-info text-mono" style="font-size: 0.82rem; margin-left: 6px;">${currentItem.nichinokenId}</span>
+                  ${escapeHtml(currentItem.name)}
+                  <span class="badge badge-info text-mono" style="font-size: 0.82rem; margin-left: 6px;">${escapeHtml(currentItem.nichinokenId)}</span>
                 </span>
               ` : ''}
             </div>
@@ -206,8 +206,8 @@ export const ReviewPage = {
               </div>
 
               <div id="review-image-viewport" style="flex: 1; min-height: 540px; max-height: 75vh; overflow: auto; background: #1e293b; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; position: relative;">
-                ${currentItem && currentItem.scanImageBlob ? `
-                  <img id="review-scan-img" src="${currentItem.scanImageBlob}" alt="受講確認票スキャン画像" style="max-width: 100%; max-height: 100%; object-fit: contain; transform: scale(${this.zoomLevel}); transform-origin: top center; transition: transform 0.15s ease-out; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+                ${currentItem && currentItem.scanImageBlob && UI.isSafeSrc(currentItem.scanImageBlob) ? `
+                  <img id="review-scan-img" src="${escapeHtml(currentItem.scanImageBlob)}" alt="受講確認票スキャン画像" style="max-width: 100%; max-height: 100%; object-fit: contain; transform: scale(${this.zoomLevel}); transform-origin: top center; transition: transform 0.15s ease-out; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
                 ` : `
                   <div style="padding: 30px; text-align: center; color: #cbd5e1; max-width: 420px;">
                     <div style="font-size: 2.5rem; margin-bottom: 10px;">📄</div>
@@ -352,7 +352,7 @@ export const ReviewPage = {
                                 const isChk = cur ? cur.isChecked : false;
                                 const isCancelled = cur ? cur.isFilledCancellation : false;
                                 return `
-                                  <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; background: ${isChk ? '#f5f3ff' : (isCancelled ? '#fef2f2' : 'transparent')}; border: 1px solid ${isChk ? '#c4b5fd' : (isCancelled ? '#fca5a5' : 'transparent')}; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='${isChk ? '#f5f3ff' : (isCancelled ? '#fef2f2' : 'transparent')}'">
+                                  <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; background: ${isChk ? '#f5f3ff' : (isCancelled ? '#fef2f2' : 'transparent')}; border: 1px solid ${isChk ? '#c4b5fd' : (isCancelled ? '#fca5a5' : 'transparent')}; transition: background 0.15s ease;">
                                     <div style="display: flex; align-items: center; gap: 8px;">
                                       <input type="checkbox" class="chk-rev-custom-box-item" data-id="${escapeHtml(box.id)}" data-label="${escapeHtml(box.label)}" ${isChk ? 'checked' : ''} style="width: 16px; height: 16px;">
                                       <span style="font-weight: ${isChk ? 'bold' : 'normal'}; color: ${isChk ? '#6d28d9' : (isCancelled ? '#b91c1c' : 'var(--gray-800)')};">${escapeHtml(box.label)}</span>
@@ -742,7 +742,7 @@ export const ReviewPage = {
 
           const customDefs = CheckboxEngine.getContinuationCustomFields(this.project.scanTemplate);
           customDefs.forEach(field => {
-            const checkedOpt = this.container.querySelector(`input[name="edit-continuation-field-${field.id}"]:checked`);
+            const checkedOpt = this.container.querySelector(`input[name="edit-continuation-field-${CSS.escape(field.id)}"]:checked`);
             if (field.name === '日特') {
               const rawVal = checkedOpt ? checkedOpt.value : '';
               if (rawVal === '受講' || rawVal === 'TD') {

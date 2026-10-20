@@ -15,7 +15,7 @@ export const CsvUtil = {
   sanitizeFormula(val) {
     if (val === null || val === undefined) return '';
     const str = val.toString();
-    if (/^[=+\-@\t\r]/.test(str)) {
+    if (/^[=+\-@\t\r\n]|^\s+[=+\-@]/.test(str)) {
       return `'${str}`;
     }
     return str;
@@ -432,10 +432,11 @@ export const CsvUtil = {
       '特記事項'
     ];
 
-    const csvRows = [headers.join(',')];
+    const escapeCell = val => `"${this.sanitizeFormula(val).replace(/"/g, '""')}"`;
+    const csvRows = [headers.map(escapeCell).join(',')];
 
     for (const r of rows) {
-      const escape = val => `"${this.sanitizeFormula(val).replace(/"/g, '""')}"`;
+      const escape = escapeCell;
       const isApproved = (r.status === '承認済');
       const enrollStatus = isApproved ? (r.enrollmentStatus || (r.hasChange ? 'その他' : '受講する')) : '-';
       const enrollCourse = isApproved ? (r.enrollmentCourse || '4科') : '-';
@@ -496,7 +497,7 @@ export const CsvUtil = {
       '承認者',
       '受付・承認日時',
       '特記事項'
-    ];
+    ].map(h => this.sanitizeFormula(h));
 
     const data = [headerRow];
 

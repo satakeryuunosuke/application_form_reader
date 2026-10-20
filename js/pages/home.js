@@ -42,13 +42,13 @@ export const HomePage = {
               ${isFolderConnected ? `
                 <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-full); padding: 4px 12px; font-size: 0.82rem;">
                   <span style="color: var(--success-solid); font-weight: 700;">🟢 共有フォルダ同期中:</span>
-                  <span class="font-bold text-mono" style="color: var(--gray-800);">${folderName}</span>
+                  <span class="font-bold text-mono" style="color: var(--gray-800);">${escapeHtml(folderName)}</span>
                   <button id="btn-home-refresh-shared" class="btn btn-ghost btn-sm" style="padding: 1px 6px; font-size: 0.76rem; color: var(--primary-600);" title="最新のプロジェクト・イベントを再確認">🔄 更新</button>
                 </div>
               ` : (FolderConnector.isPermissionPending() ? `
                 <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: var(--radius-full); padding: 4px 12px; font-size: 0.82rem;">
                   <span style="color: #b45309; font-weight: 700;">🟡 共有フォルダのアクセス許可が一時停止しています:</span>
-                  <span class="font-bold text-mono" style="color: var(--gray-800);">${folderName}</span>
+                  <span class="font-bold text-mono" style="color: var(--gray-800);">${escapeHtml(folderName)}</span>
                   <button id="btn-home-resume-folder" class="btn btn-primary btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" title="アクセス権限を再開して共有プロジェクトを同期">🔑 共有を再開</button>
                 </div>
               ` : (isSupported ? `
@@ -433,19 +433,19 @@ export const HomePage = {
               <div>
                 <div class="project-card-top">
                   <div class="project-meta-badges">
-                    <span class="badge badge-info">${sp.meta.year}年度</span>
-                    <span class="badge badge-purple">${sp.meta.grade}年生</span>
-                    <span class="badge badge-success">${UI.formatSession(sp.meta.sessionName)}</span>
+                    <span class="badge badge-info">${escapeHtml(sp.meta.year)}年度</span>
+                    <span class="badge badge-purple">${escapeHtml(sp.meta.grade)}年生</span>
+                    <span class="badge badge-success">${escapeHtml(UI.formatSession(sp.meta.sessionName))}</span>
                     <span class="badge badge-gray" style="font-size: 0.72rem;">未取り込み</span>
                   </div>
                 </div>
-                <h3 class="project-title">${UI.formatProjectTitle(sp.meta.title)}</h3>
+                <h3 class="project-title">${escapeHtml(UI.formatProjectTitle(sp.meta.title))}</h3>
                 <div style="font-size: 0.8rem; color: var(--gray-500); margin-top: 4px;">
                   作成日: ${UI.formatDate(sp.meta.createdAt)}
                 </div>
               </div>
               <div style="margin-top: 14px;">
-                <button class="btn btn-primary btn-import-shared-project" data-id="${sp.meta.id}" style="width: 100%;">
+                <button class="btn btn-primary btn-import-shared-project" data-id="${escapeHtml(sp.meta.id)}" style="width: 100%;">
                   📥 このPCに取り込む (同期開始)
                 </button>
               </div>
@@ -690,11 +690,11 @@ export const HomePage = {
                 <tbody>
                   ${parsedStudents.slice(0, 5).map(s => `
                     <tr>
-                      <td class="text-mono font-bold">${s.nichinokenId}</td>
-                      <td>${s.name}</td>
-                      <td>${s.nameKana}</td>
-                      <td><span class="badge badge-info">${s.className}</span></td>
-                      <td><span class="badge badge-purple">${s.course || '4科'}</span></td>
+                      <td class="text-mono font-bold">${escapeHtml(s.nichinokenId)}</td>
+                      <td>${escapeHtml(s.name)}</td>
+                      <td>${escapeHtml(s.nameKana)}</td>
+                      <td><span class="badge badge-info">${escapeHtml(s.className)}</span></td>
+                      <td><span class="badge badge-purple">${escapeHtml(s.course || '4科')}</span></td>
                     </tr>
                   `).join('')}
                   ${parsedStudents.length > 5 ? `<tr><td colspan="5" class="text-center text-muted">...他 ${parsedStudents.length - 5} 名</td></tr>` : ''}
@@ -713,7 +713,7 @@ export const HomePage = {
                 <div>
                   <span class="badge badge-info">${selectedYear}年度</span>
                   <span class="badge badge-purple">${selectedGrade}年生</span>
-                  <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                  <span class="badge badge-success">${escapeHtml(UI.formatSession(selectedSession))}</span>
                   <span class="badge badge-purple font-bold">🎯 講座選択モード（志望校別）</span>
                   <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
                     受講確認票の書式・スキャン読取位置設定
@@ -743,14 +743,14 @@ export const HomePage = {
                     <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">講座名を選択</label>
                     <select id="wiz-sel-course" class="form-control" style="font-size: 0.85rem;">
                       <option value="">-- 講座名を選択 --</option>
-                      ${coursePresets.map(c => `<option value="${c}">${c}</option>`).join('')}
+                      ${coursePresets.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
                     </select>
                   </div>
                   <div>
                     <label class="form-label" style="font-size: 0.8rem; margin-bottom: 4px;">受講方法を選択</label>
                     <select id="wiz-sel-method" class="form-control" style="font-size: 0.85rem;">
                       <option value="">-- 受講方法を選択 --</option>
-                      ${methodPresets.map(m => `<option value="${m}">${m}</option>`).join('')}
+                      ${methodPresets.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}
                     </select>
                   </div>
                   <div>
@@ -782,7 +782,7 @@ export const HomePage = {
                 <div>
                   <span class="badge badge-info">${selectedYear}年度</span>
                   <span class="badge badge-purple">${selectedGrade}年生</span>
-                  <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                  <span class="badge badge-success">${escapeHtml(UI.formatSession(selectedSession))}</span>
                   <span class="badge font-bold" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">📋 継続確認モード</span>
                   <span style="font-size: 0.95rem; font-weight: 700; color: #0369a1; margin-left: 6px;">
                     継続確認票の書式・スキャン読取位置設定
@@ -847,7 +847,7 @@ export const HomePage = {
                 <div>
                   <span class="badge badge-info">${selectedYear}年度</span>
                   <span class="badge badge-purple">${selectedGrade}年生</span>
-                  <span class="badge badge-success">${UI.formatSession(selectedSession)}</span>
+                  <span class="badge badge-success">${escapeHtml(UI.formatSession(selectedSession))}</span>
                   <span class="badge font-bold" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">📝 期間講習受講確認</span>
                   <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-900); margin-left: 6px;">
                     受講確認票の書式・スキャン読取位置設定
@@ -970,9 +970,9 @@ export const HomePage = {
             container.innerHTML = fields.map((f, fIdx) => `
               <div style="background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius-sm); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                  <strong style="font-size: 0.86rem; color: #0284c7;">🏷️ ${f.name}</strong>
+                  <strong style="font-size: 0.86rem; color: #0284c7;">🏷️ ${escapeHtml(f.name)}</strong>
                   <span style="font-size: 0.75rem; color: var(--gray-500); margin-left: 6px;">
-                    選択肢: ${(f.options || []).map(o => `<span class="badge" style="background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; font-size: 0.72rem; margin: 0 2px;">${o.label}</span>`).join('')}
+                    選択肢: ${(f.options || []).map(o => `<span class="badge" style="background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; font-size: 0.72rem; margin: 0 2px;">${escapeHtml(o.label || o)}</span>`).join('')}
                   </span>
                 </div>
                 <div style="display: flex; gap: 4px;">
@@ -1137,15 +1137,15 @@ export const HomePage = {
               return `
                 <div class="custom-box-item-card ${calibratorInstance && calibratorInstance.activeTab === box.id ? 'is-active' : ''}">
                   <div style="display: flex; align-items: center; gap: 4px;">
-                    <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${box.label}</span>
+                    <span style="font-weight: 700; font-size: 0.84rem; color: #6d28d9;">🟪 ${escapeHtml(box.label)}</span>
                   </div>
                   <div style="display: flex; align-items: center; gap: 3px;">
-                    <button type="button" class="custom-box-order-btn wiz-btn-move-box" data-id="${box.id}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
-                    <button type="button" class="custom-box-order-btn wiz-btn-move-box" data-id="${box.id}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
-                    <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="${box.id}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
+                    <button type="button" class="custom-box-order-btn wiz-btn-move-box" data-id="${escapeHtml(box.id)}" data-dir="-1" ${isFirst ? 'disabled' : ''} title="上へ移動">▲</button>
+                    <button type="button" class="custom-box-order-btn wiz-btn-move-box" data-id="${escapeHtml(box.id)}" data-dir="1" ${isLast ? 'disabled' : ''} title="下へ移動">▼</button>
+                    <button type="button" class="btn btn-secondary btn-sm wiz-btn-focus-box" data-id="${escapeHtml(box.id)}" style="padding: 1px 6px; font-size: 0.72rem;" title="このチェックボックスの位置調整に切り替える">
                       🎯 調整
                     </button>
-                    <button type="button" class="btn-ghost wiz-btn-del-box" data-id="${box.id}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
+                    <button type="button" class="btn-ghost wiz-btn-del-box" data-id="${escapeHtml(box.id)}" style="padding: 0 2px; color: var(--danger-solid); font-size: 14px; line-height: 1; cursor: pointer;" title="削除">
                       ✕
                     </button>
                   </div>
@@ -1172,7 +1172,7 @@ export const HomePage = {
                   </div>
                   <div>
                     ${allBoxes.length > 5 ? `
-                      <input type="text" id="wiz-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${wizSearchFilter}">
+                      <input type="text" id="wiz-custom-filter" class="custom-box-search-input form-control" placeholder="🔍 講座名で絞り込み..." value="${escapeHtml(wizSearchFilter)}">
                     ` : ''}
                   </div>
                 </div>
