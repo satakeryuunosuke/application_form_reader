@@ -800,14 +800,76 @@ export const ScannerEngine = {
   },
 
   /**
+   * 特記事項枠のクロップ＆手書き有無判定ヘルパー
+   */
+  evaluateRemarksBox(canvas, targetRects) {
+    if (!targetRects || !targetRects.remarksRect) {
+      return { remarksCropDataUrl: null, remarksDarkRatio: 0, hasRemarksHandwriting: false };
+    }
+    const rr = targetRects.remarksRect;
+    const rx = Math.max(0, Math.round(rr.x));
+    const ry = Math.max(0, Math.round(rr.y));
+    const rw = Math.min(canvas.width - rx, Math.round(rr.w || rr.width || 0));
+    const rh = Math.min(canvas.height - ry, Math.round(rr.h || rr.height || 0));
+
+    if (rw <= 10 || rh <= 10) {
+      return { remarksCropDataUrl: null, remarksDarkRatio: 0, hasRemarksHandwriting: false };
+    }
+
+    try {
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = rw;
+      cropCanvas.height = rh;
+      const cropCtx = cropCanvas.getContext('2d');
+      cropCtx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+
+      const imgData = cropCtx.getImageData(0, 0, rw, rh);
+      const d = imgData.data;
+      let darkCount = 0;
+      const innerX1 = Math.round(rw * 0.08);
+      const innerX2 = Math.round(rw * 0.92);
+      const innerY1 = Math.round(rh * 0.12);
+      const innerY2 = Math.round(rh * 0.88);
+      let innerPix = 0;
+
+      for (let y = innerY1; y < innerY2; y++) {
+        for (let x = innerX1; x < innerX2; x++) {
+          const idx = (y * rw + x) * 4;
+          const lum = 0.299 * d[idx] + 0.587 * d[idx + 1] + 0.114 * d[idx + 2];
+          if (lum < 160) {
+            darkCount++;
+          }
+          innerPix++;
+        }
+      }
+
+      const remarksDarkRatio = innerPix > 0 ? (darkCount / innerPix) : 0;
+      const hasRemarksHandwriting = (remarksDarkRatio >= 0.012);
+      const remarksCropDataUrl = cropCanvas.toDataURL('image/jpeg', 0.85);
+
+      return {
+        remarksCropDataUrl,
+        remarksDarkRatio,
+        hasRemarksHandwriting
+      };
+    } catch (e) {
+      console.warn('Remarks box evaluation failed:', e);
+      return { remarksCropDataUrl: null, remarksDarkRatio: 0, hasRemarksHandwriting: false };
+    }
+  },
+
+  /**
    * チェックボックス判定を実行（継続確認モードおよび従来モード両対応）
    */
   evaluateCheckResult(canvas, targetRects, template) {
     if (!targetRects) {
-      return { hasChange: false, noChangeChecked: false, hasChangeChecked: false, customChecks: {}, customFields: {} };
+      return { hasChange: false, noChangeChecked: false, hasChangeChecked: false, customChecks: {}, customFields: {}, remarksCropDataUrl: null, remarksDarkRatio: 0, hasRemarksHandwriting: false };
     }
     const threshold = targetRects.threshold !== undefined ? targetRects.threshold : 0.20;
     const minThreshold = threshold * 0.7;
+
+    // 特記事項枠のクロップ＆手書き有無判定（枠が設定されている場合のみ）
+    const remarksEval = this.evaluateRemarksBox(canvas, targetRects);
 
     // 1. 継続確認モード（participateRect または otherRect が存在する場合）
     const isContinuation = !!(targetRects.participateRect || targetRects.otherRect);
@@ -911,7 +973,8 @@ export const ScannerEngine = {
         subject4DarkRatio: sub4Dark,
         subject2DarkRatio: sub2Dark,
         whiteBrightness: partEval?.whiteBrightness || otherEval?.whiteBrightness || 220,
-        adaptiveDarkThreshold: partEval?.effectiveDarknessThreshold || otherEval?.effectiveDarknessThreshold || 140
+        adaptiveDarkThreshold: partEval?.effectiveDarknessThreshold || otherEval?.effectiveDarknessThreshold || 140,
+        ...remarksEval
       };
     }
 
@@ -976,7 +1039,8 @@ export const ScannerEngine = {
       isCustomDynamicApplied,
       customCancelledOutliers,
       whiteBrightness: noChangeEval?.whiteBrightness || hasChangeEval?.whiteBrightness || 220,
-      adaptiveDarkThreshold: noChangeEval?.effectiveDarknessThreshold || hasChangeEval?.effectiveDarknessThreshold || 140
+      adaptiveDarkThreshold: noChangeEval?.effectiveDarknessThreshold || hasChangeEval?.effectiveDarknessThreshold || 140,
+      ...remarksEval
     };
   },
 
@@ -1185,6 +1249,24 @@ export const ScannerEngine = {
           }
         }
       });
+    }
+
+    // 特記事項枠の描画（設定されている場合のみ）
+    if (targetRects.remarksRect) {
+      const r = targetRects.remarksRect;
+      const hasHandwriting = checkResult?.hasRemarksHandwriting;
+      pctx.save();
+      pctx.strokeStyle = hasHandwriting ? '#3b82f6' : '#94a3b8';
+      pctx.lineWidth = Math.max(2, Math.round(canvasWidth * 0.0025));
+      pctx.setLineDash([6, 3]);
+      pctx.strokeRect(r.x, r.y, r.w, r.h);
+      pctx.fillStyle = hasHandwriting ? 'rgba(59, 130, 246, 0.12)' : 'rgba(148, 163, 184, 0.05)';
+      pctx.fillRect(r.x, r.y, r.w, r.h);
+      pctx.restore();
+      if (showDebug) {
+        const val = ((checkResult?.remarksDarkRatio || 0) * 100).toFixed(1);
+        this.drawBoxLabel(pctx, r, `特記事項: ${hasHandwriting ? '手書き検知' : '白紙'}(${val}%)`, hasHandwriting, canvasWidth, 'blue');
+      }
     }
   },
 

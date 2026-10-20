@@ -7,6 +7,7 @@ import { TemplateCalibrator } from '../components/calibrator.js';
 import { ProjectPage } from './project.js';
 import { FolderConnector } from '../sync/folder-connector.js';
 import { SyncManager } from '../sync/sync-manager.js';
+import { NoteAssistant } from '../utils/noteAssistant.js';
 
 export const ScanPage = {
   container: null,
@@ -741,10 +742,30 @@ export const ScanPage = {
               ` : '')}
 
               <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.76rem; margin-bottom: 3px;">
-                  特記事項・メモ（手入力）
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; flex-wrap: wrap; gap: 4px;"><label class="form-label" style="font-size: 0.76rem; margin-bottom: 0; display: flex; align-items: center; gap: 6px;">
+                  <span>特記事項・メモ（手入力）</span>
+                  ${currentItem.checkResult?.hasRemarksHandwriting ? `
+                    <span class="badge badge-blue font-bold" style="font-size: 0.70rem; padding: 1px 6px;">
+                      ✍️ 手書き検知
+                    </span>
+                  ` : ''}
                 </label>
-                <textarea id="txt-remarks" class="form-control" placeholder="特記事項やメモなど" style="min-height: 48px; height: 48px; font-size: 0.82rem; padding: 6px 10px;"></textarea>
+                  <div id="scan-note-assistant-badge" style="display: none;"></div>
+                </div>
+
+                ${currentItem.checkResult?.remarksCropDataUrl ? `
+                  <div id="scan-remarks-crop-box" style="margin-bottom: 6px; padding: 6px 8px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.72rem; color: var(--gray-600); margin-bottom: 3px; display: flex; align-items: center; justify-content: space-between;">
+                      <span style="font-weight: 600;">✍️ 特記事項 手書き枠プレビュー:</span>
+                      <span style="font-size: 0.68rem; color: var(--gray-400);">クリックで拡大</span>
+                    </div>
+                    <div style="max-height: 85px; overflow: hidden; display: flex; justify-content: center; background: #fff; border: 1px solid var(--gray-200); border-radius: 3px; cursor: pointer;" id="scan-remarks-crop-img-wrap">
+                      <img src="${currentItem.checkResult.remarksCropDataUrl}" style="max-width: 100%; max-height: 85px; object-fit: contain;" alt="特記事項枠プレビュー">
+                    </div>
+                  </div>
+                ` : ''}
+
+                <textarea id="txt-remarks" class="form-control" placeholder="${currentItem.checkResult?.hasRemarksHandwriting ? '✍️ 手書きメモあり（例: 2科に変更、非受講、他校舎受講 等で自動判定連動）' : '特記事項やメモなど（例: 2科に変更、非受講、他校舎受講 等で自動判定連動）'}" style="min-height: 48px; height: 48px; font-size: 0.82rem; padding: 6px 10px;"></textarea>
               </div>
             </div>
           </div>
@@ -1673,6 +1694,100 @@ export const ScanPage = {
         }
       };
     });
+
+    // 特記事項・手書きメモ 意図解析スマートアシスタント連動
+    const txtRemarks = this.container.querySelector('#txt-remarks');
+    const noteBadge = this.container.querySelector('#scan-note-assistant-badge');
+    const remarksCropImgWrap = this.container.querySelector('#scan-remarks-crop-img-wrap');
+
+    // クロップ画像クリック時の拡大表示
+    if (remarksCropImgWrap && currentItem.checkResult?.remarksCropDataUrl) {
+      remarksCropImgWrap.onclick = () => {
+        UI.showImageLightbox(currentItem.checkResult.remarksCropDataUrl, '特記事項 手書き枠拡大プレビュー');
+      };
+    }
+
+    const applyNoteAssistant = (text) => {
+      if (!text || !text.trim()) {
+        if (noteBadge) {
+          noteBadge.style.display = 'none';
+          noteBadge.innerHTML = '';
+        }
+        return;
+      }
+
+      const res = NoteAssistant.analyze(text, { classList: this.classList });
+      if (!res.hasAction) {
+        if (noteBadge) {
+          noteBadge.style.display = 'none';
+          noteBadge.innerHTML = '';
+        }
+        return;
+      }
+
+      // バッジ表示
+      if (noteBadge) {
+        let badgeClass = 'badge-purple';
+        if (res.badgeType === 'danger') badgeClass = 'badge-danger';
+        else if (res.badgeType === 'info') badgeClass = 'badge-blue';
+        else if (res.badgeType === 'primary') badgeClass = 'badge-purple';
+
+        noteBadge.innerHTML = `
+          <span class="badge ${badgeClass} font-bold" style="font-size: 0.70rem; padding: 2px 6px;">
+            ${escapeHtml(res.badgeText)}
+          </span>
+        `;
+        noteBadge.style.display = 'inline-block';
+      }
+
+      // 1. 期間講習受講確認モードへの連動
+      if (!isContinuationMode && !isSelectionMode) {
+        if (res.enrollmentChoice === 'has-change') {
+          if (radioHasChange && !radioHasChange.checked) {
+            radioHasChange.checked = true;
+            updateRadioUI();
+          }
+        }
+
+        if (res.classOption && changeClassSelect) {
+          for (let i = 0; i < changeClassSelect.options.length; i++) {
+            if (changeClassSelect.options[i].value === res.classOption) {
+              changeClassSelect.selectedIndex = i;
+              if (changeCourseSelect) {
+                changeCourseSelect.disabled = (res.classOption === '非受講');
+              }
+              break;
+            }
+          }
+        }
+
+        if (res.course && changeCourseSelect && !changeCourseSelect.disabled) {
+          changeCourseSelect.value = res.course;
+        }
+      }
+
+      // 2. 継続確認モードへの連動
+      if (isContinuationMode) {
+        if (res.course) {
+          const courseRadio = this.container.querySelector(`input[name="continuation-course"][value="${res.course}"]`);
+          if (courseRadio) courseRadio.checked = true;
+        }
+        if (res.classOption === '非受講') {
+          const otherRadio = this.container.querySelector('input[name="continuation-participate"][value="その他"]');
+          if (otherRadio) otherRadio.checked = true;
+        }
+      }
+    };
+
+    if (txtRemarks) {
+      txtRemarks.addEventListener('input', (e) => {
+        applyNoteAssistant(e.target.value);
+      });
+      // 初期値がある場合（既存レコードまたは自動抽出値）
+      if (txtRemarks.value) {
+        applyNoteAssistant(txtRemarks.value);
+      }
+    }
 
     // 日能研番号の手動再検索
     const nichinokenIdInput = this.container.querySelector('#inp-nichinoken-id');

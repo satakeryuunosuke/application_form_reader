@@ -24,6 +24,8 @@ export const CheckboxEngine = {
       },
       // 志望校別対策講座等の追加カスタムチェックボックス定義 [{ id, label, dx, dy, size }]
       customBoxes: [],
+      // 特記事項読取枠（初期状態はnull: 未設定・OCRスキップ）
+      remarksBox: null,
       threshold: 0.25 // 黒画素率 25% 以上でチェック有りと判定（枠線全体の黒画素を含むため高めに設定）
     };
   },
@@ -87,6 +89,8 @@ export const CheckboxEngine = {
       },
       // 3. 学年別カスタム項目定義
       customFieldDefs,
+      // 特記事項読取枠（初期状態はnull: 未設定・OCRスキップ）
+      remarksBox: null,
       threshold: 0.25
     };
   },
@@ -386,10 +390,9 @@ export const CheckboxEngine = {
     const sinA = Math.sin(angle);
 
     const getPixelRect = (def) => {
-      // 縦横同サイズの完全な正方形を算出（ページ幅比率基準）
-      const side = (def.size || def.w || 0.022) * cw;
-      const w = side;
-      const h = side;
+      // 幅・高さを算出（width/heightが指定されている場合は長方形、未指定時は従来通り正方形）
+      const w = def.width !== undefined ? (def.width * cw) : ((def.size || def.w || 0.022) * cw);
+      const h = def.height !== undefined ? (def.height * ch) : ((def.size || def.h || 0.022) * cw);
 
       // 未回転オフセット（縦方向は外枠線スケーリング比率 scaleY を適用して余白差を完全吸収）
       const unrotDx = def.dx * cw;
@@ -439,6 +442,8 @@ export const CheckboxEngine = {
       otherRect: t.otherBox ? getPixelRect(t.otherBox) : null,
       subject4Rect: t.subject4Box ? getPixelRect(t.subject4Box) : null,
       subject2Rect: t.subject2Box ? getPixelRect(t.subject2Box) : null,
+      // 特記事項枠（未設定時はnull）
+      remarksRect: t.remarksBox ? getPixelRect(t.remarksBox) : null,
       customFieldRects,
       customRects,
       threshold: t.threshold !== undefined ? t.threshold : 0.20,
@@ -670,5 +675,26 @@ export const CheckboxEngine = {
       isDynamicApplied,
       cancelledOutliers
     };
+  },
+
+  /**
+   * 特記事項枠のピクセル領域を計算して取得（未設定時はnull）
+   * @param {number} pageWidth 画像幅
+   * @param {number} pageHeight 画像高さ
+   * @param {{x: number, y: number}} barcodeCenter バーコード中心座標
+   * @param {object} template テンプレート定義
+   * @returns {{x: number, y: number, width: number, height: number}|null}
+   */
+  getRemarksBoxRect(pageWidth, pageHeight, barcodeCenter, template) {
+    if (!template || !template.remarksBox || !barcodeCenter) return null;
+    const b = template.remarksBox;
+    const w = Math.round((b.width || b.size || 0.30) * pageWidth);
+    const h = Math.round((b.height || b.size || 0.08) * pageHeight);
+    const cx = barcodeCenter.x + Math.round(b.dx * pageWidth);
+    const cy = barcodeCenter.y + Math.round(b.dy * pageHeight);
+    const x = Math.max(0, Math.min(pageWidth - w, Math.round(cx - w / 2)));
+    const y = Math.max(0, Math.min(pageHeight - h, Math.round(cy - h / 2)));
+
+    return { x, y, width: w, height: h };
   }
 };

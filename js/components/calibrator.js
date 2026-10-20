@@ -359,6 +359,7 @@ export class TemplateCalibrator {
       const found = this.template.customBoxes.find(b => b.id === this.activeTab);
       if (found) return found;
     }
+    if (this.activeTab === 'remarks' && this.template.remarksBox) return this.template.remarksBox;
 
     // activeTabが見つからない場合、存在する最初の枠をフォールバック
     if (this.template.participateBox) {
@@ -376,6 +377,10 @@ export class TemplateCalibrator {
     if (this.template.customBoxes && this.template.customBoxes.length > 0) {
       this.activeTab = this.template.customBoxes[0].id;
       return this.template.customBoxes[0];
+    }
+    if (this.template.remarksBox) {
+      this.activeTab = 'remarks';
+      return this.template.remarksBox;
     }
     this.activeTab = null;
     return null;
@@ -405,6 +410,7 @@ export class TemplateCalibrator {
       const found = this.template.customBoxes.find(b => b.id === this.activeTab);
       if (found) return `🟪 「${found.label}」枠`;
     }
+    if (this.activeTab === 'remarks' && this.template.remarksBox) return '📝 「特記事項」枠';
     return '';
   }
 
@@ -451,6 +457,9 @@ export class TemplateCalibrator {
       this.template.customBoxes.forEach((b, idx) => {
         list.push({ id: b.id, label: b.label, type: 'custom', color: '#8b5cf6', icon: '🟪', customIndex: idx });
       });
+    }
+    if (this.template.remarksBox) {
+      list.push({ id: 'remarks', label: '「特記事項」枠', type: 'remarks', color: '#2563eb', icon: '📝' });
     }
     return list;
   }
@@ -530,7 +539,16 @@ export class TemplateCalibrator {
       </div>
     `).join('');
 
-    if (!hasNoChange && !hasHasChange && customBoxes.length === 0) {
+    if (this.template.remarksBox) {
+      tabsHtml += `
+        <div class="calib-tab-item ${this.activeTab === 'remarks' ? 'active' : ''}" style="${this.activeTab === 'remarks' ? 'border-color: #2563eb;' : ''}">
+          <button type="button" class="calib-tab-btn" data-tab="remarks">📝 「特記事項」枠</button>
+          <button type="button" class="calib-tab-del-btn" data-del="remarks" title="「特記事項」読取枠を削除">✕</button>
+        </div>
+      `;
+    }
+
+    if (!hasNoChange && !hasHasChange && customBoxes.length === 0 && !this.template.remarksBox) {
       tabsHtml = `<div style="font-size: 0.8rem; color: var(--gray-500); padding: 4px 8px;">読取枠が登録されていません</div>`;
     }
 
@@ -550,6 +568,14 @@ export class TemplateCalibrator {
           </button>
         `;
       }
+    }
+
+    if (!this.template.remarksBox) {
+      actionsHtml += `
+        <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="remarks" style="font-size: 0.72rem; padding: 2px 8px; color: #2563eb; border-color: #93c5fd;" title="手書き特記事項の読取枠を追加">
+          ✏️ 「特記事項」枠を追加
+        </button>
+      `;
     }
 
     return `
@@ -659,12 +685,16 @@ export class TemplateCalibrator {
       };
     });
 
-    // 削除済み標準枠の再追加ボタン
+    // 削除済み標準枠・特記事項枠の再追加ボタン
     const restoreBtns = this.container.querySelectorAll('.calib-btn-restore-box');
     restoreBtns.forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
-        this.addStandardBox(btn.dataset.restore);
+        if (btn.dataset.restore === 'remarks') {
+          this.addRemarksBox();
+        } else {
+          this.addStandardBox(btn.dataset.restore);
+        }
       };
     });
   }
@@ -716,6 +746,10 @@ export class TemplateCalibrator {
       if (!this.template.hasChangeBox) return;
       delete this.template.hasChangeBox;
       label = '変更あり';
+    } else if (typeOrId === 'remarks') {
+      if (!this.template.remarksBox) return;
+      delete this.template.remarksBox;
+      label = '特記事項';
     } else {
       const found = (this.template.customBoxes || []).find(b => b.id === typeOrId);
       label = found ? found.label : typeOrId;
@@ -730,6 +764,8 @@ export class TemplateCalibrator {
         this.activeTab = 'hasChange';
       } else if (this.template.customBoxes && this.template.customBoxes.length > 0) {
         this.activeTab = this.template.customBoxes[0].id;
+      } else if (this.template.remarksBox) {
+        this.activeTab = 'remarks';
       } else {
         this.activeTab = null;
       }
@@ -744,6 +780,26 @@ export class TemplateCalibrator {
       this.onChange(this.template);
     }
     UI.showToast(`「${label}」チェックボックスを削除しました`, 'info');
+  }
+
+  addRemarksBox() {
+    this.template.remarksBox = {
+      dx: 0.15,
+      dy: 0.35,
+      width: 0.38,
+      height: 0.08
+    };
+    this.activeTab = 'remarks';
+    UI.showToast('「特記事項」読取枠を追加しました（位置・サイズを調整してください）', 'success');
+
+    this.updateTabsUI();
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    this.updateLegend();
+
+    if (this.onChange) {
+      this.onChange(this.template);
+    }
   }
 
   addStandardBox(type) {
@@ -785,6 +841,9 @@ export class TemplateCalibrator {
     if (this.template.customBoxes && this.template.customBoxes.length > 0) {
       html += `<span class="legend-item"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>`;
     }
+    if (this.template.remarksBox) {
+      html += `<span class="legend-item"><span class="legend-box" style="background: #2563eb; border: 1px dashed #1d4ed8;"></span> 📝 特記事項枠</span>`;
+    }
     if (this.bottomBorder && this.bottomBorder.found) {
       html += `<span class="legend-item"><span class="legend-box" style="background: #06b6d4; border: 1px dashed #0891b2;"></span> 📐 外枠下端線 (傾き: ${this.bottomBorder.angleDeg}° 補正有効)</span>`;
     }
@@ -825,7 +884,15 @@ export class TemplateCalibrator {
       targetBox.dx = parseFloat(rngDx.value);
       targetBox.dy = parseFloat(rngDy.value);
       const newSize = parseFloat(rngSize.value);
-      CheckboxEngine.syncBoxSizes(this.template, newSize);
+      if (this.activeTab === 'remarks') {
+        const curW = targetBox.width || 0.38;
+        const curH = targetBox.height || 0.08;
+        const aspect = curH / curW;
+        targetBox.width = Math.max(0.1, Math.min(0.8, newSize * 15));
+        targetBox.height = targetBox.width * aspect;
+      } else {
+        CheckboxEngine.syncBoxSizes(this.template, newSize);
+      }
       this.template.threshold = parseFloat(rngTh.value);
 
       this.updateValueLabels();
@@ -858,10 +925,18 @@ export class TemplateCalibrator {
         if (!targetBox) return;
 
         if (target === 'size') {
-          const currentVal = targetBox.size || targetBox.w || 0.032;
-          let newVal = Math.round((currentVal + delta) * 1000) / 1000;
-          newVal = Math.max(0.005, Math.min(0.150, newVal));
-          CheckboxEngine.syncBoxSizes(this.template, newVal);
+          if (this.activeTab === 'remarks') {
+            const curW = targetBox.width || 0.38;
+            const curH = targetBox.height || 0.08;
+            const aspect = curH / curW;
+            targetBox.width = Math.max(0.1, Math.min(0.8, Math.round((curW + delta * 5) * 1000) / 1000));
+            targetBox.height = targetBox.width * aspect;
+          } else {
+            const currentVal = targetBox.size || targetBox.w || 0.032;
+            let newVal = Math.round((currentVal + delta) * 1000) / 1000;
+            newVal = Math.max(0.005, Math.min(0.150, newVal));
+            CheckboxEngine.syncBoxSizes(this.template, newVal);
+          }
           this.syncSlidersFromTemplate();
           this.drawOverlay();
           if (this.onChange) this.onChange(this.template);
@@ -1128,7 +1203,9 @@ export class TemplateCalibrator {
 
     if (rngDx) rngDx.value = targetBox.dx;
     if (rngDy) rngDy.value = targetBox.dy;
-    if (rngSize) rngSize.value = targetBox.size || targetBox.w || 0.032;
+    if (rngSize) {
+      rngSize.value = (this.activeTab === 'remarks') ? ((targetBox.width || 0.38) / 15) : (targetBox.size || targetBox.w || 0.032);
+    }
     if (rngTh) rngTh.value = this.template.threshold !== undefined ? this.template.threshold : 0.25;
 
     this.updateValueLabels();
@@ -1147,7 +1224,7 @@ export class TemplateCalibrator {
     const valSize = this.container.querySelector('#val-size');
     const valTh = this.container.querySelector('#val-threshold');
 
-    const sizeVal = targetBox.size || targetBox.w || 0.032;
+    const sizeVal = (this.activeTab === 'remarks') ? (targetBox.width || 0.38) : (targetBox.size || targetBox.w || 0.032);
 
     if (valDx) valDx.textContent = `${(targetBox.dx * 100).toFixed(1)}%`;
     if (valDy) valDy.textContent = `${(targetBox.dy * 100).toFixed(1)}%`;
@@ -1704,6 +1781,12 @@ export class TemplateCalibrator {
           isDynamicApplied: customGroupData.isDynamicApplied
         });
       }
+    }
+
+    // 7.5. 特記事項枠（青・破線長方形）
+    if (rects.remarksRect) {
+      const isRemarksActive = this.activeTab === 'remarks';
+      this.drawTargetBox(ctx, rects.remarksRect, '#2563eb', 'rgba(37, 99, 235, 0.15)', '特記事項 (メモ欄)', isRemarksActive);
     }
 
     // 8. 判定UIの更新
