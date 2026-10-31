@@ -822,7 +822,7 @@ export const ListPage = {
 
         if (row.status === '承認済') {
           statusBadge = '<span class="badge badge-success">提出済</span>';
-          const isOther = (row.enrollmentStatus === 'その他');
+          const isOther = (row.enrollmentStatus === 'その他' || (!row.enrollmentStatus && row.hasChange));
           enrollStatusBadge = isOther 
             ? '<span class="badge badge-warning font-bold" style="font-size: 0.82rem; padding: 2px 7px;">📝 その他</span>'
             : '<span class="badge badge-success font-bold" style="font-size: 0.82rem; padding: 2px 7px;">⭕ 受講する</span>';
