@@ -12,6 +12,7 @@ import { ListPage } from './list.js';
 import { ManualPage } from './manual.js';
 import { ReviewPage } from './review.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
+import { mountBulkCoursePicker } from '../components/bulk-course-picker.js';
 import { FolderConnector } from '../sync/folder-connector.js';
 import { SyncManager } from '../sync/sync-manager.js';
 
@@ -1201,9 +1202,12 @@ export const ProjectPage = {
             </div>
             <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
               ${isSelectionMode
-                ? 'このプロジェクトで読み取るチェックボックス（志望校別対策講座、自由項目）を調整・削除・追加できます。'
+                ? 'このプロジェクトで読み取るチェックボックス（志望校別対策講座、自由項目）を一括チェック追加・グリッド整列・調整できます。'
                 : 'このプロジェクトで読み取るチェックボックス（標準の変更なし・変更あり、志望校別対策講座、自由項目）を調整・削除・追加できます。'}
             </p>
+
+            <!-- Preact + HTM 一括チェック選択 / テキスト一括貼付パネル -->
+            <div id="proj-bulk-course-picker-mount"></div>
 
             <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; align-items: end;">
@@ -1462,6 +1466,7 @@ export const ProjectPage = {
             else currentTemplate.customBoxes = (currentTemplate.customBoxes || []).filter(b => b.id !== id);
             renderProjCustomBoxes();
           }
+          if (typeof refreshProjBulkPicker === 'function') refreshProjBulkPicker();
         };
       });
 
@@ -1520,10 +1525,55 @@ export const ProjectPage = {
         calibrator.focusTargetArea();
       }
       renderProjCustomBoxes();
+      refreshProjBulkPicker();
       UI.showToast(`「${label}」を追加しました。枠線の位置を調整してください。`, 'success');
     };
 
+    const projBulkPickerMount = modal.querySelector('#proj-bulk-course-picker-mount');
+    const refreshProjBulkPicker = () => {
+      if (!projBulkPickerMount) return;
+      mountBulkCoursePicker(projBulkPickerMount, {
+        coursePresets,
+        methodPresets,
+        existingLabels: (currentTemplate.customBoxes || []).map(b => b.label),
+        onBulkAdd: (labels, gridCols = 2) => {
+          if (!currentTemplate.customBoxes) currentTemplate.customBoxes = [];
+          const commonSize = CheckboxEngine.getCommonBoxSize(currentTemplate);
+          let addedCount = 0;
+          labels.forEach((lbl, idx) => {
+            if (currentTemplate.customBoxes.some(b => b.label === lbl)) return;
+            const id = 'cbox_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4);
+            currentTemplate.customBoxes.push({
+              id,
+              label: lbl,
+              dx: -0.058,
+              dy: 0.360,
+              size: commonSize
+            });
+            addedCount++;
+          });
+          if (addedCount === 0) {
+            UI.showToast('選択された講座はすべて既に追加されています', 'warning');
+            return;
+          }
+          const allIds = currentTemplate.customBoxes.map(b => b.id);
+          if (calibrator) {
+            calibrator.setTemplate(currentTemplate);
+            calibrator.autoArrangeGrid(allIds, gridCols);
+            calibrator.activeTab = currentTemplate.customBoxes[currentTemplate.customBoxes.length - 1].id;
+            calibrator.updateTabsUI();
+            calibrator.syncSlidersFromTemplate();
+            calibrator.drawOverlay();
+          }
+          renderProjCustomBoxes();
+          refreshProjBulkPicker();
+          UI.showToast(`${addedCount} 件の講座を一括追加し、${gridCols}列グリッドで等間隔配置しました`, 'success');
+        }
+      });
+    };
+
     renderProjCustomBoxes();
+    refreshProjBulkPicker();
 
     // 講座名×受講方法追加
     const addCourseBtn = modal.querySelector('#proj-btn-add-course');

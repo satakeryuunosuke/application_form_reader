@@ -8,6 +8,7 @@ import { UI, escapeHtml } from '../utils/ui.js';
 import { ScannerEngine } from '../scanner.js';
 import { CheckboxEngine } from '../checkbox.js';
 import { TemplateCalibrator } from '../components/calibrator.js';
+import { mountBulkCoursePicker } from '../components/bulk-course-picker.js';
 import { APP_VERSION, SYSTEM_INFO } from '../version.js';
 import { FolderConnector } from '../sync/folder-connector.js';
 import { SyncManager } from '../sync/sync-manager.js';
@@ -533,6 +534,7 @@ export const HomePage = {
           <div>
             <div style="font-weight: 700; font-size: 0.92rem; color: var(--gray-800); margin-bottom: 8px;">📚 組み込みライブラリ（完全オフライン配置）</div>
             <div style="display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.82rem;">
+              <span class="badge badge-purple">Preact + HTM + Signals (宣言的UI・状態管理)</span>
               <span class="badge badge-gray">Dexie.js (IndexedDBラッパー)</span>
               <span class="badge badge-gray">SheetJS xlsx (Excel/CSV)</span>
               <span class="badge badge-gray">PDF.js (スキャンPDF描画)</span>
@@ -582,6 +584,98 @@ export const HomePage = {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay modal-backdrop';
 
+    const getAutoPresetSummaryText = (mode, grade) => {
+      if (mode === 'continuation') {
+        const g = String(grade);
+        if (g === '3' || g === '4') {
+          return '📋 継続確認（3・4年）: 「受講する/その他」「4科/2科」＋「通室コース（月木/火金）」が自動適用されます';
+        }
+        if (g === '6') {
+          return '📋 継続確認（6年）: 「受講する/その他」「4科/2科」＋「日特（受講/変更あり）」が自動適用されます';
+        }
+        return '📋 継続確認: 基本枠「受講する/その他」「4科/2科」が自動適用されます（学年別項目も自由追加可）';
+      }
+      if (mode === 'selection') {
+        return '🎯 講座選択（志望校別）: 次の画面で「講座マスタから一括チェック追加」または「範囲ドラッグ一括配置」で読取枠を配置できます';
+      }
+      return '📝 期間講習受講確認: 標準の「変更なし／変更あり」読取枠が自動適用されます（そのまま即座に作成可能）';
+    };
+
+    const prepareTemplateForMode = (mode, grade) => {
+      if (mode === 'selection') {
+        delete customTemplate.noChangeBox;
+        delete customTemplate.hasChangeBox;
+        delete customTemplate.participateBox;
+        delete customTemplate.otherBox;
+        delete customTemplate.subject4Box;
+        delete customTemplate.subject2Box;
+        delete customTemplate.customFieldDefs;
+        if (!customTemplate.customBoxes) customTemplate.customBoxes = [];
+      } else if (mode === 'continuation') {
+        delete customTemplate.noChangeBox;
+        delete customTemplate.hasChangeBox;
+        delete customTemplate.customBoxes;
+        customTemplate = CheckboxEngine.getDefaultContinuationTemplate(grade);
+      } else {
+        delete customTemplate.participateBox;
+        delete customTemplate.otherBox;
+        delete customTemplate.subject4Box;
+        delete customTemplate.subject2Box;
+        delete customTemplate.customFieldDefs;
+        const def = CheckboxEngine.getDefaultTemplate();
+        if (!customTemplate.noChangeBox) customTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
+        if (!customTemplate.hasChangeBox) customTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
+        customTemplate.customBoxes = [];
+      }
+    };
+
+    const renderCsvUploadSectionHtml = (compact = false) => `
+      <div class="wiz-csv-integrated-box" style="${compact ? 'margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--gray-200);' : ''}">
+        <div style="margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+          <div>
+            <span class="form-label font-bold" style="font-size: 0.88rem; margin-bottom: 0;">👥 生徒名簿CSVの読み込み ${compact ? '<span class="badge badge-info" style="font-size: 0.72rem; margin-left: 6px;">⚡ 1画面クイック作成対応</span>' : '<span class="required">*</span>'}</span>
+            <div style="font-size: 0.76rem; color: var(--gray-500);">先頭4列: 日能研番号, 氏名, 氏名カナ, クラス（5列目に科目 2/4 がある場合は自動反映）</div>
+          </div>
+          <button type="button" id="btn-dl-template" class="btn btn-secondary btn-sm" style="font-size: 0.76rem; padding: 3px 10px;">
+            📥 テンプレートCSV取得
+          </button>
+        </div>
+
+        <div id="csv-dropzone" class="dropzone" style="${compact ? 'padding: 14px 16px;' : ''}">
+          <div class="dropzone-icon" style="${compact ? 'font-size: 1.5rem; margin-bottom: 2px;' : ''}">📄</div>
+          <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 2px;">生徒名簿CSVをドラッグ＆ドロップ（またはクリックして選択）</div>
+          <div class="text-muted" style="font-size: 0.76rem;">読み込むと「⚡ このまま標準書式で即座に作成」ボタンで1ステップ作成できます</div>
+          <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display: none;">
+        </div>
+
+        <div id="csv-preview-area" style="margin-top: 10px; ${parsedStudents.length > 0 ? '' : 'display: none;'}">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span class="font-bold" style="font-size: 0.86rem; color: var(--primary-800);">✅ 取込プレビュー (${parsedStudents.length}名)</span>
+            <span class="badge badge-success">正常に解析完了</span>
+          </div>
+          <div class="table-container" style="max-height: 150px;">
+            <table class="table" style="font-size: 0.78rem;">
+              <thead>
+                <tr><th>日能研番号</th><th>氏名</th><th>カナ</th><th>クラス</th><th>科目</th></tr>
+              </thead>
+              <tbody>
+                ${parsedStudents.slice(0, 5).map(s => `
+                  <tr>
+                    <td class="text-mono font-bold">${escapeHtml(s.nichinokenId)}</td>
+                    <td>${escapeHtml(s.name)}</td>
+                    <td>${escapeHtml(s.nameKana)}</td>
+                    <td><span class="badge badge-info">${escapeHtml(s.className)}</span></td>
+                    <td><span class="badge badge-purple">${escapeHtml(s.course || '4科')}</span></td>
+                  </tr>
+                `).join('')}
+                ${parsedStudents.length > 5 ? `<tr><td colspan="5" class="text-center text-muted">...他 ${parsedStudents.length - 5} 名</td></tr>` : ''}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
     const renderStep = () => {
       let bodyContent = '';
 
@@ -630,79 +724,44 @@ export const HomePage = {
             </div>
           </div>
 
-          <!-- 運用モード選択 -->
-          <div class="form-group" style="margin-top: 14px;">
-            <label class="form-label font-bold" style="font-size: 0.88rem; margin-bottom: 6px;">運用モード <span class="required">*</span></label>
+          <!-- 運用モード選択（受講期と自動連動） -->
+          <div class="form-group" style="margin-top: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label class="form-label font-bold" style="font-size: 0.88rem; margin-bottom: 0;">運用モード <span class="required">*</span></label>
+              <span style="font-size: 0.74rem; color: var(--primary-700); font-weight: 600;">✨ 受講期・学年の選択に応じて最適モードと初期項目が自動セットされます</span>
+            </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-              <label class="radio-card ${selectedProjectType === 'confirmation' ? 'selected' : ''}" id="lbl-wiz-mode-confirmation" style="cursor: pointer; padding: 12px 14px;">
+              <label class="radio-card ${selectedProjectType === 'confirmation' ? 'selected' : ''}" id="lbl-wiz-mode-confirmation" style="cursor: pointer; padding: 10px 12px;">
                 <input type="radio" name="wiz-project-type" value="confirmation" ${selectedProjectType === 'confirmation' ? 'checked' : ''} style="display: none;">
                 <div>
-                  <div class="font-bold" style="font-size: 0.88rem; color: var(--gray-900);">📝 期間講習受講確認</div>
-                  <div style="font-size: 0.75rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">夏期・冬期・春期講習向け。<br>「変更なし／変更あり」で所属クラスからの変更を確認・集計</div>
+                  <div class="font-bold" style="font-size: 0.86rem; color: var(--gray-900);">📝 期間講習受講確認</div>
+                  <div style="font-size: 0.74rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">夏期・冬期・春期講習向け。<br>「変更なし／変更あり」で所属クラスからの変更を確認・集計</div>
                 </div>
               </label>
-              <label class="radio-card ${selectedProjectType === 'continuation' ? 'selected' : ''}" id="lbl-wiz-mode-continuation" style="cursor: pointer; padding: 12px 14px; border-color: ${selectedProjectType === 'continuation' ? 'var(--primary-solid)' : ''};">
+              <label class="radio-card ${selectedProjectType === 'continuation' ? 'selected' : ''}" id="lbl-wiz-mode-continuation" style="cursor: pointer; padding: 10px 12px; border-color: ${selectedProjectType === 'continuation' ? 'var(--primary-solid)' : ''};">
                 <input type="radio" name="wiz-project-type" value="continuation" ${selectedProjectType === 'continuation' ? 'checked' : ''} style="display: none;">
                 <div>
-                  <div class="font-bold" style="font-size: 0.88rem; color: #0284c7;">📋 継続確認モード</div>
-                  <div style="font-size: 0.75rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">本科通常授業・新年度継続向け。<br>受講する／その他 ＋ 2科／4科 ＋ 学年別項目（通室コース、日特等）</div>
+                  <div class="font-bold" style="font-size: 0.86rem; color: #0284c7;">📋 継続確認モード</div>
+                  <div style="font-size: 0.74rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">本科通常授業・新年度継続向け。<br>受講する／その他 ＋ 2科／4科 ＋ 学年別項目（通室コース、日特等）</div>
                 </div>
               </label>
-              <label class="radio-card ${selectedProjectType === 'selection' ? 'selected' : ''}" id="lbl-wiz-mode-selection" style="cursor: pointer; padding: 12px 14px;">
+              <label class="radio-card ${selectedProjectType === 'selection' ? 'selected' : ''}" id="lbl-wiz-mode-selection" style="cursor: pointer; padding: 10px 12px;">
                 <input type="radio" name="wiz-project-type" value="selection" ${selectedProjectType === 'selection' ? 'checked' : ''} style="display: none;">
                 <div>
-                  <div class="font-bold" style="font-size: 0.88rem; color: #6d28d9;">🎯 講座選択（志望校別）</div>
-                  <div style="font-size: 0.75rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">志望校別対策講座向け。<br>提示された講座群から希望講座を複数選んで申込・合計集計</div>
+                  <div class="font-bold" style="font-size: 0.86rem; color: #6d28d9;">🎯 講座選択（志望校別）</div>
+                  <div style="font-size: 0.74rem; color: var(--gray-600); margin-top: 3px; line-height: 1.35;">志望校別対策講座向け。<br>提示された講座群から希望講座を複数選んで申込・合計集計</div>
                 </div>
               </label>
             </div>
+            <div id="wiz-auto-preset-summary" style="margin-top: 8px; padding: 7px 12px; background: var(--primary-50); border: 1px solid var(--primary-200); border-radius: var(--radius-sm); font-size: 0.78rem; color: var(--primary-900); font-weight: 600;">
+              ${escapeHtml(getAutoPresetSummaryText(selectedProjectType, selectedGrade))}
+            </div>
           </div>
+
+          ${renderCsvUploadSectionHtml(true)}
         `;
       } else if (wizardStep === 2) {
-        bodyContent = `
-          <div style="margin-bottom: var(--spacing-md); display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <p style="font-size: 0.92rem; color: var(--gray-700);">生徒リストのCSVファイルを読み込んでください。</p>
-              <p style="font-size: 0.8rem; color: var(--gray-500);">（先頭4列: 日能研番号, 氏名, 氏名カナ, クラス。右側に空列があっても自動許容されます）</p>
-            </div>
-            <button type="button" id="btn-dl-template" class="btn btn-secondary btn-sm">
-              📥 テンプレートCSV取得
-            </button>
-          </div>
-
-          <div id="csv-dropzone" class="dropzone">
-            <div class="dropzone-icon">📄</div>
-            <div style="font-weight: 600; margin-bottom: 4px;">CSVファイルをドラッグ＆ドロップ</div>
-            <div class="text-muted" style="font-size: 0.82rem;">またはクリックしてファイルを選択</div>
-            <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display: none;">
-          </div>
-
-          <div id="csv-preview-area" style="margin-top: var(--spacing-md); ${parsedStudents.length > 0 ? '' : 'display: none;'}">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span class="font-bold" style="font-size: 0.9rem;">取込プレビュー (${parsedStudents.length}名)</span>
-              <span class="badge badge-success">正常に解析完了</span>
-            </div>
-            <div class="table-container" style="max-height: 180px;">
-              <table class="table" style="font-size: 0.8rem;">
-                <thead>
-                  <tr><th>日能研番号</th><th>氏名</th><th>カナ</th><th>クラス</th><th>科目</th></tr>
-                </thead>
-                <tbody>
-                  ${parsedStudents.slice(0, 5).map(s => `
-                    <tr>
-                      <td class="text-mono font-bold">${escapeHtml(s.nichinokenId)}</td>
-                      <td>${escapeHtml(s.name)}</td>
-                      <td>${escapeHtml(s.nameKana)}</td>
-                      <td><span class="badge badge-info">${escapeHtml(s.className)}</span></td>
-                      <td><span class="badge badge-purple">${escapeHtml(s.course || '4科')}</span></td>
-                    </tr>
-                  `).join('')}
-                  ${parsedStudents.length > 5 ? `<tr><td colspan="5" class="text-center text-muted">...他 ${parsedStudents.length - 5} 名</td></tr>` : ''}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        `;
+        bodyContent = renderCsvUploadSectionHtml(false);
       } else if (wizardStep === 3) {
         const isSelectionMode = (selectedProjectType === 'selection');
 
@@ -734,8 +793,11 @@ export const HomePage = {
                   <span class="badge badge-purple" style="font-size: 0.75rem;">プロジェクト設定</span>
                 </div>
                 <p style="color: var(--gray-600); font-size: 0.82rem; margin-bottom: 10px;">
-                  このプロジェクトで読み取るチェックボックス（志望校別対策講座、自由項目）を調整・削除・追加できます。
+                  このプロジェクトで読み取るチェックボックス（志望校別対策講座、自由項目）を一括チェック追加・グリッド整列・調整できます。
                 </p>
+
+                <!-- Preact + HTM 一括チェック選択 / テキスト一括貼付パネル -->
+                <div id="wiz-bulk-course-picker-mount"></div>
 
                 <!-- 志望校別講座（講座名 × 受講方法）選択追加フォーム -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; align-items: end;">
@@ -903,14 +965,19 @@ export const HomePage = {
             ${bodyContent}
           </div>
 
-          <div class="modal-footer" style="display: flex; justify-content: space-between;">
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <button type="button" id="btn-wiz-prev" class="btn btn-secondary" ${wizardStep === 1 ? 'disabled style="visibility: hidden;"' : ''}>
               ← 戻る
             </button>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
               <button type="button" id="btn-wiz-cancel" class="btn btn-ghost">キャンセル</button>
+              ${wizardStep < 3 && parsedStudents.length > 0 && selectedProjectType !== 'selection' ? `
+                <button type="button" id="btn-wiz-quick-create" class="btn btn-secondary" style="background: #ecfdf5; color: #047857; border-color: #6ee7b7; font-weight: 700;" title="書式調整ステップをスキップし、標準の既定書式で今すぐプロジェクトを作成します">
+                  ⚡ このまま標準書式で即座に作成 (${parsedStudents.length}名)
+                </button>
+              ` : ''}
               <button type="button" id="btn-wiz-next" class="btn btn-primary">
-                ${wizardStep === 3 ? '🎉 プロジェクトを作成' : '次へ →'}
+                ${wizardStep === 3 ? '🎉 プロジェクトを作成' : (parsedStudents.length > 0 && wizardStep === 1 ? '📐 書式・読取枠の確認へ →' : '次へ →')}
               </button>
             </div>
           </div>
@@ -1245,6 +1312,7 @@ export const HomePage = {
                   customTemplate.customBoxes = (customTemplate.customBoxes || []).filter(b => b.id !== id);
                   renderWizCustomBoxes();
                 }
+                if (typeof refreshBulkPicker === 'function') refreshBulkPicker();
               };
             });
 
@@ -1288,10 +1356,55 @@ export const HomePage = {
               calibratorInstance.focusTargetArea();
             }
             renderWizCustomBoxes();
+            refreshBulkPicker();
             UI.showToast(`「${label}」を追加しました。枠線の位置を調整してください。`, 'success');
           };
 
+          const bulkPickerMount = modal.querySelector('#wiz-bulk-course-picker-mount');
+          const refreshBulkPicker = () => {
+            if (!bulkPickerMount) return;
+            mountBulkCoursePicker(bulkPickerMount, {
+              coursePresets,
+              methodPresets,
+              existingLabels: (customTemplate.customBoxes || []).map(b => b.label),
+              onBulkAdd: (labels, gridCols = 2) => {
+                if (!customTemplate.customBoxes) customTemplate.customBoxes = [];
+                const commonSize = CheckboxEngine.getCommonBoxSize(customTemplate);
+                let addedCount = 0;
+                labels.forEach((lbl, idx) => {
+                  if (customTemplate.customBoxes.some(b => b.label === lbl)) return;
+                  const id = 'cbox_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4);
+                  customTemplate.customBoxes.push({
+                    id,
+                    label: lbl,
+                    dx: -0.058,
+                    dy: 0.360,
+                    size: commonSize
+                  });
+                  addedCount++;
+                });
+                if (addedCount === 0) {
+                  UI.showToast('選択された講座はすべて既に追加されています', 'warning');
+                  return;
+                }
+                const allIds = customTemplate.customBoxes.map(b => b.id);
+                if (calibratorInstance) {
+                  calibratorInstance.setTemplate(customTemplate);
+                  calibratorInstance.autoArrangeGrid(allIds, gridCols);
+                  calibratorInstance.activeTab = customTemplate.customBoxes[customTemplate.customBoxes.length - 1].id;
+                  calibratorInstance.updateTabsUI();
+                  calibratorInstance.syncSlidersFromTemplate();
+                  calibratorInstance.drawOverlay();
+                }
+                renderWizCustomBoxes();
+                refreshBulkPicker();
+                UI.showToast(`${addedCount} 件の講座を一括追加し、${gridCols}列グリッドで等間隔配置しました`, 'success');
+              }
+            });
+          };
+
           renderWizCustomBoxes();
+          refreshBulkPicker();
 
           // 講座名×受講方法追加
           const addCourseBtn = modal.querySelector('#wiz-btn-add-course');
@@ -1342,12 +1455,15 @@ export const HomePage = {
 
       // Step 1 のイベントバインド
       if (wizardStep === 1) {
+        const yearEl = modal.querySelector('#wiz-year');
+        const gradeEl = modal.querySelector('#wiz-grade');
         const sessionEl = modal.querySelector('#wiz-session');
         const customWrapper = modal.querySelector('#wiz-session-custom-wrapper');
         const customInput = modal.querySelector('#wiz-session-custom');
         const modeConf = modal.querySelector('#lbl-wiz-mode-confirmation');
         const modeCont = modal.querySelector('#lbl-wiz-mode-continuation');
         const modeSel = modal.querySelector('#lbl-wiz-mode-selection');
+        const summaryEl = modal.querySelector('#wiz-auto-preset-summary');
 
         const updateModeCards = () => {
           if (modeConf) {
@@ -1365,7 +1481,22 @@ export const HomePage = {
             const selRadio = modeSel.querySelector('input');
             if (selRadio) selRadio.checked = (selectedProjectType === 'selection');
           }
+          if (summaryEl) {
+            summaryEl.textContent = getAutoPresetSummaryText(selectedProjectType, selectedGrade);
+          }
         };
+
+        if (yearEl) {
+          yearEl.onchange = () => {
+            selectedYear = parseInt(yearEl.value, 10);
+          };
+        }
+        if (gradeEl) {
+          gradeEl.onchange = () => {
+            selectedGrade = gradeEl.value;
+            updateModeCards();
+          };
+        }
 
         if (modeConf) {
           modeConf.onclick = () => {
@@ -1388,9 +1519,13 @@ export const HomePage = {
 
         if (customInput) {
           customInput.value = customSessionName;
+          customInput.oninput = () => {
+            customSessionName = customInput.value;
+          };
         }
         if (sessionEl && customWrapper) {
           sessionEl.onchange = () => {
+            selectedSessionOption = sessionEl.value;
             if (sessionEl.value === 'その他') {
               customWrapper.style.display = 'block';
               if (customInput) customInput.focus();
@@ -1449,10 +1584,90 @@ export const HomePage = {
           if (calibratorInstance) {
             customTemplate = calibratorInstance.getTemplate();
           }
-          if (wizardStep > 1) {
+          if (wizardStep === 3 && parsedStudents.length > 0) {
+            wizardStep = 1;
+            renderStep();
+          } else if (wizardStep > 1) {
             wizardStep--;
             renderStep();
           }
+        };
+      }
+
+      const syncStep1Values = () => {
+        const yearEl = modal.querySelector('#wiz-year');
+        const gradeEl = modal.querySelector('#wiz-grade');
+        const sessionEl = modal.querySelector('#wiz-session');
+        const customInput = modal.querySelector('#wiz-session-custom');
+        if (yearEl) selectedYear = parseInt(yearEl.value, 10);
+        if (gradeEl) selectedGrade = gradeEl.value;
+        if (sessionEl) selectedSessionOption = sessionEl.value;
+        if (selectedSessionOption === 'その他') {
+          const customVal = customInput ? customInput.value.trim() : '';
+          if (!customVal) {
+            UI.showToast('講習・講座名（自由記述）を入力してください', 'warning');
+            if (customInput) customInput.focus();
+            return false;
+          }
+          customSessionName = customVal;
+          selectedSession = customVal;
+        } else {
+          selectedSession = selectedSessionOption;
+        }
+        return true;
+      };
+
+      const executeCreateProject = async (targetBtn) => {
+        if (!FolderConnector.isConnected()) {
+          const proceedWithoutShared = await UI.confirm(
+            '共有フォルダ未接続の確認',
+            '現在、共有フォルダに接続されていません。\nこのプロジェクトは現在のPCにのみ保存され、他のPCからはアクセス・閲覧ができません。\n\n共有フォルダに接続せずに作成を続行しますか？\n（※後からプロジェクト管理画面で「共有フォルダへ再書き出し」を行うことも可能です）',
+            'このまま作成を続行',
+            'primary'
+          );
+          if (!proceedWithoutShared) {
+            return;
+          }
+        }
+
+        UI.setButtonLoading(targetBtn, true, '作成中...');
+        try {
+          const project = await UI.withLoading(async () => {
+            return await DB.createProject({
+              year: selectedYear,
+              grade: selectedGrade,
+              sessionName: selectedSession,
+              students: parsedStudents,
+              scanTemplate: customTemplate,
+              projectType: selectedProjectType
+            });
+          }, {
+            title: 'プロジェクトを作成中...',
+            message: 'ローカルデータベースおよびファイルサーバー（共有フォルダ）にプロジェクト・生徒名簿を登録しています。',
+            icon: '📋'
+          });
+
+          const syncMsg = FolderConnector.isConnected() ? '（共有フォルダへ書き出しました）' : '';
+          UI.showToast(`「${UI.formatProjectTitle(project.title)}」を作成しました${syncMsg}`, 'success');
+          modal.remove();
+          window.location.hash = `#project/${project.id}`;
+        } catch (err) {
+          UI.showToast(`プロジェクト作成に失敗しました: ${err.message}`, 'error');
+          UI.setButtonLoading(targetBtn, false);
+        }
+      };
+
+      // 1画面クイック作成ボタン（Step 1 / Step 2 でCSV取込済みの場合）
+      const quickCreateBtn = modal.querySelector('#btn-wiz-quick-create');
+      if (quickCreateBtn) {
+        quickCreateBtn.onclick = async () => {
+          if (wizardStep === 1 && !syncStep1Values()) return;
+          if (parsedStudents.length === 0) {
+            UI.showToast('生徒CSVファイルをアップロードしてください', 'warning');
+            return;
+          }
+          prepareTemplateForMode(selectedProjectType, selectedGrade);
+          await executeCreateProject(quickCreateBtn);
         };
       }
 
@@ -1460,63 +1675,21 @@ export const HomePage = {
       if (nextBtn) {
         nextBtn.onclick = async () => {
           if (wizardStep === 1) {
-            const yearEl = modal.querySelector('#wiz-year');
-            const gradeEl = modal.querySelector('#wiz-grade');
-            const sessionEl = modal.querySelector('#wiz-session');
-            const customInput = modal.querySelector('#wiz-session-custom');
-            if (yearEl) selectedYear = parseInt(yearEl.value, 10);
-            if (gradeEl) selectedGrade = gradeEl.value;
-            if (sessionEl) selectedSessionOption = sessionEl.value;
-
-            if (selectedSessionOption === 'その他') {
-              const customVal = customInput ? customInput.value.trim() : '';
-              if (!customVal) {
-                UI.showToast('講習・講座名（自由記述）を入力してください', 'warning');
-                if (customInput) customInput.focus();
-                return;
-              }
-              customSessionName = customVal;
-              selectedSession = customVal;
+            if (!syncStep1Values()) return;
+            if (parsedStudents.length > 0) {
+              // Step 1 で既にCSVが読み込まれている場合はそのまま Step 3（書式調整）へジャンプ
+              prepareTemplateForMode(selectedProjectType, selectedGrade);
+              wizardStep = 3;
             } else {
-              selectedSession = selectedSessionOption;
+              wizardStep = 2;
             }
-
-            wizardStep = 2;
             renderStep();
           } else if (wizardStep === 2) {
             if (parsedStudents.length === 0) {
               UI.showToast('生徒CSVファイルをアップロードしてください', 'warning');
               return;
             }
-            if (selectedProjectType === 'selection') {
-              // 講座選択モードの場合、標準枠（変更なし/あり）を完全に除外
-              delete customTemplate.noChangeBox;
-              delete customTemplate.hasChangeBox;
-              delete customTemplate.participateBox;
-              delete customTemplate.otherBox;
-              delete customTemplate.subject4Box;
-              delete customTemplate.subject2Box;
-              delete customTemplate.customFieldDefs;
-            } else if (selectedProjectType === 'continuation') {
-              // 継続確認モードの場合
-              delete customTemplate.noChangeBox;
-              delete customTemplate.hasChangeBox;
-              delete customTemplate.customBoxes;
-              if (!customTemplate.participateBox || !customTemplate.customFieldDefs) {
-                customTemplate = CheckboxEngine.getDefaultContinuationTemplate(selectedGrade);
-              }
-            } else {
-              // 期間講習受講確認モードの場合
-              delete customTemplate.participateBox;
-              delete customTemplate.otherBox;
-              delete customTemplate.subject4Box;
-              delete customTemplate.subject2Box;
-              delete customTemplate.customFieldDefs;
-              const def = CheckboxEngine.getDefaultTemplate();
-              if (!customTemplate.noChangeBox) customTemplate.noChangeBox = JSON.parse(JSON.stringify(def.noChangeBox));
-              if (!customTemplate.hasChangeBox) customTemplate.hasChangeBox = JSON.parse(JSON.stringify(def.hasChangeBox));
-              customTemplate.customBoxes = [];
-            }
+            prepareTemplateForMode(selectedProjectType, selectedGrade);
             wizardStep = 3;
             renderStep();
           } else if (wizardStep === 3) {
@@ -1531,93 +1704,68 @@ export const HomePage = {
               delete customTemplate.noChangeBox;
               delete customTemplate.hasChangeBox;
             }
-            // 共有フォルダ未接続時の注意喚起確認
-            if (!FolderConnector.isConnected()) {
-              const proceedWithoutShared = await UI.confirm(
-                '共有フォルダ未接続の確認',
-                '現在、共有フォルダに接続されていません。\nこのプロジェクトは現在のPCにのみ保存され、他のPCからはアクセス・閲覧ができません。\n\n共有フォルダに接続せずに作成を続行しますか？\n（※後からプロジェクト管理画面で「共有フォルダへ再書き出し」を行うことも可能です）',
-                'このまま作成を続行',
-                'primary'
-              );
-              if (!proceedWithoutShared) {
-                return;
-              }
-            }
-
-            // 作成実行
-            UI.setButtonLoading(nextBtn, true, '作成中...');
-            try {
-              const project = await UI.withLoading(async () => {
-                return await DB.createProject({
-                  year: selectedYear,
-                  grade: selectedGrade,
-                  sessionName: selectedSession,
-                  students: parsedStudents,
-                  scanTemplate: customTemplate,
-                  projectType: selectedProjectType
-                });
-              }, {
-                title: 'プロジェクトを作成中...',
-                message: 'ローカルデータベースおよびファイルサーバー（共有フォルダ）にプロジェクト・生徒名簿を登録しています。',
-                icon: '📋'
-              });
-
-              const syncMsg = FolderConnector.isConnected() ? '（共有フォルダへ書き出しました）' : '';
-              UI.showToast(`「${UI.formatProjectTitle(project.title)}」を作成しました${syncMsg}`, 'success');
-              modal.remove();
-              window.location.hash = `#project/${project.id}`;
-            } catch (err) {
-              UI.showToast(`プロジェクト作成に失敗しました: ${err.message}`, 'error');
-              UI.setButtonLoading(nextBtn, false);
-            }
+            await executeCreateProject(nextBtn);
           }
         };
       }
 
-      // Step 2 のイベント
-      if (wizardStep === 2) {
+      // Step 1 または Step 2 の CSV 取込イベント
+      if (wizardStep === 1 || wizardStep === 2) {
         const dlBtn = modal.querySelector('#btn-dl-template');
         if (dlBtn) dlBtn.onclick = () => CsvUtil.downloadTemplateCsv();
 
         const dropzone = modal.querySelector('#csv-dropzone');
         const fileInput = modal.querySelector('#csv-file-input');
 
-        dropzone.onclick = () => fileInput.click();
+        if (dropzone && fileInput) {
+          dropzone.onclick = () => fileInput.click();
 
-        dropzone.ondragover = (e) => {
-          e.preventDefault();
-          dropzone.classList.add('dragover');
-        };
-        dropzone.ondragleave = () => dropzone.classList.remove('dragover');
-        dropzone.ondrop = (e) => {
-          e.preventDefault();
-          dropzone.classList.remove('dragover');
-          if (e.dataTransfer.files.length > 0) {
-            handleCsvFile(e.dataTransfer.files[0]);
-          }
-        };
-
-        fileInput.onchange = () => {
-          if (fileInput.files.length > 0) {
-            handleCsvFile(fileInput.files[0]);
-          }
-        };
-
-        const handleCsvFile = (file) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const text = e.target.result;
-            const res = CsvUtil.parseStudentsCsv(text);
-            if (res.students.length === 0) {
-              UI.showToast('有効な生徒データが見つかりませんでした', 'error');
-              return;
-            }
-            parsedStudents = res.students;
-            UI.showToast(`${res.students.length} 名の生徒データを読み込みました`, 'success');
-            renderStep();
+          dropzone.ondragover = (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
           };
-          reader.readAsText(file, 'UTF-8');
-        };
+          dropzone.ondragleave = () => dropzone.classList.remove('dragover');
+          dropzone.ondrop = (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+              handleCsvFile(e.dataTransfer.files[0]);
+            }
+          };
+
+          fileInput.onchange = () => {
+            if (fileInput.files.length > 0) {
+              handleCsvFile(fileInput.files[0]);
+            }
+          };
+
+          const handleCsvFile = (file) => {
+            if (wizardStep === 1) {
+              const yearEl = modal.querySelector('#wiz-year');
+              const gradeEl = modal.querySelector('#wiz-grade');
+              const sessionEl = modal.querySelector('#wiz-session');
+              const customInput = modal.querySelector('#wiz-session-custom');
+              if (yearEl) selectedYear = parseInt(yearEl.value, 10);
+              if (gradeEl) selectedGrade = gradeEl.value;
+              if (sessionEl) selectedSessionOption = sessionEl.value;
+              if (customInput) customSessionName = customInput.value;
+              selectedSession = selectedSessionOption === 'その他' ? (customSessionName.trim() || 'その他') : selectedSessionOption;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const text = e.target.result;
+              const res = CsvUtil.parseStudentsCsv(text);
+              if (res.students.length === 0) {
+                UI.showToast('有効な生徒データが見つかりませんでした', 'error');
+                return;
+              }
+              parsedStudents = res.students;
+              UI.showToast(`${res.students.length} 名の生徒データを読み込みました`, 'success');
+              renderStep();
+            };
+            reader.readAsText(file, 'UTF-8');
+          };
+        }
       }
     };
 

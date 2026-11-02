@@ -1,7 +1,8 @@
 /**
- * スキャン読取位置（キャリブレーション）コンポーネント
- * プロジェクト作成ウィザードおよび書式設定モーダルで共通利用
- * チェックボックス枠を正方形（size）で管理し、内側収容＆高閾値（20%）判定に対応
+ * スキャン読取位置（キャリブレーション）コンポーネント v2.0
+ * - キャンバス上のダイレクト操作（クリック選択・ドラッグ移動・角ハンドルリサイズ・スマート吸着ガイド線）
+ * - 等間隔・グリッド一括配置アシスタント（2点間等間隔補間・矩形ドラッグ一括グリッド配置・縦横整列）
+ * - Preact + HTM 宣言的レンダリング連携 & 完全後方互換API
  */
 
 import { CheckboxEngine } from '../checkbox.js';
@@ -41,8 +42,8 @@ export class TemplateCalibrator {
     // すべての選択肢のマスの大きさを共通サイズに同期
     CheckboxEngine.syncBoxSizes(this.template);
     this.onChange = onChange;
-    
-    this.activeTab = this.allowStandardBoxes ? 'noChange' : (this.template.customBoxes[0]?.id || null);
+
+    this.activeTab = this.allowStandardBoxes ? 'noChange' : (this.template.participateBox ? 'participate' : (this.template.customBoxes[0]?.id || null));
     this.canvas = null;
     this.sourceCanvas = null; // 原寸大画像Canvas
     this.barcodeBox = null;
@@ -57,6 +58,16 @@ export class TemplateCalibrator {
     this.isDragging = false;
     this.dragStartX = 0;
     this.dragStartY = 0;
+
+    // v2.0: キャンバス直接操作（枠ドラッグ・リサイズ・グリッド一括配置）状態
+    this.interactionMode = null; // 'pan' | 'move-box' | 'resize-box' | 'draw-grid'
+    this.dragBoxId = null;
+    this.dragBoxInitial = null; // { dx, dy, size, width, height, startCanvasX, startCanvasY }
+    this.snapGuides = []; // [{ type: 'x'|'y', canvasPos: number, label: string }]
+    this.isGridDrawMode = false;
+    this.gridCols = 1; // 1: 縦1列, 2: 2列グリッド, 3: 3列グリッド, 0: 横1行
+    this.gridDragRect = null; // { x1, y1, x2, y2 } on canvas
+    this.lastRenderedRects = []; // Hit-test cache: [{ id, label, rect, boxRef, isRemarks }]
 
     this.render();
     this.initDefaultSample();
@@ -91,7 +102,6 @@ export class TemplateCalibrator {
 
   getTemplate() {
     const t = JSON.parse(JSON.stringify(this.template));
-    // 外枠下端線が検出されている場合は、基準距離（refQrToBorderDist）および比率を自動保存
     if (this.bottomBorder && this.bottomBorder.found && this.bottomBorder.qrToBorderDist && this.sourceCanvas) {
       t.refQrToBorderDist = Math.round(this.bottomBorder.qrToBorderDist * 10) / 10;
       t.refQrToBorderRatio = this.bottomBorder.qrToBorderDist / this.sourceCanvas.height;
@@ -124,6 +134,13 @@ export class TemplateCalibrator {
    * UI描画
    */
   render() {
+    if (this._boundWindowMouseMove) {
+      window.removeEventListener('mousemove', this._boundWindowMouseMove);
+    }
+    if (this._boundWindowMouseUp) {
+      window.removeEventListener('mouseup', this._boundWindowMouseUp);
+    }
+
     this.container.innerHTML = `
       <div class="calibrator-container">
         <!-- 上部：サンプルファイル読み込みエリア -->
@@ -131,7 +148,7 @@ export class TemplateCalibrator {
           <div class="calibrator-sample-info">
             <span class="badge badge-info" id="calib-page-badge">📄 標準サンプル帳票</span>
             <span style="font-size: 0.82rem; color: var(--gray-600);">
-              プロジェクト固有の受講票PDF・画像をドラッグ＆ドロップして位置を合わせられます
+              受講票PDF・画像をドロップして、<strong>画像上の枠を直接ドラッグ移動・角ドラッグでサイズ変更</strong>できます
             </span>
           </div>
           <div style="display: flex; gap: 8px; align-items: center;">
@@ -148,50 +165,85 @@ export class TemplateCalibrator {
         <div class="calibrator-layout">
           <!-- 左ペイン：帳票プレビュー & 判定枠オーバーレイ -->
           <div class="calibrator-preview-wrapper" id="calib-dropzone">
-            <!-- プレビュー拡大・縮小ツールバー -->
+            <!-- プレビュー拡大・縮小 ＆ ダイレクト一括配置ツールバー -->
             <div class="calibrator-zoom-bar">
               <div class="calibrator-zoom-controls">
-                <span style="font-weight: 700; color: #93c5fd; font-size: 0.78rem;">🔍 プレビュー表示:</span>
+                <span style="font-weight: 700; color: #93c5fd; font-size: 0.78rem;">🔍 表示:</span>
                 <button type="button" id="btn-calib-zoom-out" class="calibrator-zoom-btn" title="縮小 (マウスホイール下)">🔍-</button>
                 <span id="calib-zoom-val" style="font-family: var(--font-mono); min-width: 44px; text-align: center; font-size: 0.78rem;">100%</span>
                 <button type="button" id="btn-calib-zoom-in" class="calibrator-zoom-btn" title="拡大 (マウスホイール上)">🔍+</button>
                 <button type="button" id="btn-calib-zoom-fit" class="calibrator-zoom-btn" title="画面全体に合わせる">全体</button>
-                <button type="button" id="btn-calib-zoom-reset" class="calibrator-zoom-btn" title="原寸大 (100%)">100%</button>
+                <button type="button" id="btn-calib-zoom-reset" class="calibrator-zoom-btn" title="拡大表示 (160%)">160%</button>
+                <button type="button" id="btn-calib-focus-target" class="calibrator-zoom-btn btn-focus-target" title="選択中のチェックボックス判定エリアを特大フォーカス表示">
+                  🎯 枠へズーム
+                </button>
               </div>
               <div class="calibrator-zoom-controls">
-                <button type="button" id="btn-calib-focus-target" class="calibrator-zoom-btn btn-focus-target" title="チェックボックス判定エリアを特大フォーカス表示">
-                  🎯 判定枠へズーム
+                <select id="calib-grid-cols-select" class="calibrator-grid-select" title="一括整列・範囲配置時の列数">
+                  <option value="1" ${this.gridCols === 1 ? 'selected' : ''}>縦1列</option>
+                  <option value="2" ${this.gridCols === 2 ? 'selected' : ''}>2列グリッド</option>
+                  <option value="3" ${this.gridCols === 3 ? 'selected' : ''}>3列グリッド</option>
+                  <option value="0" ${this.gridCols === 0 ? 'selected' : ''}>横1行</option>
+                </select>
+                <button type="button" id="btn-calib-grid-draw-mode" class="calibrator-zoom-btn ${this.isGridDrawMode ? 'is-active-tool' : ''}" title="画像上でマウスドラッグした矩形範囲内に複数のチェック枠を等間隔グリッド配置します">
+                  📐 範囲ドラッグ一括配置
+                </button>
+                <button type="button" id="btn-calib-distribute-even" class="calibrator-zoom-btn" title="先頭枠と末尾枠の位置を基準に、間のすべての枠を等間隔に一発整列します">
+                  ↕️ 先頭〜末尾で等間隔
                 </button>
               </div>
             </div>
 
-            <div class="calibrator-canvas-container" id="calib-canvas-container" title="ホイールで拡大縮小 / ドラッグで移動 / ダブルクリックで判定枠へズーム">
+            <!-- 範囲ドラッグモード案内バナー -->
+            <div id="calib-grid-mode-banner" class="calib-grid-mode-banner" style="display: ${this.isGridDrawMode ? 'flex' : 'none'};">
+              <span>📐 <strong>範囲ドラッグ一括配置モード:</strong> 帳票画像上の<strong>最初のチェックボックスから最後のチェックボックスまで</strong>をマウスでドラッグして囲んでください。</span>
+              <button type="button" id="btn-calib-cancel-grid-mode" class="btn btn-secondary btn-sm" style="padding: 1px 8px; font-size: 0.74rem;">キャンセル (Esc)</button>
+            </div>
+
+            <div class="calibrator-canvas-container" id="calib-canvas-container" title="枠をドラッグして直接移動 / 四隅ドラッグでサイズ変更 / 余白ドラッグで画面移動 / ホイールで拡大縮小">
               <canvas id="calib-canvas"></canvas>
             </div>
             <div class="calibrator-overlay-legend" id="calib-overlay-legend">
               <span class="legend-item"><span class="legend-box legend-barcode"></span> バーコード（基準点）</span>
               ${this.allowStandardBoxes ? `
-                <span class="legend-item" id="legend-item-no-change" style="${this.template.noChangeBox ? '' : 'display: none;'}"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>
-                <span class="legend-item" id="legend-item-has-change" style="${this.template.hasChangeBox ? '' : 'display: none;'}"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>
+                <span class="legend-item" id="legend-item-no-change" style="${this.template.noChangeBox ? '' : 'display: none;'}"><span class="legend-box legend-no-change"></span> 「変更なし」枠</span>
+                <span class="legend-item" id="legend-item-has-change" style="${this.template.hasChangeBox ? '' : 'display: none;'}"><span class="legend-box legend-has-change"></span> 「変更あり」枠</span>
               ` : ''}
               <span class="legend-item" id="legend-item-custom" style="${this.template.customBoxes && this.template.customBoxes.length > 0 ? '' : 'display: none;'}"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>
+              <span class="legend-item" style="color: #93c5fd;">💡 画像上の枠を直接クリック＆ドラッグで移動できます</span>
             </div>
           </div>
 
-          <!-- 右ペイン：微調整スライダー & リアルタイム判定結果 -->
+          <!-- 右ペイン：スマート枠選択・一括整列・微調整 & リアルタイム判定結果 -->
           <div class="calibrator-controls-wrapper">
-            <!-- 調整ポイントのガイドバナー -->
+            <!-- 操作ガイドバナー -->
             <div class="calibrator-hint-card">
-              <div class="hint-title">💡 領域設定のポイント</div>
+              <div class="hint-title">✨ 直感操作 ＆ グリッド一括整列 (v2.0)</div>
               <div class="hint-body">
-                チェックボックスの<strong>【枠線全体が判定領域（正方形）の中に完全に収まる】</strong>ように設定してください。<br>
-                ※ 枠線の黒画素が含まれるため、判定閾値は高め（推奨: <strong>25%〜30%</strong>、デフォルト: 25%）に設定されています。
+                ・<strong>直接ドラッグ移動</strong>: 画像上の枠をマウスで掴んでチェックボックスの上に重ねられます（白い角ハンドルで大きさ変更）。<br>
+                ・<strong>複数枠の一括整列</strong>: 先頭と末尾の2枠だけ合わせて「<strong>↕️ 先頭〜末尾で等間隔</strong>」を押すか、「<strong>📐 範囲ドラッグ一括配置</strong>」で一瞬で整列できます。
               </div>
             </div>
 
             <!-- タブ切り替え & 削除・再追加 -->
             <div class="calibrator-tabs" id="calib-tabs-container">
               ${this.renderTabsHtml()}
+            </div>
+
+            <!-- クイック整列ツールバー（2枠以上ある場合に便利） -->
+            <div class="calib-quick-align-bar" id="calib-quick-align-bar">
+              <span style="font-size: 0.74rem; font-weight: 700; color: var(--gray-700);">📐 整列ツール:</span>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button type="button" id="btn-calib-align-x" class="btn btn-secondary btn-sm" style="padding: 2px 7px; font-size: 0.72rem;" title="グループ内の全枠の左右位置(X)を、現在選択中の枠と同じ縦列に揃えます">
+                  ┃ 縦一列に揃える(X)
+                </button>
+                <button type="button" id="btn-calib-align-y" class="btn btn-secondary btn-sm" style="padding: 2px 7px; font-size: 0.72rem;" title="グループ内の全枠の上下位置(Y)を、現在選択中の枠と同じ高さに揃えます">
+                  ━ 横一列に揃える(Y)
+                </button>
+                <button type="button" id="btn-calib-distribute-panel" class="btn btn-primary btn-sm" style="padding: 2px 8px; font-size: 0.72rem;" title="先頭の枠と末尾の枠の間を等間隔に自動整列します">
+                  ✨ 先頭〜末尾を等間隔整列
+                </button>
+              </div>
             </div>
 
             <!-- リアルタイム判定カード -->
@@ -243,7 +295,7 @@ export class TemplateCalibrator {
               </div>
             </div>
 
-            <!-- スライダーグループ -->
+            <!-- スライダーグループ（微調整用） -->
             <div class="calibrator-sliders-card">
               <div id="calib-no-target-msg" style="${this.getTargetBox() ? 'display: none;' : 'display: block;'} padding: 18px 12px; text-align: center; color: var(--gray-500); font-size: 0.85rem;">
                 ⚠️ 読取対象の枠がありません。<br>
@@ -288,9 +340,6 @@ export class TemplateCalibrator {
                     <input type="range" id="rng-size" min="0.005" max="0.150" step="0.001" class="form-range">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="size" data-delta="0.001" title="マスの大きさを拡大">➕</button>
                   </div>
-                  <div style="font-size: 0.72rem; color: var(--gray-500); margin-top: 2px;">
-                    ※ 黒画素割合の判定基準を均一化するため、すべての選択肢の大きさが自動で同期されます
-                  </div>
                 </div>
 
                 <div class="calib-field" style="margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--gray-200);">
@@ -302,9 +351,6 @@ export class TemplateCalibrator {
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="-0.01">➖</button>
                     <input type="range" id="rng-threshold" min="0.00" max="0.60" step="0.01" class="form-range">
                     <button type="button" class="btn btn-secondary btn-sm btn-nudge" data-target="threshold" data-delta="0.01">➕</button>
-                  </div>
-                  <div style="font-size: 0.72rem; color: var(--gray-500); margin-top: 2px;">
-                    ※ 枠線全体の黒画素を含むため通常 25%〜30% が推奨です（講座選択モードでは用紙の濃淡に応じて2群自動適応され、訂正塗りつぶしは非受講として自動判定されます）。
                   </div>
                 </div>
 
@@ -335,31 +381,38 @@ export class TemplateCalibrator {
     this.bindEvents();
   }
 
-  getTargetBox() {
-    // 継続確認モード枠
-    if (this.activeTab === 'participate' && this.template.participateBox) return this.template.participateBox;
-    if (this.activeTab === 'other' && this.template.otherBox) return this.template.otherBox;
-    if (this.activeTab === 'subject4' && this.template.subject4Box) return this.template.subject4Box;
-    if (this.activeTab === 'subject2' && this.template.subject2Box) return this.template.subject2Box;
+  /**
+   * 特定のタブIDに対応するボックス参照オブジェクトを取得
+   */
+  getBoxById(tabId) {
+    if (!tabId) return null;
+    if (tabId === 'participate' && this.template.participateBox) return this.template.participateBox;
+    if (tabId === 'other' && this.template.otherBox) return this.template.otherBox;
+    if (tabId === 'subject4' && this.template.subject4Box) return this.template.subject4Box;
+    if (tabId === 'subject2' && this.template.subject2Box) return this.template.subject2Box;
     if (this.template.customFieldDefs && this.template.customFieldDefs.length > 0) {
       for (const field of this.template.customFieldDefs) {
         if (field.options) {
-          const opt = field.options.find(o => o.id === this.activeTab);
+          const opt = field.options.find(o => o.id === tabId);
           if (opt && opt.box) return opt.box;
         }
       }
     }
-
-    // 従来標準枠
     if (this.allowStandardBoxes) {
-      if (this.activeTab === 'noChange' && this.template.noChangeBox) return this.template.noChangeBox;
-      if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return this.template.hasChangeBox;
+      if (tabId === 'noChange' && this.template.noChangeBox) return this.template.noChangeBox;
+      if (tabId === 'hasChange' && this.template.hasChangeBox) return this.template.hasChangeBox;
     }
     if (this.template.customBoxes && this.template.customBoxes.length > 0) {
-      const found = this.template.customBoxes.find(b => b.id === this.activeTab);
+      const found = this.template.customBoxes.find(b => b.id === tabId);
       if (found) return found;
     }
-    if (this.activeTab === 'remarks' && this.template.remarksBox) return this.template.remarksBox;
+    if (tabId === 'remarks' && this.template.remarksBox) return this.template.remarksBox;
+    return null;
+  }
+
+  getTargetBox() {
+    const direct = this.getBoxById(this.activeTab);
+    if (direct) return direct;
 
     // activeTabが見つからない場合、存在する最初の枠をフォールバック
     if (this.template.participateBox) {
@@ -386,8 +439,333 @@ export class TemplateCalibrator {
     return null;
   }
 
+  /**
+   * 一括整列・グリッド配置の対象となるボックス配列を取得
+   */
+  getTargetGroupBoxes() {
+    // 1. カスタムボックス（志望校別講座など）が存在し、現在カスタム枠を選択中（または標準枠がない）場合
+    if (this.template.customBoxes && this.template.customBoxes.length >= 2) {
+      const isCustomSelected = this.template.customBoxes.some(b => b.id === this.activeTab);
+      if (isCustomSelected || (!this.allowStandardBoxes && !this.template.participateBox)) {
+        return this.template.customBoxes;
+      }
+    }
+    // 2. 継続確認モードでカスタム項目を選択中の場合、同じカスタム項目内の選択肢群、または全選択肢
+    if (this.template.customFieldDefs && this.template.customFieldDefs.length > 0) {
+      for (const field of this.template.customFieldDefs) {
+        if (field.options && field.options.some(o => o.id === this.activeTab)) {
+          if (field.options.length >= 2) {
+            return field.options.map(o => o.box).filter(Boolean);
+          }
+        }
+      }
+    }
+    // 3. すべてのチェックボックス枠（特記事項枠を除く）
+    const all = [];
+    if (this.template.participateBox) all.push(this.template.participateBox);
+    if (this.template.otherBox) all.push(this.template.otherBox);
+    if (this.template.subject4Box) all.push(this.template.subject4Box);
+    if (this.template.subject2Box) all.push(this.template.subject2Box);
+    if (this.template.customFieldDefs) {
+      this.template.customFieldDefs.forEach(f => {
+        (f.options || []).forEach(o => {
+          if (o.box) all.push(o.box);
+        });
+      });
+    }
+    if (this.allowStandardBoxes && this.template.noChangeBox) all.push(this.template.noChangeBox);
+    if (this.allowStandardBoxes && this.template.hasChangeBox) all.push(this.template.hasChangeBox);
+    if (this.template.customBoxes) {
+      this.template.customBoxes.forEach(b => all.push(b));
+    }
+    return all;
+  }
+
+  /**
+   * 2点間（先頭枠〜末尾枠）を基準に等間隔整列（1列 / 2列 / 3列 / 横1行）
+   */
+  distributeBoxesEvenly(colsOverride = null) {
+    const boxes = this.getTargetGroupBoxes();
+    if (!boxes || boxes.length < 2) {
+      UI.showToast('等間隔に整列するには2つ以上の枠が必要です', 'warning');
+      return;
+    }
+
+    const cols = colsOverride !== null ? colsOverride : this.gridCols;
+    const first = boxes[0];
+    const last = boxes[boxes.length - 1];
+    const n = boxes.length;
+
+    if (cols === 0) {
+      // 横1行整列: Yは先頭枠に揃え、Xを先頭〜末尾で等間隔補間
+      const startX = first.dx;
+      const endX = Math.abs(last.dx - first.dx) > 0.01 ? last.dx : (first.dx + (n - 1) * 0.08);
+      const baseY = first.dy;
+      boxes.forEach((b, i) => {
+        const t = n > 1 ? i / (n - 1) : 0;
+        b.dx = Math.round((startX + (endX - startX) * t) * 1000) / 1000;
+        b.dy = Math.round(baseY * 1000) / 1000;
+      });
+    } else if (cols === 1 || n <= cols) {
+      // 縦1列整列: Xは先頭枠に揃え、Yを先頭〜末尾で等間隔補間
+      const baseX = first.dx;
+      const startY = first.dy;
+      const endY = Math.abs(last.dy - first.dy) > 0.01 ? last.dy : (first.dy + (n - 1) * 0.045);
+      boxes.forEach((b, i) => {
+        const t = n > 1 ? i / (n - 1) : 0;
+        b.dx = Math.round(baseX * 1000) / 1000;
+        b.dy = Math.round((startY + (endY - startY) * t) * 1000) / 1000;
+      });
+    } else {
+      // 複数列（2列 / 3列）グリッド整列: 先頭枠を左上、末尾枠を右下としてグリッド配置
+      const rows = Math.ceil(n / cols);
+      const startX = first.dx;
+      const endX = Math.abs(last.dx - first.dx) > 0.03 ? last.dx : (first.dx + (cols - 1) * 0.35);
+      const startY = first.dy;
+      const endY = Math.abs(last.dy - first.dy) > 0.02 ? last.dy : (first.dy + (rows - 1) * 0.045);
+
+      boxes.forEach((b, i) => {
+        const colIdx = i % cols;
+        const rowIdx = Math.floor(i / cols);
+        const tx = cols > 1 ? colIdx / (cols - 1) : 0;
+        const ty = rows > 1 ? rowIdx / (rows - 1) : 0;
+        b.dx = Math.round((startX + (endX - startX) * tx) * 1000) / 1000;
+        b.dy = Math.round((startY + (endY - startY) * ty) * 1000) / 1000;
+      });
+    }
+
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    if (this.onChange) this.onChange(this.template);
+    UI.showToast(`✨ ${boxes.length} 個の枠を等間隔に整列しました`, 'success');
+  }
+
+  /**
+   * 選択中の枠のXまたはY座標にグループ内の全枠を揃える
+   */
+  alignBoxesToActive(axis = 'x') {
+    const activeBox = this.getTargetBox();
+    const boxes = this.getTargetGroupBoxes();
+    if (!activeBox || !boxes || boxes.length < 2) {
+      UI.showToast('揃える対象の枠が2つ以上必要です', 'warning');
+      return;
+    }
+    boxes.forEach(b => {
+      if (axis === 'x') {
+        b.dx = activeBox.dx;
+      } else {
+        b.dy = activeBox.dy;
+      }
+    });
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    if (this.onChange) this.onChange(this.template);
+    UI.showToast(axis === 'x' ? '┃ すべての枠を縦一列（同じX位置）に揃えました' : '━ すべての枠を横一列（同じY位置）に揃えました', 'success');
+  }
+
+  /**
+   * 複数枠を指定した列数（1列 / 2列 / 3列）の標準グリッドで自動等間隔配置
+   */
+  autoArrangeGrid(ids = null, cols = 2) {
+    let boxes = this.getTargetGroupBoxes();
+    if (Array.isArray(ids) && ids.length > 0 && this.template.customBoxes) {
+      const filtered = this.template.customBoxes.filter(b => ids.includes(b.id));
+      if (filtered.length > 0) boxes = filtered;
+    }
+    if (!boxes || boxes.length === 0) return;
+
+    const colCount = Math.max(1, parseInt(cols, 10) || 1);
+    const startDx = -0.058;
+    const colSpanDx = colCount === 1 ? 0 : (colCount === 2 ? 0.360 : 0.250);
+    const startDy = 0.350;
+    const rowStepDy = 0.046;
+
+    boxes.forEach((b, idx) => {
+      const c = idx % colCount;
+      const r = Math.floor(idx / colCount);
+      b.dx = Math.round((startDx + c * colSpanDx) * 1000) / 1000;
+      b.dy = Math.round((startDy + r * rowStepDy) * 1000) / 1000;
+    });
+
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    if (this.onChange) this.onChange(this.template);
+  }
+
+  /**
+   * キャンバス上でドラッグした矩形領域内にボックス群を一括グリッド配置
+   */
+  applyGridDragPlacement(canvasX1, canvasY1, canvasX2, canvasY2) {
+    const boxes = this.getTargetGroupBoxes();
+    if (!boxes || boxes.length === 0) {
+      UI.showToast('配置する枠がありません。先に項目・講座を追加してください。', 'warning');
+      return;
+    }
+
+    const minX = Math.min(canvasX1, canvasX2);
+    const maxX = Math.max(canvasX1, canvasX2);
+    const minY = Math.min(canvasY1, canvasY2);
+    const maxY = Math.max(canvasY1, canvasY2);
+
+    if (maxX - minX < 12 && maxY - minY < 12) {
+      return; // 小さすぎる誤クリックは無視
+    }
+
+    const n = boxes.length;
+    const cols = this.gridCols;
+
+    if (n === 1) {
+      const rel = this.canvasPointToTemplateOffset((minX + maxX) / 2, (minY + maxY) / 2);
+      boxes[0].dx = rel.dx;
+      boxes[0].dy = rel.dy;
+    } else if (cols === 0) {
+      // 横1行配置
+      const cy = (minY + maxY) / 2;
+      boxes.forEach((b, i) => {
+        const t = i / (n - 1);
+        const cx = minX + (maxX - minX) * t;
+        const rel = this.canvasPointToTemplateOffset(cx, cy);
+        b.dx = rel.dx;
+        b.dy = rel.dy;
+      });
+    } else if (cols === 1 || n <= cols) {
+      // 縦1列配置
+      const cx = (minX + maxX) / 2;
+      boxes.forEach((b, i) => {
+        const t = i / (n - 1);
+        const cy = minY + (maxY - minY) * t;
+        const rel = this.canvasPointToTemplateOffset(cx, cy);
+        b.dx = rel.dx;
+        b.dy = rel.dy;
+      });
+    } else {
+      // N列グリッド配置（行優先）
+      const rows = Math.ceil(n / cols);
+      boxes.forEach((b, i) => {
+        const colIdx = i % cols;
+        const rowIdx = Math.floor(i / cols);
+        const tx = cols > 1 ? colIdx / (cols - 1) : 0.5;
+        const ty = rows > 1 ? rowIdx / (rows - 1) : 0.5;
+        const cx = minX + (maxX - minX) * tx;
+        const cy = minY + (maxY - minY) * ty;
+        const rel = this.canvasPointToTemplateOffset(cx, cy);
+        b.dx = rel.dx;
+        b.dy = rel.dy;
+      });
+    }
+
+    this.isGridDrawMode = false;
+    this.gridDragRect = null;
+    this.updateGridModeUI();
+    this.syncSlidersFromTemplate();
+    this.drawOverlay();
+    if (this.onChange) this.onChange(this.template);
+    UI.showToast(`📐 ドラッグ範囲内に ${boxes.length} 個の枠を一括配置しました`, 'success');
+  }
+
+  /**
+   * キャンバス上のピクセル座標 (cx, cy) をテンプレートの相対オフセット (dx, dy) に逆変換
+   */
+  canvasPointToTemplateOffset(canvasX, canvasY) {
+    if (!this.sourceCanvas || !this.barcodeBox) {
+      return { dx: 0, dy: 0 };
+    }
+    const cvW = this.sourceCanvas.width;
+    const cvH = this.sourceCanvas.height;
+    const bc = this.barcodeBox;
+
+    let angle = bc.angle || 0;
+    let scaleY = 1.0;
+
+    if (this.bottomBorder && this.bottomBorder.found) {
+      angle = this.bottomBorder.angleRad || 0;
+      const currentRatio = (this.bottomBorder.qrToBorderDist && cvH > 0)
+        ? (this.bottomBorder.qrToBorderDist / cvH)
+        : null;
+      const refRatio = this.template.refQrToBorderRatio
+        || ((this.template.refQrToBorderDist && this.template.refCanvasHeight)
+          ? (this.template.refQrToBorderDist / this.template.refCanvasHeight)
+          : null);
+      if (refRatio && refRatio > 0 && currentRatio && currentRatio > 0) {
+        const rawScale = currentRatio / refRatio;
+        scaleY = Math.max(0.85, Math.min(1.15, rawScale));
+      }
+    }
+
+    const relX = canvasX - bc.centerX;
+    const relY = canvasY - bc.centerY;
+    const cosA = Math.cos(-angle);
+    const sinA = Math.sin(-angle);
+    const unrotX = relX * cosA - relY * sinA;
+    const unrotY = (relX * sinA + relY * cosA) / scaleY;
+
+    const dx = Math.max(-1.0, Math.min(1.0, Math.round((unrotX / cvW) * 1000) / 1000));
+    const dy = Math.max(-1.0, Math.min(1.0, Math.round((unrotY / cvH) * 1000) / 1000));
+    return { dx, dy };
+  }
+
+  /**
+   * クライアントマウス座標 (clientX, clientY) をキャンバス内部ピクセル座標に変換
+   */
+  clientToCanvasCoords(clientX, clientY) {
+    if (!this.canvas) return { x: 0, y: 0 };
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return { x: 0, y: 0 };
+    const x = (clientX - rect.left) * (this.canvas.width / rect.width);
+    const y = (clientY - rect.top) * (this.canvas.height / rect.height);
+    return { x, y };
+  }
+
+  /**
+   * キャンバス座標 (canvasX, canvasY) にある枠またはリサイズハンドルをヒットテスト
+   */
+  hitTestCanvas(canvasX, canvasY) {
+    if (!this.lastRenderedRects || this.lastRenderedRects.length === 0) return null;
+
+    // 1. 現在アクティブな枠の四隅リサイズハンドルを優先判定
+    const activeEntry = this.lastRenderedRects.find(r => r.id === this.activeTab);
+    if (activeEntry && activeEntry.rect) {
+      const r = activeEntry.rect;
+      const cx = r.cx !== undefined ? r.cx : (r.x + r.w / 2);
+      const cy = r.cy !== undefined ? r.cy : (r.y + r.h / 2);
+      const halfW = r.w / 2;
+      const halfH = r.h / 2;
+      const handleRadius = Math.max(10, Math.min(18, r.w * 0.28));
+      const corners = [
+        { name: 'nw', x: cx - halfW, y: cy - halfH },
+        { name: 'ne', x: cx + halfW, y: cy - halfH },
+        { name: 'se', x: cx + halfW, y: cy + halfH },
+        { name: 'sw', x: cx - halfW, y: cy + halfH }
+      ];
+      for (const c of corners) {
+        if (Math.hypot(canvasX - c.x, canvasY - c.y) <= handleRadius) {
+          return { type: 'resize', id: activeEntry.id, corner: c.name, entry: activeEntry };
+        }
+      }
+    }
+
+    // 2. 各枠の内部（少し余裕を持たせた判定領域）を逆順（前面優先）でヒットテスト
+    for (let i = this.lastRenderedRects.length - 1; i >= 0; i--) {
+      const item = this.lastRenderedRects[i];
+      const r = item.rect;
+      if (!r) continue;
+      const cx = r.cx !== undefined ? r.cx : (r.x + r.w / 2);
+      const cy = r.cy !== undefined ? r.cy : (r.y + r.h / 2);
+      const pad = 6;
+      if (
+        canvasX >= cx - r.w / 2 - pad &&
+        canvasX <= cx + r.w / 2 + pad &&
+        canvasY >= cy - r.h / 2 - pad &&
+        canvasY <= cy + r.h / 2 + pad
+      ) {
+        return { type: 'move', id: item.id, entry: item };
+      }
+    }
+
+    return null;
+  }
+
   getActiveBoxLabel() {
-    // 継続確認モード枠
     if (this.activeTab === 'participate' && this.template.participateBox) return '🟩 「受講する」枠';
     if (this.activeTab === 'other' && this.template.otherBox) return '🟧 「その他」枠';
     if (this.activeTab === 'subject4' && this.template.subject4Box) return '🟦 「4科目」枠';
@@ -401,7 +779,6 @@ export class TemplateCalibrator {
       }
     }
 
-    // 従来枠
     if (this.allowStandardBoxes) {
       if (this.activeTab === 'noChange' && this.template.noChangeBox) return '🟩 「変更なし」枠';
       if (this.activeTab === 'hasChange' && this.template.hasChangeBox) return '🟧 「変更あり」枠';
@@ -417,18 +794,17 @@ export class TemplateCalibrator {
   getAllBoxesList() {
     const list = [];
 
-    // 継続確認モード枠
     if (this.template.participateBox) {
-      list.push({ id: 'participate', label: '受講可否: 「受講する」枠', type: 'continuation', color: '#16a34a', icon: '🟩' });
+      list.push({ id: 'participate', label: '受講可否: 「受講する」枠', type: 'continuation', color: '#16a34a', icon: '🟩', boxRef: this.template.participateBox });
     }
     if (this.template.otherBox) {
-      list.push({ id: 'other', label: '受講可否: 「その他」枠', type: 'continuation', color: '#ea580c', icon: '🟧' });
+      list.push({ id: 'other', label: '受講可否: 「その他」枠', type: 'continuation', color: '#ea580c', icon: '🟧', boxRef: this.template.otherBox });
     }
     if (this.template.subject4Box) {
-      list.push({ id: 'subject4', label: '科目数: 「4科目」枠', type: 'continuation', color: '#0284c7', icon: '🟦' });
+      list.push({ id: 'subject4', label: '科目数: 「4科目」枠', type: 'continuation', color: '#0284c7', icon: '🟦', boxRef: this.template.subject4Box });
     }
     if (this.template.subject2Box) {
-      list.push({ id: 'subject2', label: '科目数: 「2科目」枠', type: 'continuation', color: '#0284c7', icon: '🟦' });
+      list.push({ id: 'subject2', label: '科目数: 「2科目」枠', type: 'continuation', color: '#0284c7', icon: '🟦', boxRef: this.template.subject2Box });
     }
     if (this.template.customFieldDefs && Array.isArray(this.template.customFieldDefs)) {
       this.template.customFieldDefs.forEach(field => {
@@ -440,26 +816,26 @@ export class TemplateCalibrator {
             color: '#8b5cf6',
             icon: '🟪',
             fieldId: field.id,
-            optionId: opt.id
+            optionId: opt.id,
+            boxRef: opt.box
           });
         });
       });
     }
 
-    // 従来期間講習枠
     if (this.allowStandardBoxes && this.template.noChangeBox) {
-      list.push({ id: 'noChange', label: '「変更なし」枠', type: 'standard', color: '#16a34a', icon: '🟩' });
+      list.push({ id: 'noChange', label: '「変更なし」枠', type: 'standard', color: '#16a34a', icon: '🟩', boxRef: this.template.noChangeBox });
     }
     if (this.allowStandardBoxes && this.template.hasChangeBox) {
-      list.push({ id: 'hasChange', label: '「変更あり」枠', type: 'standard', color: '#ea580c', icon: '🟧' });
+      list.push({ id: 'hasChange', label: '「変更あり」枠', type: 'standard', color: '#ea580c', icon: '🟧', boxRef: this.template.hasChangeBox });
     }
     if (this.template.customBoxes) {
       this.template.customBoxes.forEach((b, idx) => {
-        list.push({ id: b.id, label: b.label, type: 'custom', color: '#8b5cf6', icon: '🟪', customIndex: idx });
+        list.push({ id: b.id, label: b.label, type: 'custom', color: '#8b5cf6', icon: '🟪', customIndex: idx, boxRef: b });
       });
     }
     if (this.template.remarksBox) {
-      list.push({ id: 'remarks', label: '「特記事項」枠', type: 'remarks', color: '#2563eb', icon: '📝' });
+      list.push({ id: 'remarks', label: '「特記事項」枠', type: 'remarks', color: '#2563eb', icon: '📝', boxRef: this.template.remarksBox });
     }
     return list;
   }
@@ -470,7 +846,6 @@ export class TemplateCalibrator {
     const customBoxes = this.template.customBoxes || [];
     const allBoxes = this.getAllBoxesList();
 
-    // 講座選択モード、または全項目数が4個以上ある場合は「スマート枠セレクタ」を表示
     const useSmartSelector = !this.allowStandardBoxes || allBoxes.length >= 4;
 
     if (useSmartSelector) {
@@ -506,11 +881,17 @@ export class TemplateCalibrator {
               <button type="button" class="calib-order-btn" id="btn-calib-box-sort" ${customBoxes.length <= 1 ? 'disabled' : ''} title="全講座を名前順（昇順）に並び替え">🔤</button>
             </div>
           </div>
+          ${!this.template.remarksBox ? `
+            <div style="display: flex; justify-content: flex-end; margin-top: 2px;">
+              <button type="button" class="btn btn-secondary btn-sm calib-btn-restore-box" data-restore="remarks" style="font-size: 0.72rem; padding: 2px 8px; color: #2563eb; border-color: #93c5fd;" title="手書き特記事項の読取枠を追加">
+                ✏️ 「特記事項」枠を追加
+              </button>
+            </div>
+          ` : ''}
         </div>
       `;
     }
 
-    // 従来の受講確認モード（項目数が少数（3個以下）の場合）
     let tabsHtml = '';
     if (hasNoChange) {
       tabsHtml += `
@@ -594,11 +975,25 @@ export class TemplateCalibrator {
     }
   }
 
+  updateGridModeUI() {
+    const btn = this.container.querySelector('#btn-calib-grid-draw-mode');
+    const banner = this.container.querySelector('#calib-grid-mode-banner');
+    const canvasWrap = this.container.querySelector('#calib-canvas-container');
+    if (btn) {
+      btn.classList.toggle('is-active-tool', this.isGridDrawMode);
+    }
+    if (banner) {
+      banner.style.display = this.isGridDrawMode ? 'flex' : 'none';
+    }
+    if (canvasWrap) {
+      canvasWrap.style.cursor = this.isGridDrawMode ? 'crosshair' : '';
+    }
+  }
+
   bindTabEvents() {
     const allBoxes = this.getAllBoxesList();
     const currentIndex = allBoxes.findIndex(b => b.id === this.activeTab);
 
-    // スマートセレクタ：ドロップダウン切り替え
     const smartSelect = this.container.querySelector('#calib-smart-box-select');
     if (smartSelect) {
       smartSelect.onchange = () => {
@@ -609,7 +1004,6 @@ export class TemplateCalibrator {
       };
     }
 
-    // スマートセレクタ：前へボタン
     const prevTargetBtn = this.container.querySelector('#btn-calib-prev-target');
     if (prevTargetBtn) {
       prevTargetBtn.onclick = (e) => {
@@ -623,7 +1017,6 @@ export class TemplateCalibrator {
       };
     }
 
-    // スマートセレクタ：次へボタン
     const nextTargetBtn = this.container.querySelector('#btn-calib-next-target');
     if (nextTargetBtn) {
       nextTargetBtn.onclick = (e) => {
@@ -637,7 +1030,6 @@ export class TemplateCalibrator {
       };
     }
 
-    // 並び替え：上へ
     const moveUpBtn = this.container.querySelector('#btn-calib-box-up');
     if (moveUpBtn) {
       moveUpBtn.onclick = (e) => {
@@ -646,7 +1038,6 @@ export class TemplateCalibrator {
       };
     }
 
-    // 並び替え：下へ
     const moveDownBtn = this.container.querySelector('#btn-calib-box-down');
     if (moveDownBtn) {
       moveDownBtn.onclick = (e) => {
@@ -655,7 +1046,6 @@ export class TemplateCalibrator {
       };
     }
 
-    // 並び替え：名前順ソート
     const sortBtn = this.container.querySelector('#btn-calib-box-sort');
     if (sortBtn) {
       sortBtn.onclick = (e) => {
@@ -664,7 +1054,6 @@ export class TemplateCalibrator {
       };
     }
 
-    // 従来のタブ切り替えボタン
     const tabBtns = this.container.querySelectorAll('.calib-tab-btn');
     tabBtns.forEach(btn => {
       btn.onclick = (e) => {
@@ -676,7 +1065,6 @@ export class TemplateCalibrator {
       };
     });
 
-    // タブ内個別削除ボタン (✕)
     const delBtns = this.container.querySelectorAll('.calib-tab-del-btn');
     delBtns.forEach(btn => {
       btn.onclick = (e) => {
@@ -685,7 +1073,6 @@ export class TemplateCalibrator {
       };
     });
 
-    // 削除済み標準枠・特記事項枠の再追加ボタン
     const restoreBtns = this.container.querySelectorAll('.calib-btn-restore-box');
     restoreBtns.forEach(btn => {
       btn.onclick = (e) => {
@@ -756,7 +1143,6 @@ export class TemplateCalibrator {
       this.template.customBoxes = (this.template.customBoxes || []).filter(b => b.id !== typeOrId);
     }
 
-    // activeTab の更新
     if (this.activeTab === typeOrId) {
       if (this.allowStandardBoxes && this.template.noChangeBox) {
         this.activeTab = 'noChange';
@@ -790,7 +1176,7 @@ export class TemplateCalibrator {
       height: 0.08
     };
     this.activeTab = 'remarks';
-    UI.showToast('「特記事項」読取枠を追加しました（位置・サイズを調整してください）', 'success');
+    UI.showToast('「特記事項」読取枠を追加しました（画像上でドラッグして位置・サイズを調整できます）', 'success');
 
     this.updateTabsUI();
     this.syncSlidersFromTemplate();
@@ -833,10 +1219,10 @@ export class TemplateCalibrator {
     if (!legend) return;
     let html = `<span class="legend-item"><span class="legend-box legend-barcode"></span> バーコード（基準点）</span>`;
     if (this.allowStandardBoxes && this.template.noChangeBox) {
-      html += `<span class="legend-item"><span class="legend-box legend-no-change"></span> 「変更なし」正方形読取枠</span>`;
+      html += `<span class="legend-item"><span class="legend-box legend-no-change"></span> 「変更なし」枠</span>`;
     }
     if (this.allowStandardBoxes && this.template.hasChangeBox) {
-      html += `<span class="legend-item"><span class="legend-box legend-has-change"></span> 「変更あり」正方形読取枠</span>`;
+      html += `<span class="legend-item"><span class="legend-box legend-has-change"></span> 「変更あり」枠</span>`;
     }
     if (this.template.customBoxes && this.template.customBoxes.length > 0) {
       html += `<span class="legend-item"><span class="legend-box" style="background: #8b5cf6; border: 1px solid #7c3aed;"></span> 追加カスタム枠</span>`;
@@ -847,6 +1233,7 @@ export class TemplateCalibrator {
     if (this.bottomBorder && this.bottomBorder.found) {
       html += `<span class="legend-item"><span class="legend-box" style="background: #06b6d4; border: 1px dashed #0891b2;"></span> 📐 外枠下端線 (傾き: ${this.bottomBorder.angleDeg}° 補正有効)</span>`;
     }
+    html += `<span class="legend-item" style="color: #93c5fd;">💡 枠をドラッグで直接移動 / 角ハンドルでサイズ変更</span>`;
     legend.innerHTML = html;
   }
 
@@ -854,8 +1241,55 @@ export class TemplateCalibrator {
    * イベントバインド
    */
   bindEvents() {
-    // タブ切り替え
     this.bindTabEvents();
+
+    // 整列・グリッド配置ツールバーのイベント
+    const gridColsSelect = this.container.querySelector('#calib-grid-cols-select');
+    if (gridColsSelect) {
+      gridColsSelect.onchange = () => {
+        this.gridCols = parseInt(gridColsSelect.value, 10);
+      };
+    }
+
+    const gridDrawBtn = this.container.querySelector('#btn-calib-grid-draw-mode');
+    if (gridDrawBtn) {
+      gridDrawBtn.onclick = () => {
+        this.isGridDrawMode = !this.isGridDrawMode;
+        this.gridDragRect = null;
+        this.updateGridModeUI();
+        this.drawOverlay();
+      };
+    }
+
+    const cancelGridBtn = this.container.querySelector('#btn-calib-cancel-grid-mode');
+    if (cancelGridBtn) {
+      cancelGridBtn.onclick = () => {
+        this.isGridDrawMode = false;
+        this.gridDragRect = null;
+        this.updateGridModeUI();
+        this.drawOverlay();
+      };
+    }
+
+    const distEvenBtn = this.container.querySelector('#btn-calib-distribute-even');
+    if (distEvenBtn) {
+      distEvenBtn.onclick = () => this.distributeBoxesEvenly();
+    }
+
+    const distPanelBtn = this.container.querySelector('#btn-calib-distribute-panel');
+    if (distPanelBtn) {
+      distPanelBtn.onclick = () => this.distributeBoxesEvenly();
+    }
+
+    const alignXBtn = this.container.querySelector('#btn-calib-align-x');
+    if (alignXBtn) {
+      alignXBtn.onclick = () => this.alignBoxesToActive('x');
+    }
+
+    const alignYBtn = this.container.querySelector('#btn-calib-align-y');
+    if (alignYBtn) {
+      alignYBtn.onclick = () => this.alignBoxesToActive('y');
+    }
 
     // 判定一覧アコーディオン開閉
     this.isEvalListOpen = false;
@@ -903,10 +1337,10 @@ export class TemplateCalibrator {
       }
     };
 
-    rngDx.oninput = handleSliderInput;
-    rngDy.oninput = handleSliderInput;
-    rngSize.oninput = handleSliderInput;
-    rngTh.oninput = handleSliderInput;
+    if (rngDx) rngDx.oninput = handleSliderInput;
+    if (rngDy) rngDy.oninput = handleSliderInput;
+    if (rngSize) rngSize.oninput = handleSliderInput;
+    if (rngTh) rngTh.oninput = handleSliderInput;
 
     // 微調整ボタン (◀ ▶ ▲ ▼ ➖ ➕)
     this.container.querySelectorAll('.btn-nudge').forEach(btn => {
@@ -977,7 +1411,9 @@ export class TemplateCalibrator {
         if (this.allowStandardBoxes) {
           this.activeTab = this.template.noChangeBox ? 'noChange' : (this.template.hasChangeBox ? 'hasChange' : null);
         } else {
-          this.activeTab = (this.template.customBoxes && this.template.customBoxes.length > 0) ? this.template.customBoxes[0].id : null;
+          this.activeTab = this.template.participateBox
+            ? 'participate'
+            : ((this.template.customBoxes && this.template.customBoxes.length > 0) ? this.template.customBoxes[0].id : null);
         }
         this.updateTabsUI();
         this.syncSlidersFromTemplate();
@@ -993,43 +1429,50 @@ export class TemplateCalibrator {
     const fileInput = this.container.querySelector('#calib-file-input');
     const dropzone = this.container.querySelector('#calib-dropzone');
 
-    uploadTrigger.onclick = () => fileInput.click();
+    if (uploadTrigger && fileInput) {
+      uploadTrigger.onclick = () => fileInput.click();
+      fileInput.onchange = () => {
+        if (fileInput.files.length > 0) {
+          this.loadFile(fileInput.files[0]);
+        }
+      };
+    }
 
-    fileInput.onchange = () => {
-      if (fileInput.files.length > 0) {
-        this.loadFile(fileInput.files[0]);
-      }
-    };
-
-    dropzone.ondragover = (e) => {
-      e.preventDefault();
-      dropzone.classList.add('dragover');
-    };
-    dropzone.ondragleave = () => dropzone.classList.remove('dragover');
-    dropzone.ondrop = (e) => {
-      e.preventDefault();
-      dropzone.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) {
-        this.loadFile(e.dataTransfer.files[0]);
-      }
-    };
+    if (dropzone) {
+      dropzone.ondragover = (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      };
+      dropzone.ondragleave = () => dropzone.classList.remove('dragover');
+      dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          this.loadFile(e.dataTransfer.files[0]);
+        }
+      };
+    }
 
     // ページ送り
     const prevBtn = this.container.querySelector('#btn-calib-prev-page');
     const nextBtn = this.container.querySelector('#btn-calib-next-page');
 
-    prevBtn.onclick = () => {
-      if (this.currentPageIndex > 0) {
-        this.setPage(this.currentPageIndex - 1);
-      }
-    };
-    nextBtn.onclick = () => {
-      if (this.currentPageIndex < this.loadedPages.length - 1) {
-        this.setPage(this.currentPageIndex + 1);
-      }
-    };
+    if (prevBtn) {
+      prevBtn.onclick = () => {
+        if (this.currentPageIndex > 0) {
+          this.setPage(this.currentPageIndex - 1);
+        }
+      };
+    }
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        if (this.currentPageIndex < this.loadedPages.length - 1) {
+          this.setPage(this.currentPageIndex + 1);
+        }
+      };
+    }
 
-    // --- プレビューズーム＆パン制御 ---
+    // --- プレビューズーム＆パン ＋ v2.0 キャンバス直接ドラッグ制御 ---
     const zoomInBtn = this.container.querySelector('#btn-calib-zoom-in');
     const zoomOutBtn = this.container.querySelector('#btn-calib-zoom-out');
     const zoomFitBtn = this.container.querySelector('#btn-calib-zoom-fit');
@@ -1068,30 +1511,79 @@ export class TemplateCalibrator {
         this.applyCanvasTransform();
       };
     }
-
     if (focusTargetBtn) {
       focusTargetBtn.onclick = () => this.focusTargetArea();
     }
 
     if (canvasWrap) {
-      // マウスホイールによるズーム
       canvasWrap.onwheel = (e) => {
         e.preventDefault();
         const delta = e.deltaY < 0 ? 0.15 : -0.15;
         updateZoom(this.zoomLevel + delta, e.clientX, e.clientY);
       };
 
-      // ドラッグによるパン操作
       canvasWrap.onmousedown = (e) => {
         if (e.button !== 0) return;
+        const pt = this.clientToCanvasCoords(e.clientX, e.clientY);
+
+        // 1. 範囲ドラッグ一括配置モード中
+        if (this.isGridDrawMode) {
+          e.preventDefault();
+          this.interactionMode = 'draw-grid';
+          this.gridDragRect = { x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y };
+          this.drawOverlay();
+          return;
+        }
+
+        // 2. キャンバス上の枠または角リサイズハンドルへのヒットテスト
+        const hit = this.hitTestCanvas(pt.x, pt.y);
+        if (hit) {
+          e.preventDefault();
+          if (this.activeTab !== hit.id) {
+            this.activeTab = hit.id;
+            this.updateTabsUI();
+            this.syncSlidersFromTemplate();
+          }
+          const boxObj = this.getBoxById(hit.id);
+          if (boxObj) {
+            this.interactionMode = hit.type === 'resize' ? 'resize-box' : 'move-box';
+            this.dragBoxId = hit.id;
+            this.dragBoxInitial = {
+              dx: boxObj.dx || 0,
+              dy: boxObj.dy || 0,
+              size: boxObj.size || boxObj.w || 0.032,
+              width: boxObj.width || 0.38,
+              height: boxObj.height || 0.08,
+              corner: hit.corner || null,
+              startCanvasX: pt.x,
+              startCanvasY: pt.y,
+              rectCx: hit.entry.rect.cx,
+              rectCy: hit.entry.rect.cy
+            };
+            this.snapGuides = [];
+            this.drawOverlay();
+            return;
+          }
+        }
+
+        // 3. 余白ドラッグによるパン移動
+        this.interactionMode = 'pan';
         this.isDragging = true;
         this.dragStartX = e.clientX - this.panX;
         this.dragStartY = e.clientY - this.panY;
         canvasWrap.classList.add('is-dragging');
       };
 
-      // ダブルクリックで判定枠フォーカス ⇔ フィットのトグル
-      canvasWrap.ondblclick = () => {
+      canvasWrap.ondblclick = (e) => {
+        const pt = this.clientToCanvasCoords(e.clientX, e.clientY);
+        const hit = this.hitTestCanvas(pt.x, pt.y);
+        if (hit) {
+          this.activeTab = hit.id;
+          this.updateTabsUI();
+          this.syncSlidersFromTemplate();
+          this.focusTargetArea();
+          return;
+        }
         if (this.zoomLevel > 1.4) {
           this.zoomLevel = 1.0;
           this.panX = 0;
@@ -1103,22 +1595,144 @@ export class TemplateCalibrator {
       };
     }
 
-    const onMouseMove = (e) => {
-      if (!this.isDragging) return;
-      this.panX = e.clientX - this.dragStartX;
-      this.panY = e.clientY - this.dragStartY;
-      this.applyCanvasTransform();
-    };
+    this._boundWindowMouseMove = (e) => {
+      if (!this.interactionMode) {
+        // ホバー時のカーソル切り替え
+        if (canvasWrap && this.canvas && e.target === this.canvas) {
+          if (this.isGridDrawMode) {
+            canvasWrap.style.cursor = 'crosshair';
+          } else {
+            const pt = this.clientToCanvasCoords(e.clientX, e.clientY);
+            const hit = this.hitTestCanvas(pt.x, pt.y);
+            if (hit && hit.type === 'resize') {
+              canvasWrap.style.cursor = (hit.corner === 'nw' || hit.corner === 'se') ? 'nwse-resize' : 'nesw-resize';
+            } else if (hit && hit.type === 'move') {
+              canvasWrap.style.cursor = 'move';
+            } else {
+              canvasWrap.style.cursor = '';
+            }
+          }
+        }
+        return;
+      }
 
-    const onMouseUp = () => {
-      if (this.isDragging) {
-        this.isDragging = false;
-        if (canvasWrap) canvasWrap.classList.remove('is-dragging');
+      if (this.interactionMode === 'pan' && this.isDragging) {
+        this.panX = e.clientX - this.dragStartX;
+        this.panY = e.clientY - this.dragStartY;
+        this.applyCanvasTransform();
+        return;
+      }
+
+      const pt = this.clientToCanvasCoords(e.clientX, e.clientY);
+
+      if (this.interactionMode === 'draw-grid' && this.gridDragRect) {
+        this.gridDragRect.x2 = pt.x;
+        this.gridDragRect.y2 = pt.y;
+        this.drawOverlay();
+        return;
+      }
+
+      if (this.interactionMode === 'move-box' && this.dragBoxId && this.dragBoxInitial) {
+        const boxObj = this.getBoxById(this.dragBoxId);
+        if (!boxObj || !this.sourceCanvas) return;
+
+        let deltaCanvasX = pt.x - this.dragBoxInitial.startCanvasX;
+        let deltaCanvasY = pt.y - this.dragBoxInitial.startCanvasY;
+
+        // Shiftキー押下時は水平または垂直移動にロック
+        if (e.shiftKey) {
+          if (Math.abs(deltaCanvasX) > Math.abs(deltaCanvasY)) {
+            deltaCanvasY = 0;
+          } else {
+            deltaCanvasX = 0;
+          }
+        }
+
+        const newCenterCanvasX = this.dragBoxInitial.rectCx + deltaCanvasX;
+        const newCenterCanvasY = this.dragBoxInitial.rectCy + deltaCanvasY;
+        const rel = this.canvasPointToTemplateOffset(newCenterCanvasX, newCenterCanvasY);
+
+        let nextDx = rel.dx;
+        let nextDy = rel.dy;
+        this.snapGuides = [];
+
+        // スマート吸着（Altキー未押下時、他の枠とXまたはYが近ければ吸着して水色ガイド線を表示）
+        if (!e.altKey) {
+          const allBoxes = this.getAllBoxesList();
+          const snapTolerance = 0.0035;
+          for (const other of allBoxes) {
+            if (other.id === this.dragBoxId || !other.boxRef) continue;
+            if (Math.abs(other.boxRef.dx - nextDx) <= snapTolerance) {
+              nextDx = other.boxRef.dx;
+              this.snapGuides.push({ axis: 'x', dx: nextDx });
+              break;
+            }
+          }
+          for (const other of allBoxes) {
+            if (other.id === this.dragBoxId || !other.boxRef) continue;
+            if (Math.abs(other.boxRef.dy - nextDy) <= snapTolerance) {
+              nextDy = other.boxRef.dy;
+              this.snapGuides.push({ axis: 'y', dy: nextDy });
+              break;
+            }
+          }
+        }
+
+        boxObj.dx = nextDx;
+        boxObj.dy = nextDy;
+
+        this.syncSlidersFromTemplate();
+        this.drawOverlay();
+        return;
+      }
+
+      if (this.interactionMode === 'resize-box' && this.dragBoxId && this.dragBoxInitial) {
+        const boxObj = this.getBoxById(this.dragBoxId);
+        if (!boxObj || !this.sourceCanvas) return;
+
+        const cvW = this.sourceCanvas.width;
+        const cvH = this.sourceCanvas.height;
+        const distFromCenterX = Math.abs(pt.x - this.dragBoxInitial.rectCx) * 2;
+        const distFromCenterY = Math.abs(pt.y - this.dragBoxInitial.rectCy) * 2;
+
+        if (this.dragBoxId === 'remarks') {
+          boxObj.width = Math.max(0.08, Math.min(0.85, Math.round((distFromCenterX / cvW) * 1000) / 1000));
+          boxObj.height = Math.max(0.02, Math.min(0.45, Math.round((distFromCenterY / cvH) * 1000) / 1000));
+        } else {
+          const newPxSize = Math.max(distFromCenterX, distFromCenterY);
+          const newSize = Math.max(0.005, Math.min(0.150, Math.round((newPxSize / cvW) * 1000) / 1000));
+          CheckboxEngine.syncBoxSizes(this.template, newSize);
+        }
+
+        this.syncSlidersFromTemplate();
+        this.drawOverlay();
       }
     };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    this._boundWindowMouseUp = () => {
+      if (!this.interactionMode) return;
+      const prevMode = this.interactionMode;
+      this.interactionMode = null;
+      this.isDragging = false;
+      this.snapGuides = [];
+      if (canvasWrap) canvasWrap.classList.remove('is-dragging');
+
+      if (prevMode === 'draw-grid' && this.gridDragRect) {
+        const r = this.gridDragRect;
+        this.applyGridDragPlacement(r.x1, r.y1, r.x2, r.y2);
+        return;
+      }
+
+      if (prevMode === 'move-box' || prevMode === 'resize-box') {
+        this.drawOverlay();
+        if (this.onChange) {
+          this.onChange(this.template);
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', this._boundWindowMouseMove);
+    window.addEventListener('mouseup', this._boundWindowMouseUp);
   }
 
   /**
@@ -1171,7 +1785,7 @@ export class TemplateCalibrator {
     this.panY = -normOffsetY * displayedH * this.zoomLevel;
 
     this.applyCanvasTransform();
-    UI.showToast('🎯 判定枠エリアにズームしました（ドラッグで移動可能）', 'info', 2000);
+    UI.showToast('🎯 判定枠エリアにズームしました（枠を直接ドラッグして位置調整できます）', 'info', 2000);
   }
 
   /**
@@ -1195,7 +1809,7 @@ export class TemplateCalibrator {
     if (activeBoxNameEl) {
       activeBoxNameEl.textContent = this.getActiveBoxLabel();
     }
-    
+
     const rngDx = this.container.querySelector('#rng-dx');
     const rngDy = this.container.querySelector('#rng-dy');
     const rngSize = this.container.querySelector('#rng-size');
@@ -1218,7 +1832,7 @@ export class TemplateCalibrator {
       activeBoxNameEl.textContent = this.getActiveBoxLabel();
     }
     if (!targetBox) return;
-    
+
     const valDx = this.container.querySelector('#val-dx');
     const valDy = this.container.querySelector('#val-dy');
     const valSize = this.container.querySelector('#val-size');
@@ -1244,11 +1858,9 @@ export class TemplateCalibrator {
     sampleCanvas.height = height;
     const ctx = sampleCanvas.getContext('2d');
 
-    // 白背景
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
-    // キリトリ線
     ctx.strokeStyle = '#888888';
     ctx.setLineDash([6, 6]);
     ctx.lineWidth = 1.5;
@@ -1258,13 +1870,11 @@ export class TemplateCalibrator {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // タイトル
     ctx.fillStyle = '#000000';
     ctx.font = 'bold 22px "Noto Sans JP", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('2026年度　夏期講習受講確認票', width / 2, 70);
 
-    // バーコード（CODE 39のシミュレーション）
     const bcX = 60;
     const bcY = 46;
     const bcW = 160;
@@ -1273,7 +1883,6 @@ export class TemplateCalibrator {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(bcX, bcY, bcW, bcH);
 
-    // バーコードの縦線を描画
     ctx.fillStyle = '#000000';
     let curX = bcX + 6;
     const pattern = [3,1,1,3,1,1,3,1,1,1,3,1,3,1,1,1,3,1,1,3,1,1,3,1,1,3,1,1,1,3,1,3,1,1,1,3,1,1,3,1,1,3,1,1,3,1,1,1,3,1,3,1];
@@ -1289,7 +1898,6 @@ export class TemplateCalibrator {
     ctx.textAlign = 'center';
     ctx.fillText('*TDN60013*', bcX + bcW / 2, bcY + bcH - 2);
 
-    // メインテーブル枠
     const tblX = 56;
     const tblY = 100;
     const tblW = width - 112;
@@ -1299,7 +1907,6 @@ export class TemplateCalibrator {
     ctx.lineWidth = 2;
     ctx.strokeRect(tblX, tblY, tblW, tblH);
 
-    // 生徒情報行 (Row 1)
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(tblX, tblY + 54);
@@ -1326,7 +1933,6 @@ export class TemplateCalibrator {
     ctx.font = 'bold 18px sans-serif';
     ctx.fillText('W1', tblX + tblW - 188, tblY + 44);
 
-    // 注意書き (Row 2)
     ctx.fillStyle = '#f3f4f6';
     ctx.fillRect(tblX + 1, tblY + 55, tblW - 2, 28);
     ctx.fillStyle = '#222222';
@@ -1339,19 +1945,16 @@ export class TemplateCalibrator {
     ctx.lineTo(tblX + tblW, tblY + 84);
     ctx.stroke();
 
-    // 変更なし行 (Row 3)
     const row3Y = tblY + 84;
     ctx.beginPath();
     ctx.moveTo(tblX, row3Y + 46);
     ctx.lineTo(tblX + tblW, row3Y + 46);
     ctx.stroke();
 
-    // チェックボックス「変更なし」
     const cbNoX = tblX + 16;
     const cbNoY = row3Y + 12;
     ctx.strokeRect(cbNoX, cbNoY, 22, 22);
 
-    // チェックマーク（サンプル用: レ点）
     ctx.font = 'bold 22px sans-serif';
     ctx.fillStyle = '#000000';
     ctx.fillText('✔', cbNoX + 2, cbNoY + 19);
@@ -1359,21 +1962,18 @@ export class TemplateCalibrator {
     ctx.font = '14px sans-serif';
     ctx.fillText('夏期講習の受講内容に変更が「ない」（所属クラスの期間で受講）', cbNoX + 34, cbNoY + 17);
 
-    // 変更あり行 (Row 4)
     const row4Y = row3Y + 46;
     ctx.beginPath();
     ctx.moveTo(tblX, row4Y + 46);
     ctx.lineTo(tblX + tblW, row4Y + 46);
     ctx.stroke();
 
-    // チェックボックス「変更あり」
     const cbHasX = tblX + 16;
     const cbHasY = row4Y + 12;
     ctx.strokeRect(cbHasX, cbHasY, 22, 22);
     ctx.font = '14px sans-serif';
     ctx.fillText('夏期講習の受講内容に変更が「ある」', cbHasX + 34, cbHasY + 17);
 
-    // 変更申請詳細枠
     const row5Y = row4Y + 46;
     ctx.fillStyle = '#fafafa';
     ctx.fillRect(tblX + 1, row5Y + 1, 40, tblH - (row5Y - tblY) - 2);
@@ -1432,7 +2032,6 @@ export class TemplateCalibrator {
         }
 
         const arrayBuffer = await file.arrayBuffer();
-        // CVE-2024-4367 対策: 動的コード評価（isEvalSupported）を無効化して安全にパース
         const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
         const numPages = pdfDoc.numPages;
 
@@ -1441,7 +2040,6 @@ export class TemplateCalibrator {
 
         for (let i = 1; i <= Math.min(numPages, 10); i++) {
           const page = await pdfDoc.getPage(i);
-          // A5や低解像度スキャンでもバーコードの細線を鮮明に捉えるため、最適解像度スケールを自動算出
           const unscaled = page.getViewport({ scale: 1.0 });
           const maxDim = Math.max(unscaled.width, unscaled.height);
           const scale = Math.max(2.5, Math.min(3.5, 2200 / maxDim));
@@ -1491,7 +2089,6 @@ export class TemplateCalibrator {
           UI.showToast(`${this.loadedPages.length} ページ中 ${foundCount} ページの${codeLabel}を検出しました`, 'warning');
         }
       } else {
-        // 画像ファイル
         const img = new Image();
         const url = URL.createObjectURL(file);
         img.onload = async () => {
@@ -1582,7 +2179,6 @@ export class TemplateCalibrator {
     this.sourceCanvas = cur.canvas;
     this.barcodeBox = cur.barcodeBox;
     this.bottomBorder = cur.bottomBorder || null;
-    // 書式設定中の帳票自身をリファレンス基準に同期し、編集画面でのスケールを1.0（基準100%）に保持
     if (this.bottomBorder && this.bottomBorder.found && this.bottomBorder.qrToBorderDist && cur.canvas) {
       this.template.refQrToBorderDist = Math.round(this.bottomBorder.qrToBorderDist * 10) / 10;
       this.template.refQrToBorderRatio = this.bottomBorder.qrToBorderDist / cur.canvas.height;
@@ -1604,7 +2200,6 @@ export class TemplateCalibrator {
     const cur = this.loadedPages && this.loadedPages[this.currentPageIndex];
     const isDetected = cur ? cur.barcodeFound : false;
 
-    // 表示用Canvasサイズ
     this.canvas.width = srcW;
     this.canvas.height = srcH;
     const ctx = this.canvas.getContext('2d');
@@ -1614,7 +2209,7 @@ export class TemplateCalibrator {
 
     if (!this.barcodeBox) return;
 
-    // 2. バーコード枠（検知時は青＋傾き回転、未検知時は赤破線警告）
+    // 2. バーコード枠
     const bc = this.barcodeBox;
     ctx.save();
     if (isDetected) {
@@ -1626,13 +2221,11 @@ export class TemplateCalibrator {
       ctx.fillRect(-bc.width / 2, -bc.height / 2, bc.width, bc.height);
       ctx.strokeRect(-bc.width / 2, -bc.height / 2, bc.width, bc.height);
 
-      // バーコード中心点
       ctx.fillStyle = '#2563eb';
       ctx.beginPath();
       ctx.arc(0, 0, 4, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      // 未検出時の警告表示
       ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 2.5;
       ctx.setLineDash([6, 4]);
@@ -1650,7 +2243,6 @@ export class TemplateCalibrator {
     }
     ctx.restore();
 
-    // 未検出時の上部警告バナー
     if (!isDetected) {
       const codeLabel = (this.codeType === 'qr') ? 'QRコード' : 'コード（バーコード/QR）';
       ctx.save();
@@ -1678,7 +2270,6 @@ export class TemplateCalibrator {
       ctx.lineTo(x2, y2);
       ctx.stroke();
 
-      // 外枠線ラベル
       ctx.fillStyle = '#0891b2';
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'left';
@@ -1686,15 +2277,15 @@ export class TemplateCalibrator {
       ctx.restore();
     }
 
-    // 3. 読取枠の計算（完全な正方形＋外枠罫線アシスト補正）
+    // 3. 読取枠の計算
     const rects = CheckboxEngine.calculateTargetRects(this.sourceCanvas, this.barcodeBox, this.template, this.bottomBorder);
+    this.lastRenderedRects = [];
 
     // 4. 黒画素率の評価
     const threshold = this.template.threshold !== undefined ? this.template.threshold : 0.25;
     const noChangeEval = (this.allowStandardBoxes && rects.noChangeRect) ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.noChangeRect, threshold) : null;
     const hasChangeEval = (this.allowStandardBoxes && rects.hasChangeRect) ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.hasChangeRect, threshold) : null;
 
-    // 継続確認モード枠の評価
     const participateEval = rects.participateRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.participateRect, threshold) : null;
     const otherEval = rects.otherRect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.otherRect, threshold) : null;
     const subject4Eval = rects.subject4Rect ? CheckboxEngine.evaluateCheckbox(this.sourceCanvas, rects.subject4Rect, threshold) : null;
@@ -1702,17 +2293,22 @@ export class TemplateCalibrator {
 
     // 継続確認モード枠の描画
     if (rects.participateRect) {
-      this.drawTargetBox(ctx, rects.participateRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '受講する (正方形)', this.activeTab === 'participate');
+      this.lastRenderedRects.push({ id: 'participate', rect: rects.participateRect });
+      this.drawTargetBox(ctx, rects.participateRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '受講する', this.activeTab === 'participate');
     }
     if (rects.otherRect) {
-      this.drawTargetBox(ctx, rects.otherRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', 'その他 (正方形)', this.activeTab === 'other');
+      this.lastRenderedRects.push({ id: 'other', rect: rects.otherRect });
+      this.drawTargetBox(ctx, rects.otherRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', 'その他', this.activeTab === 'other');
     }
     if (rects.subject4Rect) {
-      this.drawTargetBox(ctx, rects.subject4Rect, '#0284c7', 'rgba(2, 132, 199, 0.18)', '4科目 (正方形)', this.activeTab === 'subject4');
+      this.lastRenderedRects.push({ id: 'subject4', rect: rects.subject4Rect });
+      this.drawTargetBox(ctx, rects.subject4Rect, '#0284c7', 'rgba(2, 132, 199, 0.18)', '4科目', this.activeTab === 'subject4');
     }
     if (rects.subject2Rect) {
-      this.drawTargetBox(ctx, rects.subject2Rect, '#0284c7', 'rgba(2, 132, 199, 0.18)', '2科目 (正方形)', this.activeTab === 'subject2');
+      this.lastRenderedRects.push({ id: 'subject2', rect: rects.subject2Rect });
+      this.drawTargetBox(ctx, rects.subject2Rect, '#0284c7', 'rgba(2, 132, 199, 0.18)', '2科目', this.activeTab === 'subject2');
     }
+
     const evaluatedCustomFields = [];
     if (rects.customFieldRects && rects.customFieldRects.length > 0) {
       rects.customFieldRects.forEach(field => {
@@ -1725,6 +2321,7 @@ export class TemplateCalibrator {
         (field.options || []).forEach(opt => {
           if (opt.rect) {
             const isOptActive = this.activeTab === opt.id;
+            this.lastRenderedRects.push({ id: opt.id, rect: opt.rect });
             this.drawTargetBox(ctx, opt.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${field.name}: ${opt.label}`, isOptActive);
             const optEval = CheckboxEngine.evaluateCheckbox(this.sourceCanvas, opt.rect, threshold);
             fieldItem.options.push({
@@ -1742,13 +2339,15 @@ export class TemplateCalibrator {
     // 5. 「変更なし」枠（緑）
     if (this.allowStandardBoxes && rects.noChangeRect) {
       const isNoChangeActive = this.activeTab === 'noChange';
-      this.drawTargetBox(ctx, rects.noChangeRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '変更なし (正方形)', isNoChangeActive);
+      this.lastRenderedRects.push({ id: 'noChange', rect: rects.noChangeRect });
+      this.drawTargetBox(ctx, rects.noChangeRect, '#16a34a', 'rgba(22, 163, 74, 0.18)', '変更なし', isNoChangeActive);
     }
 
     // 6. 「変更あり」枠（橙）
     if (this.allowStandardBoxes && rects.hasChangeRect) {
       const isHasChangeActive = this.activeTab === 'hasChange';
-      this.drawTargetBox(ctx, rects.hasChangeRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', '変更あり (正方形)', isHasChangeActive);
+      this.lastRenderedRects.push({ id: 'hasChange', rect: rects.hasChangeRect });
+      this.drawTargetBox(ctx, rects.hasChangeRect, '#ea580c', 'rgba(234, 88, 12, 0.18)', '変更あり', isHasChangeActive);
     }
 
     // 7. カスタム追加枠（紫）
@@ -1762,10 +2361,11 @@ export class TemplateCalibrator {
         const isCancelled = !!res.isFilledCancellation;
         const isChk = !!res.isChecked;
 
+        this.lastRenderedRects.push({ id: item.id, rect: item.rect });
         if (isCancelled) {
           this.drawTargetBox(ctx, item.rect, '#ef4444', 'rgba(239, 68, 68, 0.22)', `${item.label} (⚠️訂正取消)`, isCustomActive);
         } else {
-          this.drawTargetBox(ctx, item.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${item.label} (正方形)`, isCustomActive);
+          this.drawTargetBox(ctx, item.rect, '#8b5cf6', 'rgba(139, 92, 246, 0.18)', `${item.label}`, isCustomActive);
         }
 
         customEvals.push({
@@ -1786,7 +2386,80 @@ export class TemplateCalibrator {
     // 7.5. 特記事項枠（青・破線長方形）
     if (rects.remarksRect) {
       const isRemarksActive = this.activeTab === 'remarks';
+      this.lastRenderedRects.push({ id: 'remarks', rect: rects.remarksRect, isRemarks: true });
       this.drawTargetBox(ctx, rects.remarksRect, '#2563eb', 'rgba(37, 99, 235, 0.15)', '特記事項 (メモ欄)', isRemarksActive);
+    }
+
+    // 7.8. v2.0 スマート吸着ガイド線（ドラッグ移動中）
+    if (this.snapGuides && this.snapGuides.length > 0 && this.activeTab) {
+      const activeEntry = this.lastRenderedRects.find(r => r.id === this.activeTab);
+      if (activeEntry && activeEntry.rect) {
+        ctx.save();
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        for (const g of this.snapGuides) {
+          ctx.beginPath();
+          if (g.axis === 'x') {
+            ctx.moveTo(activeEntry.rect.cx, 0);
+            ctx.lineTo(activeEntry.rect.cx, srcH);
+          } else {
+            ctx.moveTo(0, activeEntry.rect.cy);
+            ctx.lineTo(srcW, activeEntry.rect.cy);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // 7.9. v2.0 範囲ドラッグ一括配置のリアルタイムプレビュー描画
+    if (this.isGridDrawMode && this.gridDragRect) {
+      const r = this.gridDragRect;
+      const minX = Math.min(r.x1, r.x2);
+      const maxX = Math.max(r.x1, r.x2);
+      const minY = Math.min(r.y1, r.y2);
+      const maxY = Math.max(r.y1, r.y2);
+
+      ctx.save();
+      ctx.strokeStyle = '#7c3aed';
+      ctx.fillStyle = 'rgba(124, 58, 237, 0.10)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([6, 4]);
+      ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
+      ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+      ctx.setLineDash([]);
+
+      // 配置予定のプレビュー枠を描画
+      const boxes = this.getTargetGroupBoxes();
+      const n = boxes.length;
+      const cols = this.gridCols;
+      const boxPx = (CheckboxEngine.getCommonBoxSize(this.template) || 0.032) * srcW;
+
+      ctx.strokeStyle = '#6d28d9';
+      ctx.fillStyle = 'rgba(139, 92, 246, 0.35)';
+      ctx.lineWidth = 2;
+
+      for (let i = 0; i < n; i++) {
+        let cx = (minX + maxX) / 2;
+        let cy = (minY + maxY) / 2;
+        if (n > 1) {
+          if (cols === 0) {
+            cx = minX + (maxX - minX) * (i / (n - 1));
+          } else if (cols === 1 || n <= cols) {
+            cy = minY + (maxY - minY) * (i / (n - 1));
+          } else {
+            const rows = Math.ceil(n / cols);
+            const cIdx = i % cols;
+            const rIdx = Math.floor(i / cols);
+            cx = minX + (maxX - minX) * (cols > 1 ? cIdx / (cols - 1) : 0.5);
+            cy = minY + (maxY - minY) * (rows > 1 ? rIdx / (rows - 1) : 0.5);
+          }
+        }
+        ctx.fillRect(cx - boxPx / 2, cy - boxPx / 2, boxPx, boxPx);
+        ctx.strokeRect(cx - boxPx / 2, cy - boxPx / 2, boxPx, boxPx);
+      }
+      ctx.restore();
     }
 
     // 8. 判定UIの更新
@@ -1800,7 +2473,6 @@ export class TemplateCalibrator {
       customGroupData
     });
 
-    // トランスフォーム（ズーム・パン）の再適用
     this.applyCanvasTransform();
   }
 
@@ -1828,10 +2500,28 @@ export class TemplateCalibrator {
     ctx.strokeRect(-halfW, -halfH, rect.w, rect.h);
     ctx.setLineDash([]);
 
+    // v2.0: 選択中の枠には四隅にリサイズ用ハンドル（白い四角）を描画
+    if (isActive) {
+      const hs = Math.max(6, Math.min(10, rect.w * 0.2));
+      const corners = [
+        [-halfW, -halfH],
+        [halfW, -halfH],
+        [halfW, halfH],
+        [-halfW, halfH]
+      ];
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 2;
+      for (const [hx, hy] of corners) {
+        ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
+        ctx.strokeRect(hx - hs / 2, hy - hs / 2, hs, hs);
+      }
+    }
+
     // ラベルタグ
     ctx.fillStyle = strokeColor;
     ctx.font = 'bold 12px sans-serif';
-    const tagText = `${label}${isActive ? ' [選択中]' : ''}`;
+    const tagText = `${label}${isActive ? ' [選択中・ドラッグ可]' : ''}`;
     const tagW = ctx.measureText(tagText).width + 8;
     ctx.fillRect(-halfW, -halfH - 18, tagW, 17);
     ctx.fillStyle = '#ffffff';
@@ -1886,7 +2576,6 @@ export class TemplateCalibrator {
       return;
     }
 
-    // 継続確認モードの総合自動判定
     if (isContinuation && overallRow && overallStatusEl) {
       overallRow.style.display = 'flex';
       const partDark = continuationData.participateEval?.darkRatio || 0;
@@ -1936,9 +2625,7 @@ export class TemplateCalibrator {
 
       overallStatusEl.className = badgeClass;
       overallStatusEl.textContent = `${statusText}${courseText}${nittokuText}`;
-    }
-    // 期間講習受講確認モードの総合自動判定（変更なし / 変更あり の二者択一大小比較）
-    else if (this.allowStandardBoxes && noChangeEval && hasChangeEval && overallRow && overallStatusEl) {
+    } else if (this.allowStandardBoxes && noChangeEval && hasChangeEval && overallRow && overallStatusEl) {
       overallRow.style.display = 'flex';
       const hasDark = hasChangeEval.darkRatio || 0;
       const noDark = noChangeEval.darkRatio || 0;
@@ -1985,7 +2672,6 @@ export class TemplateCalibrator {
       }
     }
 
-    // 継続確認モード枠・カスタム枠の統合リスト構築
     const displayList = [];
     if (isContinuation) {
       if (continuationData.participateEval) {
@@ -2043,7 +2729,6 @@ export class TemplateCalibrator {
         });
       }
     }
-    // 志望校別等の customEvals も統合
     if (customEvals && customEvals.length > 0) {
       customEvals.forEach(c => {
         displayList.push({
@@ -2059,7 +2744,6 @@ export class TemplateCalibrator {
       });
     }
 
-    // 講座選択モード・継続確認モード・または 4枠以上の場合のサマリーバー & 選択中枠ハイライト表示
     const allBoxes = this.getAllBoxesList();
     const useSmart = !this.allowStandardBoxes || isContinuation || allBoxes.length >= 4;
 
@@ -2128,7 +2812,6 @@ export class TemplateCalibrator {
       activeFocusContainer.style.display = 'none';
     }
 
-    // サマリーバーの表示
     if (summaryBar && summaryText) {
       if (displayList.length > 0) {
         summaryBar.style.display = 'flex';

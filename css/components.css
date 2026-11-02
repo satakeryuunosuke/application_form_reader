@@ -1852,4 +1852,48 @@ textarea.form-control {
   }
 }
 
+/* ============================================================
+   v2.0 直感ドラッグ＆グリッド一括配置キャリブレーター拡張スタイル
+   ============================================================ */
+.calibrator-grid-select {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #f8fafc;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.calibrator-grid-select option {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.calibrator-zoom-btn.is-active-tool {
+  background: #6d28d9 !important;
+  border-color: #c4b5fd !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.45);
+}
+
+.calib-grid-mode-banner {
+  background: linear-gradient(90deg, #5b21b6 0%, #6d28d9 100%);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 3px rgba(109, 40, 217, 0.25);
+}
+
+.calib-quick-align-bar {
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+
 
